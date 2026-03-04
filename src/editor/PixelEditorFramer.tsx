@@ -2293,7 +2293,7 @@ function FitToViewport({
                 background,
                 overflow: "hidden",
                 display: "grid",
-                placeItems: "center center",
+                placeItems: "start center",
             }}
         >
             <div
@@ -2302,7 +2302,7 @@ function FitToViewport({
                     transformOrigin: "top center",
                     width: "100%",
                     display: "grid",
-                    placeItems: "center center",
+                    placeItems: "start center",
                 }}
             >
                 <div
