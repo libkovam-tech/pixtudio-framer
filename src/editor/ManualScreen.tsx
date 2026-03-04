@@ -11,7 +11,7 @@ import {
     PipetteIcon,
     HandIconOn,
     HandIconOff,
-} from "./SvgIcons"
+} from "./SvgIcons.tsx"
 
 function SaveIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
