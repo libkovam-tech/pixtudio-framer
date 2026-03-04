@@ -537,3 +537,4 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
         </div>
     )
 }
+export default ManualScreen
