@@ -8921,7 +8921,7 @@ function PixelEditorFramer({
                     position: "relative",
                     display: "flex",
                     flexDirection: "column",
-                    padding-bottom: 18,
+                    paddingbottom: 18,
                     boxSizing: "border-box",
                     margin: "0 auto",
                     width: "100%",
