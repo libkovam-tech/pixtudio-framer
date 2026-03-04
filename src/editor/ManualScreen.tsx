@@ -1,5 +1,4 @@
 import * as React from "react"
-import { Frame } from "framer"
 
 import {
     InlineSvgWrap,
@@ -237,15 +236,24 @@ const CONTENT_PAD_Y = 18
 
 export function ManualScreen({ onClose }: { onClose: () => void }) {
     return (
-        <Frame
-            size="100%"
-            background="#FAF6E9"
+        <div
             style={{
                 position: "fixed",
                 inset: 0,
                 zIndex: 9999,
-                pointerEvents: "auto",
-                fontFamily: FONT_FAMILY,
+                width: "100%",
+                height: "100%",
+                background: "#FAF6E9",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                paddingBottom: 18,
+                boxSizing: "border-box",
+            }}
+            onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
             }}
         >
             {/* ------------------- SCROLL VIEWPORT (top 50px; bottom = 50px above button) ------------------- */}
