@@ -1,6 +1,10 @@
 import * as React from "react"
 
 import {
+    InlineSvgWrap,
+    SvgTopButton3,
+    SvgTopButton4,
+    SvgCloseIcon,
     SvgOkButton,
     SaveIcon,
     LoadIcon,
@@ -9,7 +13,6 @@ import {
     ZoomOutIcon,
     ZoomInIcon,
     PipetteIcon,
-    HandIconOn,
     HandIconOff,
 } from "./SvgIcons.tsx"
 
