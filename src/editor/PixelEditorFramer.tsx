@@ -2302,7 +2302,7 @@ function FitToViewport({
                     transformOrigin: "top center",
                     width: "100%",
                     display: "grid",
-                    placeItems: "start center",
+                    placeItems: "center center",
                 }}
             >
                 <div
