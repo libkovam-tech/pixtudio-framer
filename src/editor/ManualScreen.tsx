@@ -1,29 +1,139 @@
 import * as React from "react"
+import { Frame } from "framer"
 
-function SvgOkButton({ style }: { style?: React.CSSProperties }) {
+import {
+    InlineSvgWrap,
+    SvgTopButton3,
+    SvgTopButton4,
+    SvgManualButton,
+    SvgCloseIcon,
+    SvgModalBacking,
+    SvgAlertBacking,
+    SvgCancelButton,
+    SvgOkButton,
+    SvgPickerThumb,
+    SvgCircle,
+    SvgImageWhite,
+    SvgImage,
+    SvgCameraWhite,
+    SvgBlankCanvasWhite,
+    SvgFolder,
+    SvgCamera,
+    SvgPencil,
+    SvgLogo,
+    ExportCheckboxIcon,
+    SaveIcon,
+    LoadIcon,
+    UndoIcon,
+    RedoIcon,
+    ZoomOutIcon,
+    ZoomInIcon,
+    PipetteIcon,
+    HandIconOn,
+    HandIconOff,
+} from "./SvgIcons.tsx"
+
+function SaveIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
     return (
-        <svg
-            viewBox="0 0 197.2 197.2"
-            preserveAspectRatio="xMidYMid meet"
-            width="50"
-            height="50"
-            style={{ display: "block", ...style }}
-            xmlns="http://www.w3.org/2000/svg"
-        >
-            <path
-                fill="#04E762"
-                d="M166.1,77.4V44.2H155V33.1h-11.1v-11h-11.1V11H99.6V-0.1H77.4V11H44.2v11.1H33.1v11.1h-11v11.1H11v33.2H-0.1
-    v22.2H11v33.2h11.1v11h11.1V155h11.1v11.1h33.2v11.1h22.2v-11.1h33.2V155h11v-11.1H155v-11.1h11.1V99.6h11.1V77.4H166.1zz"
-            />
-            <polygon
-                fill="#fff"
-                points="84.1,126.8 83.6,126.5 44.2,72.6 58,62.5 84,98 119,50.1 132.8,60.2 "
-            />
-        </svg>
+        <span style={s}>
+            <SaveIcon size={size} />
+        </span>
+    )
+}
+
+function LoadIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <LoadIcon size={size} />
+        </span>
+    )
+}
+
+function UndoIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <UndoIcon size={size} />
+        </span>
+    )
+}
+
+function RedoIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <RedoIcon size={size} />
+        </span>
+    )
+}
+
+function ZoomInIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <ZoomInIcon size={size} />
+        </span>
+    )
+}
+
+function ZoomOutIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <ZoomOutIcon size={size} />
+        </span>
+    )
+}
+
+function PipetteIconInline({
+    style,
+    active,
+}: {
+    style?: React.CSSProperties
+    active?: boolean
+}) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <PipetteIcon size={size} active={!!active} />
+        </span>
+    )
+}
+
+function HandIconOffInline({
+    style,
+    active,
+}: {
+    style?: React.CSSProperties
+    active?: boolean
+}) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            {active ? <HandIconOn size={size} /> : <HandIconOff size={size} />}
+        </span>
     )
 }
 
 // ------------------- Typography constants -------------------
+
+const ICON_INLINE: React.CSSProperties = {
+    width: 20,
+    height: 20,
+    display: "inline-block",
+    verticalAlign: "middle",
+    marginRight: 8,
+}
 
 const FONT_FAMILY =
     "Roboto, system-ui, -apple-system, Segoe UI, Arial, sans-serif"
@@ -83,6 +193,13 @@ const UL: React.CSSProperties = {
 const LI: React.CSSProperties = {
     ...P,
     margin: "0 0 6px 0",
+    paddingLeft: 0,
+}
+
+const LI1: React.CSSProperties = {
+    listStyle: "none",
+    ...P,
+    margin: "0 0 6px 0",
 }
 
 const HR: React.CSSProperties = {
@@ -120,18 +237,15 @@ const CONTENT_PAD_Y = 18
 
 export function ManualScreen({ onClose }: { onClose: () => void }) {
     return (
-        <div
+        <Frame
+            size="100%"
+            background="#FAF6E9"
             style={{
                 position: "fixed",
                 inset: 0,
                 zIndex: 9999,
                 pointerEvents: "auto",
                 fontFamily: FONT_FAMILY,
-
-                // бывшие props Frame:
-                width: "100%",
-                height: "100%",
-                background: "#FAF6E9",
             }}
         >
             {/* ------------------- SCROLL VIEWPORT (top 50px; bottom = 50px above button) ------------------- */}
@@ -267,11 +381,13 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
 
                     <div style={H3}>Project</div>
                     <ul style={UL}>
-                        <li style={LI}>
+                        <li style={LI1}>
+                            <SaveIconInline style={ICON_INLINE} />
                             Saving creates a .pixtudio file containing all
                             project data.
                         </li>
-                        <li style={LI}>
+                        <li style={LI1}>
+                            <LoadIconInline style={ICON_INLINE} />
                             Loading a project completely replaces the current
                             editor state.
                         </li>
@@ -281,12 +397,22 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     </ul>
 
                     <div style={H3}>Undo / Redo</div>
+
                     <ul style={UL}>
-                        <li style={LI}>Undo reverts one action.</li>
-                        <li style={LI}>Redo restores one undone action.</li>
+                        <li style={LI1}>
+                            <UndoIconInline style={ICON_INLINE} />
+                            Undo reverts one action.
+                        </li>
+                        <li style={LI1}>
+                            <RedoIconInline style={ICON_INLINE} />
+                            Redo restores one undone action.
+                        </li>
                     </ul>
 
-                    <div style={H3}>Import</div>
+                    <div style={H3}>
+                        <SvgTopButton3 style={ICON_INLINE} />
+                        Import
+                    </div>
                     <p style={P}>You can:</p>
                     <ul style={UL}>
                         <li style={LI}>upload JPG/PNG files,</li>
@@ -311,7 +437,10 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <li style={LI}>Black &amp; White</li>
                     </ul>
 
-                    <div style={H3}>Export</div>
+                    <div style={H3}>
+                        <SvgTopButton4 style={ICON_INLINE} />
+                        Export
+                    </div>
                     <p style={P}>You can export your work as PNG or SVG.</p>
                     <p style={P}>You can also choose what to export:</p>
                     <ul style={UL}>
@@ -322,8 +451,14 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
 
                     <div style={H3}>Zoom</div>
                     <ul style={UL}>
-                        <li style={LI}>Zoom In increases magnification.</li>
-                        <li style={LI}>Zoom Out decreases magnification.</li>
+                        <li style={LI1}>
+                            <ZoomInIconInline style={ICON_INLINE} />
+                            Zoom In increases magnification.
+                        </li>
+                        <li style={LI1}>
+                            <ZoomOutIconInline style={ICON_INLINE} />
+                            Zoom Out decreases magnification.
+                        </li>
                         <li style={LI}>
                             Long press / right-click on Zoom Out resets the zoom
                             level.
@@ -332,11 +467,13 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
 
                     <div style={H3}>Tools</div>
                     <ul style={UL}>
-                        <li style={LI}>
+                        <li style={LI1}>
+                            <PipetteIconInline style={ICON_INLINE} />
                             Eyedropper identifies the palette color of a pixel.
                             Drawing is disabled while it is active.
                         </li>
-                        <li style={LI}>
+                        <li style={LI1}>
+                            <HandIconOffInline style={ICON_INLINE} />
                             Hand tool allows panning when zoomed in. Drawing is
                             disabled while it is active.
                         </li>
@@ -408,6 +545,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
             >
                 <SvgOkButton style={{ width: "100%", height: "100%" }} />
             </button>
-        </div>
+        </Frame>
     )
 }
