@@ -8953,7 +8953,7 @@ function PixelEditorFramer({
 
                             // ✅ распределяем кнопки на всю ширину тулбара (ширина = ширина холста)
                             justifyContent: "space-between",
-                            gap: "clamp(2px, 0.6vw, 8px)",
+                            gap: "clamp(7px, 0.6vw, 8px)",
 
                             flexWrap: "nowrap",
                             minWidth: 0,
