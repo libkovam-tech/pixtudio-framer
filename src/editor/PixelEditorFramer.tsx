@@ -8923,6 +8923,7 @@ function PixelEditorFramer({
                     flexDirection: "column",
                     padding: 18,
                     boxSizing: "border-box",
+                    margin: "0 auto",
                     width: "100%",
 
                     // важно: как и в StartScreen — не держим "100%" высоты,
