@@ -1,26 +1,7 @@
 import * as React from "react"
 
 import {
-    InlineSvgWrap,
-    SvgTopButton3,
-    SvgTopButton4,
-    SvgManualButton,
-    SvgCloseIcon,
-    SvgModalBacking,
-    SvgAlertBacking,
-    SvgCancelButton,
     SvgOkButton,
-    SvgPickerThumb,
-    SvgCircle,
-    SvgImageWhite,
-    SvgImage,
-    SvgCameraWhite,
-    SvgBlankCanvasWhite,
-    SvgFolder,
-    SvgCamera,
-    SvgPencil,
-    SvgLogo,
-    ExportCheckboxIcon,
     SaveIcon,
     LoadIcon,
     UndoIcon,
@@ -30,7 +11,7 @@ import {
     PipetteIcon,
     HandIconOn,
     HandIconOff,
-} from "./SvgIcons.tsx"
+} from "./SvgIcons"
 
 function SaveIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
