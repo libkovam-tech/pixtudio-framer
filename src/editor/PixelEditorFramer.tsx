@@ -6890,7 +6890,7 @@ function PixelEditorFramer({
     })
 
     const iconOnlyButton = (clickable = false): React.CSSProperties => {
-        const s = "clamp(28px, 8vw, 38px)"
+        const s = "clamp(28px, 4vw, 38px)"
 
         return {
             /* ✅ ВСЕ кнопки равноправны */
