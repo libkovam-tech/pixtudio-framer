@@ -1,7 +1,7 @@
 import * as React from "react"
 import * as ReactDOM from "react-dom"
 
-import { ManualScreen } from "./ManualScreen"
+import { ManualScreen } from "./ManualScreen.tsx"
 
 import {
     InlineSvgWrap,
