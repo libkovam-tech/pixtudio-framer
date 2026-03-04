@@ -553,6 +553,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
             >
                 <SvgOkButton style={{ width: "100%", height: "100%" }} />
             </button>
-        </Frame>
+        </div>
     )
 }
