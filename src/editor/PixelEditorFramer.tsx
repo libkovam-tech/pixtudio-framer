@@ -2334,7 +2334,7 @@ style={{
 
     fontFamily:
         "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-}}
+}}>
             <div
                 style={{
                     transform: `scale(${scale})`,
