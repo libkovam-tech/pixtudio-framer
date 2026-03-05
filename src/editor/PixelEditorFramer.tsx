@@ -2251,7 +2251,7 @@ function FitToViewport({
     const [scale, setScale] = React.useState(1)
 
     // ✅ “воздух” внутри viewport
-    const VIEWPORT_PAD = 18
+    const VIEWPORT_PAD = 0
 
     useIsomorphicLayoutEffect(() => {
         const el = contentRef.current
