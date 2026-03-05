@@ -2250,6 +2250,9 @@ function FitToViewport({
     const contentRef = React.useRef<HTMLDivElement | null>(null)
     const [scale, setScale] = React.useState(1)
 
+    // ✅ “воздух” внутри viewport
+    const VIEWPORT_PAD = 18
+
     useIsomorphicLayoutEffect(() => {
         const el = contentRef.current
         if (!el) return
@@ -2259,11 +2262,26 @@ function FitToViewport({
         const recompute = () => {
             if (raf) cancelAnimationFrame(raf)
             raf = requestAnimationFrame(() => {
-                const vh = getViewportHeightPx()
-                // scrollHeight не зависит от transform: scale()
-                const h = Math.max(1, el.scrollHeight)
+                const vv =
+                    typeof window !== "undefined" ? window.visualViewport : null
 
-                const next = vh > 0 ? vh / h : 1
+                const vh = vv?.height ?? getViewportHeightPx()
+                const vw =
+                    vv?.width ??
+                    (typeof window !== "undefined" ? window.innerWidth : 0)
+
+                // scrollWidth/scrollHeight НЕ зависят от transform: scale()
+                const h = Math.max(1, el.scrollHeight)
+                const w = Math.max(1, el.scrollWidth)
+
+                const availH = Math.max(1, vh - VIEWPORT_PAD * 2)
+                const availW = Math.max(1, vw - VIEWPORT_PAD * 2)
+
+                const sH = availH / h
+                const sW = availW / w
+
+                const next = Math.min(sH, sW)
+
                 setScale((prev) =>
                     Math.abs(prev - next) < 0.001 ? prev : next
                 )
@@ -2277,10 +2295,12 @@ function FitToViewport({
         ro.observe(el)
 
         window.addEventListener("resize", recompute)
+        window.visualViewport?.addEventListener("resize", recompute)
 
         return () => {
             ro.disconnect()
             window.removeEventListener("resize", recompute)
+            window.visualViewport?.removeEventListener("resize", recompute)
             if (raf) cancelAnimationFrame(raf)
         }
     }, [onScale])
@@ -2289,25 +2309,36 @@ function FitToViewport({
         <div
             style={{
                 width: "100%",
-                height: "100vh",
+                height: "100dvh", // лучше для мобилки, чем 100vh
                 background,
                 overflow: "hidden",
+
+                // ✅ воздух по краям
+                padding: VIEWPORT_PAD,
+                boxSizing: "border-box",
+
+                // ✅ центрируем контент по горизонтали
                 display: "grid",
                 placeItems: "start center",
+
+                fontFamily:
+                    "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
             }}
         >
             <div
                 style={{
                     transform: `scale(${scale})`,
                     transformOrigin: "top center",
-                    width: "100%",
-                    display: "grid",
-                    placeItems: "start center",
+
+                    // ✅ важно: не растягиваем на 100%, иначе scrollWidth будет “плыть”
+                    display: "inline-block",
                 }}
             >
                 <div
                     ref={contentRef}
-                    style={{ width: "100%", display: "block" }}
+                    style={{
+                        display: "inline-block",
+                    }}
                 >
                     {children}
                 </div>
