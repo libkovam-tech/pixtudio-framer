@@ -2266,9 +2266,14 @@ function FitToViewport({
                     typeof window !== "undefined" ? window.visualViewport : null
 
                 const vh = vv?.height ?? getViewportHeightPx()
-                const vw =
-                    vv?.width ??
-                    (typeof window !== "undefined" ? window.innerWidth : 0)
+const vw =
+    Math.round(
+        vv?.width ??
+            (typeof document !== "undefined"
+                ? document.documentElement.clientWidth
+                : 0) ??
+            (typeof window !== "undefined" ? window.innerWidth : 0)
+    ) || 0
 
                 // scrollWidth/scrollHeight НЕ зависят от transform: scale()
                 const h = Math.max(1, el.scrollHeight)
@@ -2307,24 +2312,29 @@ function FitToViewport({
 
     return (
         <div
-            style={{
-                width: "100%",
-                height: "100dvh", // лучше для мобилки, чем 100vh
-                background,
-                overflow: "hidden",
+style={{
+    // ✅ жёстко привязываемся к реальному viewport, а не к ширине родителя
+    width: "100vw",
+    maxWidth: "100vw",
+    height: "100dvh",
 
-                // ✅ воздух по краям
-                padding: VIEWPORT_PAD,
-                boxSizing: "border-box",
+    background,
 
-                // ✅ центрируем контент по горизонтали
-                display: "grid",
-                placeItems: "start center",
+    // ✅ прибиваем горизонтальный оверфлоу (чтобы ничего не “расширяло” центр)
+    overflowX: "clip",
+    overflowY: "hidden",
 
-                fontFamily:
-                    "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-            }}
-        >
+    // ✅ воздух по краям
+    padding: VIEWPORT_PAD,
+    boxSizing: "border-box",
+
+    // ✅ центрируем контент
+    display: "grid",
+    placeItems: "start center",
+
+    fontFamily:
+        "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+}}
             <div
                 style={{
                     transform: `scale(${scale})`,
@@ -2830,24 +2840,19 @@ function StartScreen({
     }
 
 return (
-    <FitToViewport background={bg}>
-        {/* ✅ SHRINK-WRAP: не даём первому контейнеру растягиваться на всю ширину */}
-        <div
-            style={{
-                ...wrapStyle,
+<FitToViewport background={bg}>
+    <div
+        style={{
+            ...wrapStyle,
 
-                // ключевое: shrink-wrap по ширине контента
-                display: "inline-flex", // вместо block
-                width: "fit-content",
-                maxWidth: "100%",
-
-                // на всякий случай — чтобы не было “лишней” ширины из-за паддингов
-                boxSizing: "border-box",
-
-                // страховка, если wrapStyle где-то выставлял растяжение
-                alignSelf: "center",
-            }}
-        >
+            // ✅ страховка: не даём первому контейнеру раздуваться шире контента
+            width: "fit-content",
+            maxWidth: "100%",
+            display: "inline-flex",
+            flexDirection: "column",
+            boxSizing: "border-box",
+        }}
+    >
             <div style={logoBox}>
                 <div style={{ width: "100%", height: 52 }}>
                     <SvgLogo style={{ imageRendering: "pixelated" }} />
