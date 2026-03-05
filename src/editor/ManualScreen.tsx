@@ -111,8 +111,9 @@ function HandIconOffInline({
 // ------------------- Typography constants -------------------
 
 const ICON_INLINE: React.CSSProperties = {
-    width: 20,
-    height: 20,
+    width: 22,
+    height: 22,
+    flexShrink: 0,
     display: "inline-block",
     verticalAlign: "middle",
     marginRight: 8,
@@ -183,6 +184,10 @@ const LI1: React.CSSProperties = {
     listStyle: "none",
     ...P,
     margin: "0 0 6px 0",
+
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
 }
 
 const HR: React.CSSProperties = {
