@@ -113,7 +113,7 @@ function HandIconOffInline({
 const ICON_INLINE: React.CSSProperties = {
     width: 22,
     height: 22,
-    flexShrink: 0,
+    //flexShrink: 0,
     display: "inline-block",
     verticalAlign: "middle",
     marginRight: 8,
