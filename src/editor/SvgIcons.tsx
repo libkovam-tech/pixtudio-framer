@@ -71,8 +71,8 @@ export function SvgTopButton4({ style }: { style?: React.CSSProperties }) {
                     />
                     <path
                         fill="#fff"
-                        d="M88.6,89.6h5.5v9.8H37.6v-9.8h5.5v4.2h45.5V89.6z M66.4,86L34.5,55.4h17.7v-23h27.3v23h17.6L66.4,86z
-	 M66.3,77.6l16.3-16.3h-9.1v-23H58.2v23h-8.8L66.3,77.6z"
+                        d="M94.2,90.7v7.6H37.6v-7.6H94.2z M66.4,84.7L37,56.4h16.2v-23h25.3v23h16.1L66.4,84.7z M66.3,77.7l16.3-16.3
+	h-9.1v-23H58.2v23h-8.8L66.3,77.7z"
                     />
                 </g>
             </svg>
@@ -993,6 +993,7 @@ export const HandIconOff = ({ size = 90 }: { size?: number }) => (
         />
     </svg>
 )
+
 
 
 
