@@ -6960,7 +6960,7 @@ function PixelEditorFramer({
         fontSize: 13,
         fontWeight: 800,
         letterSpacing: 0.4,
-        color: #ff0000,
+        color: "red",
         textTransform: "uppercase",
         marginBottom: 3,
     }
