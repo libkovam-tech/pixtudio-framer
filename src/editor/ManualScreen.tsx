@@ -101,11 +101,35 @@ function HandIconOffInline({
 }) {
     const s = { ...ICON_INLINE, ...style }
     const size = typeof s.width === "number" ? s.width : 20
-    return (
-        <span style={s}>
-            {active ? <HandIconOn size={size} /> : <HandIconOff size={size} />}
-        </span>
-    )
+    return <span style={s}>{<HandIconOff size={size} />}</span>
+}
+
+// =====================================================
+// OK / CANCEL BUTTON STYLE (shared across the editor)
+// =====================================================
+
+const okCancelButtonStyle: React.CSSProperties = {
+    width: 50,
+    height: 50,
+
+    border: "none",
+    background: "transparent",
+    padding: 0,
+
+    marginTop: 0,
+    marginLeft: 0,
+    marginRight: 0,
+
+    cursor: "pointer",
+    touchAction: "manipulation",
+
+    display: "block",
+}
+
+const okCancelSvgStyle: React.CSSProperties = {
+    width: "100%",
+    height: "100%",
+    display: "block",
 }
 
 // ------------------- Typography constants -------------------
@@ -523,24 +547,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     e.stopPropagation()
                     onClose()
                 }}
-                style={{
-                    position: "fixed",
-                    left: "50%",
-                    bottom: BUTTON_BOTTOM_PX,
-                    transform: `translateX(-50%) scale(${BUTTON_SCALE})`,
-
-                    width: BUTTON_BOX_PX,
-                    height: BUTTON_BOX_PX,
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    touchAction: "manipulation",
-                    zIndex: 10000,
-                }}
-                aria-label="OK"
+                style={okCancelButtonStyle}
             >
-                <SvgOkButton style={{ width: "100%", height: "100%" }} />
+                <SvgOkButton style={okCancelSvgStyle} />
             </button>
         </div>
     )
