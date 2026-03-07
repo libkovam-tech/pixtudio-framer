@@ -5395,8 +5395,10 @@ function PixelEditorFramer({
         const snapToUse = refSnap ?? snapshot
         const hasSnapToUse = snapToUse != null
 
+        let overlayNext: PixelValue[][]
+
         if (hasSnapToUse && snapToUse) {
-            const overlayNext = requantizePaintSnapshotToOverlayPixels({
+            overlayNext = requantizePaintSnapshotToOverlayPixels({
                 snapshot: snapToUse,
                 gridSize,
                 baseAuto: nextAuto,
@@ -5414,18 +5416,6 @@ function PixelEditorFramer({
                     note: "after-overlay",
                 })
             }
-
-            setOverlayPixels(overlayNext)
-
-            postCommitGridHook(
-                {
-                    imagePixels: imagePixelsNext,
-                    overlayPixels: overlayNext,
-                    autoSwatches: nextAuto,
-                    userSwatches,
-                },
-                "import-or-repixelize"
-            )
         } else {
             // ==========================
             // EMERGENCY PATH: legacy resize fallback
@@ -5446,37 +5436,28 @@ function PixelEditorFramer({
             }
 
             if (!ENABLE_OVERLAY_LEGACY_RESIZE_FALLBACK) {
-                // жёсткий режим (если захочешь): вместо “плохого” ресайза — чистим слой
-                setOverlayPixels(createEmptyPixels(gridSize))
-
-                postCommitGridHook(
-                    {
-                        imagePixels: imagePixelsNext,
-                        overlayPixels: createEmptyPixels(gridSize),
-                        autoSwatches: nextAuto,
-                        userSwatches,
-                    },
-                    "import-or-repixelize"
-                )
-                return
+                overlayNext = createEmptyPixels(gridSize)
+            } else {
+                overlayNext = resizePixels(overlayPixels, gridSize)
             }
-
-            setOverlayPixels((prev) => {
-                const overlayNext = resizePixels(prev, gridSize)
-
-                postCommitGridHook(
-                    {
-                        imagePixels: imagePixelsNext,
-                        overlayPixels: overlayNext,
-                        autoSwatches: nextAuto,
-                        userSwatches,
-                    },
-                    "import-or-repixelize"
-                )
-
-                return overlayNext
-            })
         }
+
+        publishCanvasFrameAtomic({
+            base: imagePixelsNext,
+            overlay: overlayNext,
+        })
+
+        setOverlayPixels(overlayNext)
+
+        postCommitGridHook(
+            {
+                imagePixels: imagePixelsNext,
+                overlayPixels: overlayNext,
+                autoSwatches: nextAuto,
+                userSwatches,
+            },
+            "import-or-repixelize"
+        )
     }
 
     // =====================
