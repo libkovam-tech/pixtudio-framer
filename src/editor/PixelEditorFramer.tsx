@@ -5559,6 +5559,24 @@ function PixelEditorFramer({
         return out
     }
 
+        const liveGridPreviewOwnerRef = React.useRef(false)
+
+    function publishCanvasFrameAtomic(params: {
+        base: PixelValue[][]
+        overlay: PixelValue[][]
+    }) {
+        const { base, overlay } = params
+
+        const baseSize = base?.length ?? 0
+        const overlaySize = overlay?.length ?? 0
+
+        if (baseSize <= 0) return
+        if (overlaySize !== baseSize) return
+
+        const finalFrame = overlayOverBaseGrid(base, overlay)
+        setCanvasPixels(finalFrame)
+    }
+
     // B1-SYNC (legacy behavior):
     // canvasPixels = visual composite (overlay over base) всегда, когда меняются слои или gridSize.
     // Это устраняет гонку "repixelize перетёр витрину —> штрихи пропали до следующего overlay-change".
