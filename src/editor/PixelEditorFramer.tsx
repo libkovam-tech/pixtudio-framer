@@ -9547,13 +9547,8 @@ function PixelEditorFramer({
                                     step={1}
                                     value={gridSize}
                                     onChange={(e) => {
-                                        // ✅ мобилка: pointerdown может не прийти, но onChange приходит
-                                        // Поэтому гарантируем старт "before-state" (один раз на жест)
                                         if (isMobileUI) {
-                                            if (!gridResizeBeforeRef.current) {
-                                                gridResizeBeforeRef.current =
-                                                    makeProjectState()
-                                            }
+                                            beginGridResizeCaptureIfNeeded()
                                         }
 
                                         setGridSize(
@@ -9561,34 +9556,25 @@ function PixelEditorFramer({
                                         )
                                     }}
                                     onPointerDown={() => {
-                                        // Если начинаем менять gridSize — запоминаем состояние ДО первого изменения
-                                        if (!gridResizeBeforeRef.current) {
-                                            gridResizeBeforeRef.current =
-                                                makeProjectState()
-                                        }
+                                        beginGridResizeCaptureIfNeeded()
                                     }}
                                     onPointerUp={() => {
-                                        commitGridResizeIfNeeded()
+                                        endGridResizeCaptureIfNeeded()
                                     }}
                                     onPointerLeave={() => {
-                                        commitGridResizeIfNeeded()
+                                        endGridResizeCaptureIfNeeded()
                                     }}
                                     onPointerCancel={() => {
-                                        commitGridResizeIfNeeded()
+                                        endGridResizeCaptureIfNeeded()
                                     }}
-                                    // ✅ мобилка: явные touch-хуки (когда pointer events не приходят)
                                     onTouchStart={() => {
-                                        if (!gridResizeBeforeRef.current) {
-                                            gridResizeBeforeRef.current =
-                                                makeProjectState()
-                                        }
+                                        beginGridResizeCaptureIfNeeded()
                                     }}
                                     onTouchEnd={() => {
-                                        commitGridResizeIfNeeded()
+                                        endGridResizeCaptureIfNeeded()
                                     }}
-                                    // ✅ страховка: на мобилке конец жеста иногда теряется
                                     onBlur={() => {
-                                        commitGridResizeIfNeeded()
+                                        endGridResizeCaptureIfNeeded()
                                     }}
                                     style={
                                         {
