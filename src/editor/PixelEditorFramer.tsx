@@ -2251,7 +2251,7 @@ function FitToViewport({
     const [scale, setScale] = React.useState(1)
 
     // ✅ “воздух” внутри viewport
-    const VIEWPORT_PAD = 0
+    const VIEWPORT_PAD = 18
 
     useIsomorphicLayoutEffect(() => {
         const el = contentRef.current
@@ -2266,14 +2266,9 @@ function FitToViewport({
                     typeof window !== "undefined" ? window.visualViewport : null
 
                 const vh = vv?.height ?? getViewportHeightPx()
-const vw =
-    Math.round(
-        vv?.width ??
-            (typeof document !== "undefined"
-                ? document.documentElement.clientWidth
-                : 0) ??
-            (typeof window !== "undefined" ? window.innerWidth : 0)
-    ) || 0
+                const vw =
+                    vv?.width ??
+                    (typeof window !== "undefined" ? window.innerWidth : 0)
 
                 // scrollWidth/scrollHeight НЕ зависят от transform: scale()
                 const h = Math.max(1, el.scrollHeight)
@@ -2312,29 +2307,24 @@ const vw =
 
     return (
         <div
-style={{
-    // ✅ жёстко привязываемся к реальному viewport, а не к ширине родителя
-    width: "100vw",
-    maxWidth: "100vw",
-    height: "100dvh",
+            style={{
+                width: "100%",
+                height: "100dvh", // лучше для мобилки, чем 100vh
+                background,
+                overflow: "hidden",
 
-    background,
+                // ✅ воздух по краям
+                padding: VIEWPORT_PAD,
+                boxSizing: "border-box",
 
-    // ✅ прибиваем горизонтальный оверфлоу (чтобы ничего не “расширяло” центр)
-    overflowX: "clip",
-    overflowY: "hidden",
+                // ✅ центрируем контент по горизонтали
+                display: "grid",
+                placeItems: "start center",
 
-    // ✅ воздух по краям
-    padding: VIEWPORT_PAD,
-    boxSizing: "border-box",
-
-    // ✅ центрируем контент
-    display: "grid",
-    placeItems: "start center",
-
-    fontFamily:
-        "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-}}>
+                fontFamily:
+                    "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+            }}
+        >
             <div
                 style={{
                     transform: `scale(${scale})`,
@@ -2839,100 +2829,95 @@ function StartScreen({
         imageRendering: "pixelated",
     }
 
-return (
-<FitToViewport background={bg}>
-    <div
-        style={{
-            ...wrapStyle,
-
-            // ✅ страховка: не даём первому контейнеру раздуваться шире контента
-            width: "fit-content",
-            maxWidth: "100%",
-            display: "inline-flex",
-            flexDirection: "column",
-            boxSizing: "border-box",
-        }}
-    >
-            <div style={logoBox}>
-                <div style={{ width: "100%", height: 52 }}>
-                    <SvgLogo style={{ imageRendering: "pixelated" }} />
+    return (
+        <FitToViewport background={bg}>
+            <div style={wrapStyle}>
+                <div style={logoBox}>
+                    <div style={{ width: "100%", height: 52 }}>
+                        <SvgLogo style={{ imageRendering: "pixelated" }} />
+                    </div>
+                    <div ref={taglineRef} style={taglineStyle}>
+                        {TAGLINE_TEXT}
+                    </div>
                 </div>
-                <div ref={taglineRef} style={taglineStyle}>
-                    {TAGLINE_TEXT}
+
+                <div aria-hidden="true" style={logoButtonsSpacerStyle} />
+
+                <div style={buttonsWrap}>
+                    <button
+                        type="button"
+                        onClick={onPickImage}
+                        style={circleButton}
+                        aria-label="Image"
+                    >
+                        <div style={circleInner}>
+                            <SvgCircle style={circleSvgStyle} />
+                            <div style={iconStyle}>
+                                <SvgImage
+                                    style={{ imageRendering: "pixelated" }}
+                                />
+                            </div>
+                        </div>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={onOpenCamera}
+                        style={circleButton}
+                        aria-label="Camera"
+                    >
+                        <div style={circleInner}>
+                            <SvgCircle style={circleSvgStyle} />
+                            <div style={iconStyle}>
+                                <SvgCamera
+                                    style={{ imageRendering: "pixelated" }}
+                                />
+                            </div>
+                        </div>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={onOpenDraw}
+                        style={circleButton}
+                        aria-label="Draw"
+                    >
+                        <div style={circleInner}>
+                            <SvgCircle style={circleSvgStyle} />
+                            <div style={iconStyle}>
+                                <SvgPencil
+                                    style={{ imageRendering: "pixelated" }}
+                                />
+                            </div>
+                        </div>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={onOpenProject}
+                        style={circleButton}
+                        aria-label="Open Project"
+                    >
+                        <div style={circleInner}>
+                            <SvgCircle style={circleSvgStyle} />
+                            <div style={iconStyle}>
+                                <SvgFolder
+                                    style={{
+                                        width: 51,
+                                        imageRendering: "pixelated",
+                                        paddingTop: 5,
+                                        paddingLeft: 2,
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </button>
                 </div>
+
+                <div style={{ flex: 1 }} />
             </div>
-
-            <div aria-hidden="true" style={logoButtonsSpacerStyle} />
-
-            <div style={buttonsWrap}>
-                <button
-                    type="button"
-                    onClick={onPickImage}
-                    style={circleButton}
-                    aria-label="Image"
-                >
-                    <div style={circleInner}>
-                        <SvgCircle style={circleSvgStyle} />
-                        <div style={iconStyle}>
-                            <SvgImage style={{ imageRendering: "pixelated" }} />
-                        </div>
-                    </div>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={onOpenCamera}
-                    style={circleButton}
-                    aria-label="Camera"
-                >
-                    <div style={circleInner}>
-                        <SvgCircle style={circleSvgStyle} />
-                        <div style={iconStyle}>
-                            <SvgCamera style={{ imageRendering: "pixelated" }} />
-                        </div>
-                    </div>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={onOpenDraw}
-                    style={circleButton}
-                    aria-label="Draw"
-                >
-                    <div style={circleInner}>
-                        <SvgCircle style={circleSvgStyle} />
-                        <div style={iconStyle}>
-                            <SvgPencil style={{ imageRendering: "pixelated" }} />
-                        </div>
-                    </div>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={onOpenProject}
-                    style={circleButton}
-                    aria-label="Open Project"
-                >
-                    <div style={circleInner}>
-                        <SvgCircle style={circleSvgStyle} />
-                        <div style={iconStyle}>
-                            <SvgFolder
-                                style={{
-                                    width: 51,
-                                    imageRendering: "pixelated",
-                                    paddingTop: 5,
-                                    paddingLeft: 2,
-                                }}
-                            />
-                        </div>
-                    </div>
-                </button>
-            </div>
-
-            <div style={{ flex: 1 }} />
-        </div>
-    </FitToViewport>
-)
+        </FitToViewport>
+    )
 }
 
 // ------------------- EDITOR -------------------
@@ -8968,7 +8953,6 @@ function PixelEditorFramer({
                     display: "flex",
                     flexDirection: "column",
                     padding: 7,
-                    paddingTop: 10,
                     boxSizing: "border-box",
                     margin: "0 auto",
                     width: "100%",
