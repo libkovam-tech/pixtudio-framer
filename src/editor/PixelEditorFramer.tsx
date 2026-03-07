@@ -7390,11 +7390,6 @@ function PixelEditorFramer({
 
                 // ✅ NEW: overlay тоже обязан быть ремапнут, иначе он может ссылаться на "удалённый" свотч
                 traceLoad("repixelizeEffect MUTATE", {
-                    step: "setOverlayPixels (with-original) [after collapse]",
-                })
-                setOverlayPixels(collapsed.overlayPixels)
-
-                traceLoad("repixelizeEffect MUTATE", {
                     step: "setSelectedSwatch (with-original)",
                 })
                 setSelectedSwatch((prev) => {
@@ -7498,11 +7493,6 @@ function PixelEditorFramer({
                     }
                     return prevSel
                 })
-
-                traceLoad("repixelizeEffect MUTATE", {
-                    step: "setOverlayPixels (no-original) [after collapse]",
-                })
-                setOverlayPixels(collapsed.overlayPixels)
 
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "applyOverlayAfterBaseRebuild (no-original)",
