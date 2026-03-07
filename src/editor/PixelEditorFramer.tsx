@@ -8,7 +8,6 @@ import {
     SvgTopButton3,
     SvgTopButton4,
     SvgManualButton,
-    SvgCloseIcon,
     SvgModalBacking,
     SvgAlertBacking,
     SvgCancelButton,
@@ -1214,6 +1213,56 @@ const okCancelSvgStyle: React.CSSProperties = {
     height: "100%",
     display: "block",
 }
+
+// =====================================================
+// SWATCH EDIT MODAL LAYOUT
+// Desktop: fixed square-ish modal.
+// Mobile: viewport width minus 30px on each side.
+// =====================================================
+
+const SWATCH_EDIT_MODAL_DESKTOP_SIZE = 400
+//const SWATCH_EDIT_MODAL_MAX_WIDTH = "min(92vw, 400px)"
+const SWATCH_EDIT_MODAL_MOBILE_SIDE_GAP = 30
+
+const SWATCH_EDIT_MODAL_INNER_PADDING = 14
+const SWATCH_EDIT_MODAL_CONTENT_GAP = 8
+
+const SWATCH_EDIT_TITLE_FONT = 16
+const SWATCH_EDIT_TITLE_LETTER_SPACING = 0.8
+
+const SWATCH_EDIT_SV_HEIGHT_DESKTOP = 190
+const SWATCH_EDIT_HUE_HEIGHT = 14
+
+const SWATCH_EDIT_BORDER = "2px solid rgba(0,0,0,0.75)"
+
+const SWATCH_EDIT_ROW_GAP = 10
+const SWATCH_EDIT_ROW_MARGIN_TOP = 4
+
+const SWATCH_EDIT_BOTTOM_BLOCK_GAP = 8
+
+const SWATCH_EDIT_LABEL_FONT = 11
+const SWATCH_EDIT_LABEL_LETTER_SPACING = 0.4
+
+const SWATCH_EDIT_HEX_FONT = 12
+const SWATCH_EDIT_HEX_INPUT_HEIGHT = 32
+const SWATCH_EDIT_HEX_MAX_WIDTH = 150
+const SWATCH_EDIT_HEX_LETTER_SPACING = 0.4
+
+const SWATCH_EDIT_HELP_FONT = 10
+const SWATCH_EDIT_HELP_LINE_HEIGHT = 1.35
+
+const SWATCH_EDIT_CHECK_SIZE = 24
+const SWATCH_EDIT_CHECKMARK_FONT = 16
+
+const SWATCH_EDIT_PREVIEW_SIZE = 24
+
+const SWATCH_EDIT_SV_THUMB_SIZE = 16
+const SWATCH_EDIT_SV_THUMB_OFFSET = 8
+
+const SWATCH_EDIT_HUE_CURSOR_WIDTH = 3
+const SWATCH_EDIT_HUE_CURSOR_HEIGHT = 20
+const SWATCH_EDIT_HUE_CURSOR_TOP = -3
+const SWATCH_EDIT_HUE_CURSOR_OFFSET = 1.5
 
 // ------------------- ALERT MODAL (shared) -------------------
 
@@ -9886,32 +9935,6 @@ function PixelEditorFramer({
                                         }}
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        <button
-                                            type="button"
-                                            onClick={closeOverlay}
-                                            aria-label="Close"
-                                            style={{
-                                                width: 23.4,
-                                                height: 23.4,
-                                                background: "transparent",
-                                                border: "none",
-                                                padding: 0,
-                                                margin: 0,
-                                                cursor: "pointer",
-                                                display: "grid",
-                                                placeItems: "center",
-                                            }}
-                                        >
-                                            <SvgCloseIcon
-                                                style={{
-                                                    width: 50,
-                                                    height: 50,
-                                                    alignContent: "center",
-                                                    display: "block",
-                                                }}
-                                            />
-                                        </button>
-
                                         {overlayMode === "import" && (
                                             <div
                                                 style={{
@@ -9974,6 +9997,17 @@ function PixelEditorFramer({
                                                             display: "block",
                                                             color: "#fff",
                                                         }}
+                                                    />
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={closeOverlay}
+                                                    style={okCancelButtonStyle}
+                                                    aria-label="Close"
+                                                >
+                                                    <SvgCancelButton
+                                                        style={okCancelSvgStyle}
                                                     />
                                                 </button>
                                             </div>
@@ -10279,6 +10313,29 @@ function PixelEditorFramer({
                                                         </div>
                                                     </div>
                                                 </div>
+                                                <div
+                                                    style={{
+                                                        display: "flex",
+                                                        justifyContent:
+                                                            "center",
+                                                        pointerEvents: "auto",
+                                                    }}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={closeOverlay}
+                                                        style={
+                                                            okCancelButtonStyle
+                                                        }
+                                                        aria-label="Close"
+                                                    >
+                                                        <SvgCancelButton
+                                                            style={
+                                                                okCancelSvgStyle
+                                                            }
+                                                        />
+                                                    </button>
+                                                </div>
                                             </>
                                         )}
                                     </div>
@@ -10297,8 +10354,15 @@ function PixelEditorFramer({
                             <div
                                 style={{
                                     position: "relative",
-                                    width: "min(92vw, 520px)",
-                                    maxHeight: "min(78vh, 520px)",
+                                    width: isMobileUI
+                                        ? `calc(100vw - ${SWATCH_EDIT_MODAL_MOBILE_SIDE_GAP * 2}px)`
+                                        : SWATCH_EDIT_MODAL_DESKTOP_SIZE,
+                                    height: isMobileUI
+                                        ? `calc(100vw - ${SWATCH_EDIT_MODAL_MOBILE_SIDE_GAP * 2}px)`
+                                        : SWATCH_EDIT_MODAL_DESKTOP_SIZE,
+                                    maxWidth: "100vw",
+                                    maxHeight: "100vh",
+                                    flex: "0 0 auto",
                                 }}
                             >
                                 <div style={{ position: "absolute", inset: 0 }}>
@@ -10320,130 +10384,152 @@ function PixelEditorFramer({
                                         height: "100%",
                                         display: "flex",
                                         flexDirection: "column",
-                                        padding: "18px 18px 14px",
+                                        padding:
+                                            SWATCH_EDIT_MODAL_INNER_PADDING,
                                         boxSizing: "border-box",
-                                        gap: 12,
+                                        gap: SWATCH_EDIT_MODAL_CONTENT_GAP,
                                         overflow: "hidden",
                                     }}
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <div
                                         style={{
-                                            fontSize: "clamp(18px, 5vw, 26px)",
+                                            fontSize: SWATCH_EDIT_TITLE_FONT,
                                             fontWeight: 900,
-                                            letterSpacing: 1.2,
+                                            letterSpacing:
+                                                SWATCH_EDIT_TITLE_LETTER_SPACING,
                                             textAlign: "center",
                                             color: "#001219",
+                                            lineHeight: 1.1,
+                                            flex: "0 0 auto",
                                         }}
                                     >
                                         SWATCH EDIT
                                     </div>
 
                                     <div
-                                        ref={svRef}
-                                        onPointerDown={(e) => {
-                                            if (pendingTransparent) return
-                                            setDragSV(true)
-                                            onSVAt(e.clientX, e.clientY)
-                                        }}
                                         style={{
-                                            position: "relative",
-                                            flex: "0 0 auto",
-                                            height: "min(38vh, 300px)",
-                                            border: "3px solid rgba(0,0,0,0.75)",
-                                            background: pendingTransparent
-                                                ? checkerBackground
-                                                : `linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, ${hueColor} 100%)`,
-                                            touchAction: "none",
-                                            userSelect: "none",
-                                            overflow: "hidden",
+                                            flex: "1 1 auto",
+                                            minHeight: 0,
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            gap: SWATCH_EDIT_MODAL_CONTENT_GAP,
                                         }}
-                                        aria-label="SV Picker"
                                     >
-                                        {!pendingTransparent && (
-                                            <div
-                                                style={{
-                                                    position: "absolute",
-                                                    left: `calc(${(
-                                                        svX * 100
-                                                    ).toFixed(2)}% - 12px)`,
-                                                    top: `calc(${(
-                                                        svY * 100
-                                                    ).toFixed(2)}% - 12px)`,
-                                                    width: 24,
-                                                    height: 24,
-                                                    pointerEvents: "none",
-                                                }}
-                                            >
-                                                <SvgPickerThumb />
-                                            </div>
-                                        )}
-                                    </div>
+                                        <div
+                                            ref={svRef}
+                                            onPointerDown={(e) => {
+                                                if (pendingTransparent) return
+                                                setDragSV(true)
+                                                onSVAt(e.clientX, e.clientY)
+                                            }}
+                                            style={{
+                                                position: "relative",
+                                                flex: "1 1 auto",
+                                                minHeight: 0,
+                                                border: SWATCH_EDIT_BORDER,
+                                                background: pendingTransparent
+                                                    ? checkerBackground
+                                                    : `linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, ${hueColor} 100%)`,
+                                                touchAction: "none",
+                                                userSelect: "none",
+                                                overflow: "hidden",
+                                            }}
+                                            aria-label="SV Picker"
+                                        >
+                                            {!pendingTransparent && (
+                                                <div
+                                                    style={{
+                                                        position: "absolute",
+                                                        left: `calc(${(
+                                                            svX * 100
+                                                        ).toFixed(
+                                                            2
+                                                        )}% - ${SWATCH_EDIT_SV_THUMB_OFFSET}px)`,
+                                                        top: `calc(${(
+                                                            svY * 100
+                                                        ).toFixed(
+                                                            2
+                                                        )}% - ${SWATCH_EDIT_SV_THUMB_OFFSET}px)`,
+                                                        width: SWATCH_EDIT_SV_THUMB_SIZE,
+                                                        height: SWATCH_EDIT_SV_THUMB_SIZE,
+                                                        pointerEvents: "none",
+                                                    }}
+                                                >
+                                                    <SvgPickerThumb />
+                                                </div>
+                                            )}
+                                        </div>
 
-                                    <div
-                                        ref={hueRef}
-                                        onPointerDown={(e) => {
-                                            if (pendingTransparent) return
-                                            setDragHue(true)
-                                            onHueAt(e.clientX)
-                                        }}
-                                        style={{
-                                            height: 20,
-                                            border: "3px solid rgba(0,0,0,0.75)",
-                                            background:
-                                                "linear-gradient(to right, rgb(255,0,0), rgb(255,255,0), rgb(0,255,0), rgb(0,255,255), rgb(0,0,255), rgb(255,0,255), rgb(255,0,0))",
-                                            position: "relative",
-                                            touchAction: "none",
-                                            userSelect: "none",
-                                        }}
-                                        aria-label="Hue Picker"
-                                    >
-                                        {!pendingTransparent && (
-                                            <div
-                                                style={{
-                                                    position: "absolute",
-                                                    left: `calc(${(
-                                                        (pickerHue / 360) *
-                                                        100
-                                                    ).toFixed(2)}% - 2px)`,
-                                                    top: -4,
-                                                    width: 4,
-                                                    height: 26,
-                                                    background: "#fff",
-                                                    boxShadow:
-                                                        "0 0 0 2px rgba(0,0,0,0.6)",
-                                                }}
-                                            />
-                                        )}
+                                        <div
+                                            ref={hueRef}
+                                            onPointerDown={(e) => {
+                                                if (pendingTransparent) return
+                                                setDragHue(true)
+                                                onHueAt(e.clientX)
+                                            }}
+                                            style={{
+                                                flex: "0 0 auto",
+                                                height: SWATCH_EDIT_HUE_HEIGHT,
+                                                border: SWATCH_EDIT_BORDER,
+                                                background:
+                                                    "linear-gradient(to right, rgb(255,0,0), rgb(255,255,0), rgb(0,255,0), rgb(0,255,255), rgb(0,0,255), rgb(255,0,255), rgb(255,0,0))",
+                                                position: "relative",
+                                                touchAction: "none",
+                                                userSelect: "none",
+                                            }}
+                                            aria-label="Hue Picker"
+                                        >
+                                            {!pendingTransparent && (
+                                                <div
+                                                    style={{
+                                                        position: "absolute",
+                                                        left: `calc(${(
+                                                            (pickerHue / 360) *
+                                                            100
+                                                        ).toFixed(
+                                                            2
+                                                        )}% - ${SWATCH_EDIT_HUE_CURSOR_OFFSET}px)`,
+                                                        top: SWATCH_EDIT_HUE_CURSOR_TOP,
+                                                        width: SWATCH_EDIT_HUE_CURSOR_WIDTH,
+                                                        height: SWATCH_EDIT_HUE_CURSOR_HEIGHT,
+                                                        background: "#fff",
+                                                        boxShadow:
+                                                            "0 0 0 1px rgba(0,0,0,0.6)",
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div
                                         style={{
                                             display: "flex",
                                             alignItems: "center",
-                                            //justifyContent: "space-between",
-                                            gap: 14,
-                                            marginTop: 6,
+                                            gap: SWATCH_EDIT_ROW_GAP,
+                                            marginTop: "auto",
                                             minWidth: 0,
+                                            flex: "0 0 auto",
                                         }}
                                     >
                                         <label
                                             style={{
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: 10,
+                                                gap: 8,
                                                 fontSize:
-                                                    "clamp(13px, 4vw, 16px)",
+                                                    SWATCH_EDIT_LABEL_FONT,
                                                 fontWeight: 900,
-                                                letterSpacing: 0.6,
+                                                letterSpacing:
+                                                    SWATCH_EDIT_LABEL_LETTER_SPACING,
                                                 color: "#001219",
                                                 userSelect: "none",
                                             }}
                                         >
                                             <div
                                                 style={{
-                                                    width: SWATCH_ICON,
-                                                    height: SWATCH_ICON,
+                                                    width: SWATCH_EDIT_CHECK_SIZE,
+                                                    height: SWATCH_EDIT_CHECK_SIZE,
                                                     position: "relative",
                                                     flex: "0 0 auto",
                                                 }}
@@ -10457,12 +10543,12 @@ function PixelEditorFramer({
                                                         )
                                                     }
                                                     style={{
-                                                        width: SWATCH_ICON,
-                                                        height: SWATCH_ICON,
+                                                        width: SWATCH_EDIT_CHECK_SIZE,
+                                                        height: SWATCH_EDIT_CHECK_SIZE,
                                                         appearance: "none",
                                                         WebkitAppearance:
                                                             "none",
-                                                        border: "4px solid rgba(0,0,0,0.75)",
+                                                        border: SWATCH_EDIT_BORDER,
                                                         background: "#fff",
                                                         display: "inline-block",
                                                         position: "relative",
@@ -10481,7 +10567,8 @@ function PixelEditorFramer({
                                                                 "center",
                                                             pointerEvents:
                                                                 "none",
-                                                            fontSize: 26,
+                                                            fontSize:
+                                                                SWATCH_EDIT_CHECKMARK_FONT,
                                                             fontWeight: 900,
                                                             color: "#001219",
                                                             lineHeight: 1,
@@ -10494,7 +10581,7 @@ function PixelEditorFramer({
                                             <div
                                                 style={{
                                                     fontSize:
-                                                        "clamp(12px, 3.6vw, 15px)",
+                                                        SWATCH_EDIT_LABEL_FONT,
                                                     fontWeight: 400,
                                                     letterSpacing: 0.2,
                                                     color: "#001219",
@@ -10526,9 +10613,9 @@ function PixelEditorFramer({
                                         >
                                             <div
                                                 style={{
-                                                    width: SWATCH_ICON,
-                                                    height: SWATCH_ICON,
-                                                    border: "4px solid rgba(0,0,0,0.75)",
+                                                    width: SWATCH_EDIT_PREVIEW_SIZE,
+                                                    height: SWATCH_EDIT_PREVIEW_SIZE,
+                                                    border: SWATCH_EDIT_BORDER,
                                                     boxSizing: "border-box",
                                                     background:
                                                         pendingTransparent
@@ -10552,9 +10639,9 @@ function PixelEditorFramer({
                                                     <div
                                                         style={{
                                                             fontSize:
-                                                                "clamp(13px, 4vw, 16px)",
+                                                                SWATCH_EDIT_HEX_FONT,
                                                             fontWeight: 800,
-                                                            letterSpacing: 6,
+                                                            letterSpacing: 3,
                                                             color: "#001219",
                                                             fontFamily:
                                                                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
@@ -10603,17 +10690,19 @@ function PixelEditorFramer({
                                                         style={{
                                                             width: "100%",
                                                             minWidth: 0,
-                                                            maxWidth: 220,
-                                                            height: 40,
-                                                            border: "3px solid rgba(0,0,0,0.75)",
+                                                            maxWidth:
+                                                                SWATCH_EDIT_HEX_MAX_WIDTH,
+                                                            height: SWATCH_EDIT_HEX_INPUT_HEIGHT,
+                                                            border: SWATCH_EDIT_BORDER,
                                                             background:
                                                                 "rgba(255,255,255,0.9)",
                                                             color: "#001219",
                                                             fontSize:
-                                                                "clamp(13px, 4vw, 16px)",
+                                                                SWATCH_EDIT_HEX_FONT,
                                                             fontWeight: 900,
-                                                            letterSpacing: 0.6,
-                                                            padding: "0 10px",
+                                                            letterSpacing:
+                                                                SWATCH_EDIT_HEX_LETTER_SPACING,
+                                                            padding: "0 8px",
                                                             boxSizing:
                                                                 "border-box",
                                                             outline: "none",
@@ -10630,11 +10719,13 @@ function PixelEditorFramer({
 
                                     <div
                                         style={{
-                                            marginTop: 2,
-                                            fontSize:
-                                                "clamp(11px, 3.5vw, 13px)",
-                                            lineHeight: 1.4,
+                                            marginTop:
+                                                SWATCH_EDIT_BOTTOM_BLOCK_GAP,
+                                            fontSize: SWATCH_EDIT_HELP_FONT,
+                                            lineHeight:
+                                                SWATCH_EDIT_HELP_LINE_HEIGHT,
                                             color: "rgba(0,0,0,0.75)",
+                                            flex: "0 0 auto",
                                         }}
                                     >
                                         This swatch will not paint pixels. It
@@ -10646,12 +10737,13 @@ function PixelEditorFramer({
                             {/* Buttons OUTSIDE the white modal (like Crop overlay) */}
                             <div
                                 style={{
-                                    //marginTop: 18,
-                                    width: "min(92vw, 520px)",
+                                    width: isMobileUI
+                                        ? `calc(100vw - ${SWATCH_EDIT_MODAL_MOBILE_SIDE_GAP * 2}px)`
+                                        : SWATCH_EDIT_MODAL_DESKTOP_SIZE,
                                     display: "flex",
                                     justifyContent: "center",
-                                    //gap: 26,
                                     pointerEvents: "auto",
+                                    flex: "0 0 auto",
                                 }}
                             >
                                 <button
