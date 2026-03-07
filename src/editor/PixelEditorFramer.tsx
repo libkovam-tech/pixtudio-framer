@@ -6478,7 +6478,8 @@ function PixelEditorFramer({
     }
 
     function endGridResizeCaptureIfNeeded() {
-        // S2: тяжёлый grid commit — только через TXN-очередь
+        liveGridPreviewOwnerRef.current = false
+
         enqueueTxn("gridCommit", () => {
             commitGridResizeIfNeeded()
         })
