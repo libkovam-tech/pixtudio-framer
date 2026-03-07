@@ -5594,6 +5594,13 @@ function PixelEditorFramer({
         }
         if (p3InFlightKeyRef.current) return
 
+        if (liveGridPreviewOwnerRef.current) {
+            routeLog("B1-SYNC SKIP (live GRID preview owns canvasPixels)", {
+                g: gridSize,
+            })
+            return
+        }
+
         const next = composeVisualGrid()
         if (next == null) {
             // слои ещё не готовы под текущий gridSize — витрину не трогаем
