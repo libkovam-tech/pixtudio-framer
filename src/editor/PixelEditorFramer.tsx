@@ -6470,7 +6470,8 @@ function PixelEditorFramer({
     }
 
     function beginGridResizeCaptureIfNeeded() {
-        // 1) фиксируем состояние “до” (undo-commit логика уже у тебя)
+        liveGridPreviewOwnerRef.current = true
+
         if (!gridResizeBeforeRef.current) {
             gridResizeBeforeRef.current = makeProjectState()
         }
