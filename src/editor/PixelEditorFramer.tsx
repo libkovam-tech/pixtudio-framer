@@ -5379,20 +5379,24 @@ function PixelEditorFramer({
     function applyOverlayAfterBaseRebuild(params: {
         imagePixelsNext: PixelValue[][]
         nextAuto: Swatch[]
+        // snapshotMode: если есть snapshot — пересчитываем overlay из snapshot
+        // иначе — АВАРИЙНЫЙ legacy resize (строго с warn)
         hasSnap: boolean
         snapshot: ImageData | null
+
+        // кто вызвал (чтобы ловить “как мы сюда попали”)
         reason: string
     }) {
         const { imagePixelsNext, nextAuto, hasSnap, snapshot, reason } = params
 
+        // Step 4: источник overlay-переквантования — ТОЛЬКО эталон paintRefImageData, если он есть.
+        // Источник переквантования overlay — только paintRefImageData. GRID SIZE / PALETTE SIZE не создают эталон. Эталон обновляется только по завершению рисования.
         const refSnap = paintRefImageData ?? null
         const snapToUse = refSnap ?? snapshot
         const hasSnapToUse = snapToUse != null
 
-        let overlayNext: PixelValue[][]
-
         if (hasSnapToUse && snapToUse) {
-            overlayNext = requantizePaintSnapshotToOverlayPixels({
+            const overlayNext = requantizePaintSnapshotToOverlayPixels({
                 snapshot: snapToUse,
                 gridSize,
                 baseAuto: nextAuto,
@@ -5410,45 +5414,19 @@ function PixelEditorFramer({
                     note: "after-overlay",
                 })
             }
+
+            setOverlayPixels(overlayNext)
+
+            postCommitGridHook(
+                {
+                    imagePixels: imagePixelsNext,
+                    overlayPixels: overlayNext,
+                    autoSwatches: nextAuto,
+                    userSwatches,
+                },
+                "import-or-repixelize"
+            )
         } else {
-            const key = `reason=${reason}|g=${gridSize}|hasSnap=${hasSnap ? 1 : 0}|hasSnapshot=${snapshot ? 1 : 0}|snapNonce=${paintSnapshotNonceRef.current}`
-
-            if (overlayLegacyFallbackWarnKeyRef.current !== key) {
-                overlayLegacyFallbackWarnKeyRef.current = key
-
-                if (ENABLE_OVERLAY_FALLBACK_LOGS) {
-                    console.warn(
-                        "[OVERLAY][LEGACY_RESIZE_FALLBACK]",
-                        reason,
-                        ":: This path should be emergency-only."
-                    )
-                }
-            }
-
-            if (!ENABLE_OVERLAY_LEGACY_RESIZE_FALLBACK) {
-                overlayNext = createEmptyPixels(gridSize)
-            } else {
-                overlayNext = resizePixels(overlayPixels, gridSize)
-            }
-        }
-
-        publishCanvasFrameAtomic({
-            base: imagePixelsNext,
-            overlay: overlayNext,
-        })
-
-        setOverlayPixels(overlayNext)
-
-        postCommitGridHook(
-            {
-                imagePixels: imagePixelsNext,
-                overlayPixels: overlayNext,
-                autoSwatches: nextAuto,
-                userSwatches,
-            },
-            "import-or-repixelize"
-        )
-    } else {
             // ==========================
             // EMERGENCY PATH: legacy resize fallback
             // ==========================
