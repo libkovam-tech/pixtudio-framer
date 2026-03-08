@@ -140,7 +140,21 @@ const ICON_INLINE: React.CSSProperties = {
     //flexShrink: 0,
     display: "inline-block",
     verticalAlign: "middle",
-    marginRight: 8,
+    //marginRight: 8,
+}
+
+const ICON_SLOT: React.CSSProperties = {
+    width: 28,
+    minWidth: 28,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+}
+
+const INLINE_TEXT_SLOT: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
 }
 
 const FONT_FAMILY =
@@ -198,6 +212,11 @@ const UL: React.CSSProperties = {
     paddingLeft: 18,
 }
 
+const UL_ICON: React.CSSProperties = {
+    margin: "0 0 12px 0",
+    paddingLeft: 0,
+}
+
 const LI: React.CSSProperties = {
     ...P,
     margin: "0 0 6px 0",
@@ -212,6 +231,7 @@ const LI1: React.CSSProperties = {
     display: "flex",
     alignItems: "flex-start",
     gap: 10,
+    minWidth: 0,
 }
 
 const HR: React.CSSProperties = {
@@ -225,6 +245,13 @@ const SECTION: React.CSSProperties = {
     maxWidth: 720,
     width: "100%",
     margin: "0 auto",
+}
+
+const H3_WITH_ICON: React.CSSProperties = {
+    ...H3,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
 }
 
 // ------------------- Layout constants -------------------
@@ -401,38 +428,56 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     <div style={H2}>5. Top Toolbar</div>
 
                     <div style={H3}>Project</div>
-                    <ul style={UL}>
+                    <ul style={UL_ICON}>
                         <li style={LI1}>
-                            <SaveIconInline style={ICON_INLINE} />
-                            Saving creates a .pixtudio file containing all
-                            project data.
+                            <span style={ICON_SLOT}>
+                                <SaveIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Saving creates a .pixtudio file containing all
+                                project data.
+                            </span>
                         </li>
                         <li style={LI1}>
-                            <LoadIconInline style={ICON_INLINE} />
-                            Loading a project completely replaces the current
-                            editor state.
+                            <span style={ICON_SLOT}>
+                                <LoadIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Loading a project completely replaces the
+                                current editor state.
+                            </span>
                         </li>
-                        <li style={LI}>
+                        <li style={LI1}>
                             The undo history is cleared after loading.
                         </li>
                     </ul>
 
                     <div style={H3}>Undo / Redo</div>
 
-                    <ul style={UL}>
+                    <ul style={UL_ICON}>
                         <li style={LI1}>
-                            <UndoIconInline style={ICON_INLINE} />
-                            Undo reverts one action.
+                            <span style={ICON_SLOT}>
+                                <UndoIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Undo reverts one action.
+                            </span>
                         </li>
                         <li style={LI1}>
-                            <RedoIconInline style={ICON_INLINE} />
-                            Redo restores one undone action.
+                            <span style={ICON_SLOT}>
+                                <RedoIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Redo restores one undone action.
+                            </span>
                         </li>
                     </ul>
 
-                    <div style={H3}>
-                        <SvgTopButton3 style={ICON_INLINE} />
-                        Import
+                    <div style={H3_WITH_ICON}>
+                        <span style={ICON_SLOT}>
+                            <SvgTopButton3 style={ICON_INLINE} />
+                        </span>
+                        <span>Import</span>
                     </div>
                     <p style={P}>You can:</p>
                     <ul style={UL}>
@@ -449,7 +494,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     <ul style={UL}>
                         <li style={LI}>adjust scale,</li>
                         <li style={LI}>rotate the image,</li>
-                        <li style={LI}>choose a preset:</li>
+                        <li style={LI1}>Choose a preset:</li>
                     </ul>
                     <ul style={{ ...UL, marginTop: -6 }}>
                         <li style={LI}>Default</li>
@@ -458,9 +503,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <li style={LI}>Black &amp; White</li>
                     </ul>
 
-                    <div style={H3}>
-                        <SvgTopButton4 style={ICON_INLINE} />
-                        Export
+                    <div style={H3_WITH_ICON}>
+                        <span style={ICON_SLOT}>
+                            <SvgTopButton4 style={ICON_INLINE} />
+                        </span>
+                        <span>Export</span>
                     </div>
                     <p style={P}>You can export your work as PNG or SVG.</p>
                     <p style={P}>You can also choose what to export:</p>
@@ -471,32 +518,48 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     </ul>
 
                     <div style={H3}>Zoom</div>
-                    <ul style={UL}>
+                    <ul style={UL_ICON}>
                         <li style={LI1}>
-                            <ZoomInIconInline style={ICON_INLINE} />
-                            Zoom In increases magnification.
+                            <span style={ICON_SLOT}>
+                                <ZoomInIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Zoom In increases magnification.
+                            </span>
                         </li>
                         <li style={LI1}>
-                            <ZoomOutIconInline style={ICON_INLINE} />
-                            Zoom Out decreases magnification.
+                            <span style={ICON_SLOT}>
+                                <ZoomOutIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Zoom Out decreases magnification.
+                            </span>
                         </li>
-                        <li style={LI}>
+                        <li style={LI1}>
                             Long press / right-click on Zoom Out resets the zoom
                             level.
                         </li>
                     </ul>
 
                     <div style={H3}>Tools</div>
-                    <ul style={UL}>
+                    <ul style={UL_ICON}>
                         <li style={LI1}>
-                            <PipetteIconInline style={ICON_INLINE} />
-                            Eyedropper identifies the palette color of a pixel.
-                            Drawing is disabled while it is active.
+                            <span style={ICON_SLOT}>
+                                <PipetteIconInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Eyedropper identifies the palette color of a
+                                pixel. Drawing is disabled while it is active.
+                            </span>
                         </li>
                         <li style={LI1}>
-                            <HandIconOffInline style={ICON_INLINE} />
-                            Hand tool allows panning when zoomed in. Drawing is
-                            disabled while it is active.
+                            <span style={ICON_SLOT}>
+                                <HandIconOffInline style={ICON_INLINE} />
+                            </span>
+                            <span style={INLINE_TEXT_SLOT}>
+                                Hand tool allows panning when zoomed in. Drawing
+                                is disabled while it is active.
+                            </span>
                         </li>
                     </ul>
                     <p style={NOTE}>
