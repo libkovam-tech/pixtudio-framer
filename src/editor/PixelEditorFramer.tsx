@@ -3,6 +3,15 @@ import * as ReactDOM from "react-dom"
 
 import { ManualScreen } from "./ManualScreen.tsx"
 
+import SmartReferenceEditor, {
+    ZERO_SMART_REFERENCE_ADJUSTMENTS,
+    SMART_REFERENCE_VERSION_1,
+    type SmartReferenceAdjustments,
+    type SmartObjectCommittedState,
+    type SmartObjectCommittedStateBridge,
+    type ReferenceSnapshotEnvelope,
+} from "./SmartReferenceEditor.tsx"
+
 import {
     InlineSvgWrap,
     SvgTopButton3,
@@ -32,6 +41,7 @@ import {
     PipetteIcon,
     HandIconOn,
     HandIconOff,
+    SvgSmartObject,
 } from "./SvgIcons.tsx"
 
 const CANVAS_SIZE = 512
@@ -97,6 +107,8 @@ const ENABLE_LOAD_TRACE_LOGS = false
 
 const ENABLE_ROUTE_LOGS = false
 
+const ENABLE_ROOT_HISTORY_LOGS = false
+
 function countNonNullCells(grid: PixelValue[][]): number {
     let n = 0
     for (let r = 0; r < grid.length; r++) {
@@ -125,6 +137,14 @@ function nowMs() {
         : Date.now()
 }
 
+function get2dReadFrequentlyContext(
+    canvas: HTMLCanvasElement
+): CanvasRenderingContext2D | null {
+    return canvas.getContext("2d", {
+        willReadFrequently: true,
+    } as CanvasRenderingContext2DSettings)
+}
+
 function fnv1a32(str: string): string {
     let h = 0x811c9dc5
     for (let i = 0; i < str.length; i++) {
@@ -143,7 +163,7 @@ function createTransparencyTile(tileSize: number): HTMLCanvasElement {
     tile.width = tileSize * 2
     tile.height = tileSize * 2
 
-    const ctx = tile.getContext("2d")!
+    const ctx = get2dReadFrequentlyContext(tile)!
     // Цвета должны совпадать с canvas-логикой drawCheckerboard
     const a = "#ffffff"
     const b = "#d9d9d9"
@@ -804,6 +824,51 @@ function bakeRef512InChineseRoom(
 // и подключают их только в ветке preset === "NEON" внутри applyPresetBakeToImageData.
 // ===============================
 
+// ------------------- N2 — NEON_ARCADE palette (with electric yellow) -------------------
+
+const NEON_ARCADE_32: string[] = [
+    "#0B0A1A",
+    "#16132B",
+    "#1E1A3A",
+    "#241F4A",
+    "#2C255C",
+    "#332A6E",
+
+    "#2E3A8C",
+    "#3547A8",
+    "#3C54C2",
+    "#4662DA",
+    "#5270F0",
+
+    "#5F63E0",
+    "#6E6AE8",
+    "#7E72EE",
+    "#8E7BF2",
+
+    "#9B7BE0",
+    "#A783E6",
+    "#B28CEC",
+    "#BD96F0",
+    "#C9A0F4",
+
+    "#D6A9F7",
+    "#E2B3FA",
+    "#EDBEFC",
+
+    "#F3E6FF",
+    "#F2F6FF", // near white (new highlight)
+
+    "#BFD6FF",
+    "#9AD8FF",
+    "#5BC2FF",
+
+    "#4ED6C4",
+
+    "#FFF34D", // electric yellow
+
+    "#FF6AD5",
+]
+
 // ------------------- N1 — NEON palette (NO-OP, not used yet) -------------------
 
 // NEON_COLD_32 — холоднее: больше синих/индиго, меньше тёплых
@@ -850,6 +915,7 @@ const NEON_COLD_32: string[] = [
 
 // ✅ Активная палитра NEON (фиксируем “мир” пресета)
 const PALETTE_NEON_32: string[] = NEON_COLD_32
+//const PALETTE_NEON_32: string[] = NEON_ARCADE_32
 
 // ------------------- NEON PRE-TRANSFORM (NEON_STAIRCASE v2: chroma-preserving) -------------------
 
@@ -1186,6 +1252,37 @@ const footerIconStyle: React.CSSProperties = {
     justifyContent: "center",
 }
 
+const PIX_UI_BUTTON_ANIM_CSS = `
+.pxUiAnim {
+    transition:
+        transform 120ms ease,
+        filter 120ms ease;
+    transform-origin: center;
+    will-change: transform, filter;
+}
+
+.pxUiAnim:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.05);
+    filter: drop-shadow(0 4px 0px rgba(0, 0, 0, 0.22));
+}
+
+.pxUiAnim:active:not(:disabled) {
+    transform: translateY(1px) scale(0.97);
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+
+.pxUiAnim:disabled {
+    filter: none;
+}
+
+@media (hover: none) {
+    .pxUiAnim:hover:not(:disabled) {
+        transform: none;
+        filter: none;
+    }
+}
+`
+
 // =====================================================
 // OK / CANCEL BUTTON STYLE (shared across the editor)
 // =====================================================
@@ -1248,11 +1345,12 @@ const SWATCH_EDIT_HEX_INPUT_HEIGHT = 32
 const SWATCH_EDIT_HEX_MAX_WIDTH = 150
 const SWATCH_EDIT_HEX_LETTER_SPACING = 0.4
 
+const SWATCH_EDIT_HEX_BOX_WIDTH = SWATCH_EDIT_HEX_MAX_WIDTH
+
 const SWATCH_EDIT_HELP_FONT = 10
 const SWATCH_EDIT_HELP_LINE_HEIGHT = 1.35
 
-const SWATCH_EDIT_CHECK_SIZE = 24
-const SWATCH_EDIT_CHECKMARK_FONT = 16
+const SWATCH_EDIT_CHECK_SIZE = 20
 
 const SWATCH_EDIT_PREVIEW_SIZE = 24
 
@@ -1291,88 +1389,11 @@ const ALERT_OVERLAY_STYLE: React.CSSProperties = {
     boxSizing: "border-box",
 }
 
-function useImportAlertBoxSizing(isOpen: boolean, contentKey: string) {
-    const useIsoLayout =
-        typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect
-
-    const [alertBoxSize, setAlertBoxSize] = React.useState<{
-        w: number
-        h: number
-    }>({
-        w: 420,
-        h: 420 / ALERT_BACKING_RATIO,
-    })
-
-    // меряем ТОЛЬКО текстовый блок (без кнопки OK)
-    const alertMeasureRef = React.useRef<HTMLDivElement | null>(null)
-
-    useIsoLayout(() => {
-        if (!isOpen) return
-        if (typeof window === "undefined") return
-
-        let raf = 0
-
-        const recompute = () => {
-            const el = alertMeasureRef.current
-            if (!el) return
-
-            const rect = el.getBoundingClientRect()
-            const contentW = Math.max(1, rect.width)
-            const contentH = Math.max(1, rect.height)
-
-            // 1) стартуем от ширины контента + паддинги
-            let w = contentW + ALERT_PAD_X * 2
-            let h = w / ALERT_BACKING_RATIO
-
-            // 2) гарантируем, что по высоте помещается контент + паддинги
-            const minHNeeded = contentH + ALERT_PAD_Y * 2
-            if (h < minHNeeded) {
-                h = minHNeeded
-                w = h * ALERT_BACKING_RATIO
-            }
-
-            // 3) clamp по viewport и константам
-            const maxWByViewport = Math.floor(window.innerWidth * 0.92)
-            const maxW = Math.min(ALERT_MODAL_MAX_W, maxWByViewport)
-
-            if (w > maxW) {
-                w = maxW
-                h = w / ALERT_BACKING_RATIO
-            }
-
-            const minWByViewport = Math.floor(window.innerWidth * 0.75)
-            const minW = Math.min(
-                Math.max(ALERT_MODAL_MIN_W, 1),
-                minWByViewport
-            )
-
-            if (w < minW) {
-                w = minW
-                h = w / ALERT_BACKING_RATIO
-            }
-
-            setAlertBoxSize({ w: Math.round(w), h: Math.round(h) })
-        }
-
-        raf = window.requestAnimationFrame(recompute)
-
-        const onResize = () => {
-            window.cancelAnimationFrame(raf)
-            raf = window.requestAnimationFrame(recompute)
-        }
-
-        window.addEventListener("resize", onResize)
-        return () => {
-            window.cancelAnimationFrame(raf)
-            window.removeEventListener("resize", onResize)
-        }
-    }, [isOpen, contentKey])
-
-    return { alertBoxSize, alertMeasureRef }
-}
-
 const PALETTE_MIN = 10
 const PALETTE_MAX = 32
+
+//const DIAG_MAIN_TRACK_FILL = "#FF2D2D"
+//const DIAG_MAIN_TRACK_REST = "rgba(255, 45, 45, 0.28)"
 
 const rangeTrackStyle = (
     value: number,
@@ -1383,8 +1404,8 @@ const rangeTrackStyle = (
     const pct = ((value - min) / (max - min)) * 100
     return {
         "--px-track-pct": `${pct}%`,
-        "--px-track-fill": fillColor, // цветная часть (слева от кружка)
-        "--px-track-rest": "rgba(255,255,255,0.25)", // правая часть (как было)
+        "--px-track-fill": fillColor, // цветная часть (слева от кружка),
+        "--px-track-rest": "rgba(255,255,255,0.25)", // правая часть (как было),
     } as React.CSSProperties
 }
 
@@ -2921,6 +2942,8 @@ function StartScreen({
 
     return (
         <FitToViewport background={bg}>
+            <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
+
             <div
                 style={{
                     ...wrapStyle,
@@ -2948,6 +2971,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onPickImage}
+                        className="pxUiAnim"
                         style={circleButton}
                         aria-label="Image"
                     >
@@ -2964,6 +2988,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onOpenCamera}
+                        className="pxUiAnim"
                         style={circleButton}
                         aria-label="Camera"
                     >
@@ -2980,6 +3005,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onOpenDraw}
+                        className="pxUiAnim"
                         style={circleButton}
                         aria-label="Draw"
                     >
@@ -2996,6 +3022,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onOpenProject}
+                        className="pxUiAnim"
                         style={circleButton}
                         aria-label="Open Project"
                     >
@@ -3043,25 +3070,252 @@ type PendingFlags = {
 // ширина логотипа стартового экрана (используется и в футере)
 const START_LOGO_W = 260
 
+// =====================
+// SMART OBJECT ARCHITECTURE CONTRACT — S0
+// =====================
+//
+// Root / gateway:
+// - принимает baked reference после import
+// - в будущем открывает/закрывает SmartObject
+// - получает committed snapshot из SmartObject
+// - передаёт committed snapshot в editor
+//
+// SmartObject module:
+// - хранит base
+// - хранит adjustments
+// - строит preview
+// - по Apply отдаёт committed snapshot
+// - по Cancel ничего не меняет
+// - по Export сохраняет текущее preview 512×512
+//
+// Editor:
+// - получает только committed snapshot
+// - работает по старому pipeline
+// - ничего не знает о smart-object
+//
+// S1:
+// - SmartObject UI ещё отсутствует
+// - математики smart-object ещё нет
+// - gateway работает как пустой pass-through adapter
+
+// EDITOR MODULE BOUNDARY:
+// PixelEditorFramer получает только committed reference snapshot.
+// Он не знает о baked base, gateway-slot, smart-object state,
+// preview, adjustments, Apply/Cancel/Export.
+
+// S2 note:
+// SmartReferenceEditor создаётся как отдельный .tsx-модуль.
+// На этом шаге он ещё не импортируется и не подключается к root/editor.
+// Это намеренный NO-OP: сначала создаём контейнер, потом подключаем gateway.
+
+// =====================
+// UNDO / REDO (H1/H2: infra only, no UI behavior changes yet)
+// module-scope history contracts
+// =====================
+
+// S1 FINAL HISTORY CONTRACT:
+//
+// Единственным источником истины для пользовательской истории
+// становится ROOT HISTORY ENGINE.
+//
+// Это означает:
+//
+// 1) Любой HistoryEntry описывает согласованное состояние двух доменов:
+//    - editor-domain
+//    - smart-domain
+//
+// 2) Undo / Redo пользователя обязаны идти через root history,
+//    а не через локальную editor-history.
+//
+// 3) Внутренняя editor-history (pastRef / futureRef) временно остаётся,
+//    но только как legacy/fallback механизм на период миграции.
+//
+// 4) Обычные editor actions в финальной модели тоже должны стать
+//    root transactions.
+//
+// На текущем шаге (S1/S2) мы ещё не мигрируем все editor actions,
+// но уже фиксируем root history как user-facing source of truth.
+type HistoryEntryKind = "editor-action" | "smart-object-apply" | "unknown"
+
+type EditorCommittedState = {
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    imagePixels: PixelValue[][]
+    overlayPixels: PixelValue[][]
+    showImage: boolean
+    hasOriginalImageData: boolean
+    autoSwatches: Swatch[]
+    userSwatches: Swatch[]
+    selectedSwatch: SwatchId | "transparent"
+    autoOverrides: Record<
+        string,
+        {
+            hex?: string
+            isTransparent?: boolean
+        }
+    >
+}
+
+type EditorCommittedStateBridge = {
+    captureCommittedState: () => EditorCommittedState
+    applyCommittedState: (state: EditorCommittedState) => void
+
+    // S2:
+    // resetHistory относится только к legacy editor-history.
+    // Это НЕ root history reset.
+    resetHistory: () => void
+}
+
+type EditorCommittedStateSettledPayload = {
+    state: EditorCommittedState
+    routeKind: "import" | "load" | "smart-object-apply"
+}
+
+type UserActionBeginInput = {
+    kind: HistoryEntryKind
+    editorBefore: EditorCommittedState | null
+    smartBefore?: SmartObjectCommittedState | null
+}
+
+type UserActionFinalizeInput = {
+    smartAfter?: SmartObjectCommittedState | null
+}
+
+type UserActionCommitInput = {
+    editorAfter: EditorCommittedState | null
+    smartAfter?: SmartObjectCommittedState | null
+}
+
+type EditorActionTransaction = {
+    kind: "editor-action"
+    before: EditorCommittedState
+}
+
+type HistoryEntry = {
+    // S1:
+    // HistoryEntry = атомарная запись root history.
+    // Она описывает переход между двумя согласованными snapshot-состояниями:
+    //
+    // before:
+    //   editorBefore + smartBefore
+    //
+    // after:
+    //   editorAfter + smartAfter
+    //
+    // kind описывает тип пользовательского действия.
+    //
+    // Важно:
+    // именно этот root-level entry является канонической единицей user-history.
+    // Локальная editor-history не должна считаться пользовательской историей.
+    kind: HistoryEntryKind
+    editorBefore: EditorCommittedState | null
+    editorAfter: EditorCommittedState | null
+    smartBefore: SmartObjectCommittedState | null
+    smartAfter: SmartObjectCommittedState | null
+}
+
+type PendingHistoryTransaction = {
+    // S1:
+    // pending transaction живёт только в root history coordinator.
+    // Это заготовка будущего HistoryEntry, который после commitTransaction(...)
+    // становится канонической user-history записью.
+    kind: HistoryEntryKind
+    editorBefore: EditorCommittedState | null
+    smartBefore: SmartObjectCommittedState | null
+    smartAfter: SmartObjectCommittedState | null
+}
+
+type BeginHistoryTransactionInput = {
+    kind: HistoryEntryKind
+    editorBefore: EditorCommittedState | null
+    smartBefore: SmartObjectCommittedState | null
+}
+
 function PixelEditorFramer({
     initialImageData,
+    initialImageRouteKind,
     startWithImageVisible,
+    onCaptureSmartReferenceBaseForSave,
+    onCaptureSmartObjectCommittedStateForSave,
+    onRestoreSmartObjectFromLoad,
     onRequestCamera,
     onRequestCropFromFile,
     onRequestPickImage,
+    onRequestBlankImport,
     pendingProjectFile,
     onPendingProjectFileConsumed,
     onShowImportError,
+    onOpenSmartReferenceTest,
+    onEditorCommittedStateBridgeReady,
+    onEditorCommittedStateSettled,
+    onBeginUserAction,
+    onFinalizePendingUserAction,
+    onCommitUserAction,
+    onAbortUserAction,
+    onCoordinatedUndo,
+    onCoordinatedRedo,
+    coordinatedCanUndo,
+    coordinatedCanRedo,
 }: {
+    // committed reference snapshot from ROOT gateway
     initialImageData: ImageData | null
+    initialImageRouteKind: "import" | "load" | "smart-object-apply" | null
+    // save-side bridge:
+    // editor не владеет Smart Object base/committed adjustments,
+    // поэтому получает их из root только для сериализации save-файла.
+    onCaptureSmartReferenceBaseForSave?: () => ImageData | null
+    onCaptureSmartObjectCommittedStateForSave?: () => SmartObjectCommittedState | null
+
+    // load-side bridge:
+    // editor НЕ имеет права финально писать loaded ref напрямую в себя.
+    // Он передаёт restore в root Smart Object gateway.
+    onRestoreSmartObjectFromLoad?: (payload: {
+        base: ImageData | null
+        adjustments: SmartReferenceAdjustments
+    }) => void
     startWithImageVisible: boolean
     onRequestCamera: () => void
     onRequestCropFromFile: (p: { file: File }) => void
     onRequestPickImage?: () => void
+    onRequestBlankImport?: () => void
 
     // ✅ NEW: project-open bridge from ROOT
     pendingProjectFile?: File | null
     onPendingProjectFileConsumed?: () => void
+    onOpenSmartReferenceTest?: () => void
+
+    // H3:
+    // Root получает bridge для capture/apply editor committed-state.
+    onEditorCommittedStateBridgeReady?: (
+        bridge: EditorCommittedStateBridge | null
+    ) => void
+
+    // H3:
+    // Editor сообщает Root, что committed reference уже доехал
+    // и editor-domain теперь находится в новом committed-state.
+    onEditorCommittedStateSettled?: (
+        payload: EditorCommittedStateSettledPayload
+    ) => void
+
+    // Step 0:
+    // editor не пишет root history напрямую.
+    // Он работает через единый user-action protocol.
+    onBeginUserAction?: (input: UserActionBeginInput) => void
+    onFinalizePendingUserAction?: (input?: UserActionFinalizeInput) => void
+    onCommitUserAction?: (input: UserActionCommitInput) => void
+    onAbortUserAction?: () => void
+
+    // H5:
+    // coordinated undo/redo приходит из Root History Engine.
+    // S2:
+    // user-facing Undo/Redo приходят из Root History Engine.
+    // Если они переданы, editor должен считать их главными.
+    // Локальные doUndo/doRedo остаются только как legacy fallback.
+    onCoordinatedUndo?: () => void
+    onCoordinatedRedo?: () => void
+    coordinatedCanUndo?: boolean
+    coordinatedCanRedo?: boolean
 
     // ✅ NEW: unified import-error bridge (optional)
     onShowImportError?: (message: string) => void
@@ -3275,10 +3529,6 @@ function PixelEditorFramer({
         // 3) overlayRequant
         // 4) gridPolicyBlankCheck
 
-        if (doGridPolicyBlankCheck) {
-            applyPendingGridPolicyBlankCheck()
-        }
-
         if (doGridCommit) {
             applyPendingGridCommit()
         }
@@ -3287,6 +3537,9 @@ function PixelEditorFramer({
         }
         if (doOverlayRequant) {
             applyPendingOverlayRequant()
+        }
+        if (doGridPolicyBlankCheck) {
+            applyPendingGridPolicyBlankCheck()
         }
 
         return true
@@ -3305,14 +3558,18 @@ function PixelEditorFramer({
         return clampInt(a + u, PALETTE_MIN, PALETTE_MAX)
     }
 
-    const [gridSize, setGridSize] = React.useState(32)
-    const [paletteCount, setPaletteCount] = React.useState(16)
+    const DEFAULT_EDITOR_GRID_SIZE = 32
+    const DEFAULT_EDITOR_PALETTE_COUNT = 16
 
+    const [gridSize, setGridSize] = React.useState(DEFAULT_EDITOR_GRID_SIZE)
+    const [paletteCount, setPaletteCount] = React.useState(
+        DEFAULT_EDITOR_PALETTE_COUNT
+    )
     const [imagePixels, setImagePixels] = React.useState<PixelValue[][]>(() =>
-        createEmptyPixels(32)
+        createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE)
     )
     const [overlayPixels, setOverlayPixels] = React.useState<PixelValue[][]>(
-        () => createEmptyPixels(32)
+        () => createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE)
     )
 
     const [autoOverrides, setAutoOverrides] =
@@ -3382,6 +3639,10 @@ function PixelEditorFramer({
         setOverlayPixels(createEmptyPixels(gs))
         setImagePixels(createEmptyPixels(gs))
 
+        // 1.5) Новый импорт = новая палитровая сессия
+        setUserSwatches([])
+        setSelectedSwatch("auto-0")
+
         // 2) Import context — строго выключаем
         setOriginalImageData(null)
         setHasImportContext(false)
@@ -3409,16 +3670,27 @@ function PixelEditorFramer({
         // Если пришёл null (Draw / очистка) — сбросим якорь
         if (!initialImageData) {
             lastInitialImageDataRef.current = null
+
+            if (initialImageRouteKind === "import") {
+                resetAutoOverridesForNewImport()
+                setUserSwatches([])
+                setSelectedSwatch("auto-0")
+            }
+
             return
         }
 
-        // Новый импорт = новый объект ImageData (другая ссылка)
+        // Новый committed reference = новый объект ImageData
         if (lastInitialImageDataRef.current === initialImageData) return
         lastInitialImageDataRef.current = initialImageData
 
-        // ✅ reset overrides for NEW import (camera/gallery/crop)
-        resetAutoOverridesForNewImport()
-    }, [initialImageData])
+        // Только настоящий import имеет право сбрасывать import-session state.
+        if (initialImageRouteKind === "import") {
+            resetAutoOverridesForNewImport()
+            setUserSwatches([])
+            setSelectedSwatch("auto-0")
+        }
+    }, [initialImageData, initialImageRouteKind])
 
     const onSaveProject = React.useCallback(() => {
         const snapshot = buildProjectSnapshotV2()
@@ -3450,6 +3722,7 @@ function PixelEditorFramer({
     type LoadPayload = {
         snapshotVersion: 2
         nextState: ReturnType<typeof buildNextStateFromValidatedSnapshotV2>
+        loadedSmartAdjustments: SmartReferenceAdjustments
         canonicalChecksum?: string
         fileName?: string
     }
@@ -3487,9 +3760,18 @@ function PixelEditorFramer({
 
             const nextState = buildNextStateFromValidatedSnapshotV2(validatedV2)
 
+            const loadedSmartAdjustments: SmartReferenceAdjustments =
+                validatedV2.smartObjectState
+                    ? {
+                          ...ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                          ...validatedV2.smartObjectState.adjustments,
+                      }
+                    : { ...ZERO_SMART_REFERENCE_ADJUSTMENTS }
+
             const payload: LoadPayload = {
                 snapshotVersion: 2,
                 nextState,
+                loadedSmartAdjustments,
                 canonicalChecksum,
                 fileName: file.name,
             }
@@ -3567,43 +3849,7 @@ function PixelEditorFramer({
         []
     )
 
-    type ValidatedSnapshotV1 = ProjectSnapshotV1
-
     type ValidatedSnapshotV2 = ProjectSnapshotV2
-
-    function canonicalizeSnapshotV1(s: ProjectSnapshotV1): ProjectSnapshotV1 {
-        const sw = [...s.palette.swatches].sort((a, b) => a.index - b.index)
-        const st = [...s.strokeLayer.cells].sort((a, b) => {
-            if (a.cellIndex !== b.cellIndex) return a.cellIndex - b.cellIndex
-            return a.swatchIndex - b.swatchIndex
-        })
-
-        return {
-            magic: "PIXTUDIO",
-            version: 1,
-            gridSize: s.gridSize,
-            palette: {
-                swatches: sw.map((x, i) => ({
-                    index: i,
-                    id: x.id,
-                    hex: x.hex,
-                    isTransparent: !!x.isTransparent,
-                    isUser: !!x.isUser,
-                })),
-                transparentIndex: s.palette.transparentIndex,
-            },
-            importLayer: { cells: [...s.importLayer.cells] },
-            strokeLayer: {
-                cells: st.map((c) => ({
-                    cellIndex: c.cellIndex,
-                    swatchIndex: c.swatchIndex,
-                })),
-            },
-            ref: s.ref
-                ? { w: 512, h: 512, ext: "rgba8", b64: s.ref.b64 }
-                : null,
-        }
-    }
 
     function canonicalizeSnapshotV2(s: ProjectSnapshotV2): ProjectSnapshotV2 {
         const sw = [...s.palette.swatches].sort((a, b) => a.index - b.index)
@@ -3620,10 +3866,29 @@ function PixelEditorFramer({
             autoOverridesCanon = out
         }
 
+        const smartObjectStateCanon = s.smartObjectState
+            ? {
+                  version: SMART_REFERENCE_VERSION_1,
+                  adjustments: {
+                      exposure: s.smartObjectState.adjustments.exposure,
+                      whiteBalance: s.smartObjectState.adjustments.whiteBalance,
+                      contrast: s.smartObjectState.adjustments.contrast,
+                      saturation: s.smartObjectState.adjustments.saturation,
+                      shadows: s.smartObjectState.adjustments.shadows,
+                      midtones: s.smartObjectState.adjustments.midtones,
+                      highlights: s.smartObjectState.adjustments.highlights,
+                  },
+              }
+            : undefined
+
         return {
             magic: "PIXTUDIO",
             version: 2,
             gridSize: s.gridSize,
+            paletteCount:
+                typeof s.paletteCount === "number"
+                    ? clampInt(s.paletteCount, PALETTE_MIN, PALETTE_MAX)
+                    : undefined,
             palette: {
                 swatches: sw.map((x, i) => ({
                     index: i,
@@ -3632,6 +3897,7 @@ function PixelEditorFramer({
                     isUser: !!x.isUser,
                 })),
             },
+            smartObjectState: smartObjectStateCanon,
             importLayer: { cells: [...s.importLayer.cells] },
             autoOverrides: autoOverridesCanon,
             strokeLayer: {
@@ -3643,47 +3909,6 @@ function PixelEditorFramer({
             ref: s.ref
                 ? { w: 512, h: 512, ext: "rgba8", b64: s.ref.b64 }
                 : null,
-        }
-    }
-
-    function v1ToV2ForChecksum(v1: ValidatedSnapshotV1): ProjectSnapshotV2 {
-        // строим V2 palette без transparent
-        const swatches = v1.palette.swatches
-            .filter((s) => !s.isTransparent)
-            .map((s, i) => ({
-                index: i,
-                id: s.id,
-                hex: s.hex,
-                isUser: !!s.isUser,
-            }))
-
-        const indexById = new Map(swatches.map((s) => [s.id, s.index]))
-
-        const transparentIndex = v1.palette.transparentIndex
-
-        const mapCell = (cell: number): number => {
-            if (cell < 0) return -1
-            if (cell === transparentIndex) return -2
-            const sw = v1.palette.swatches[cell]
-            if (!sw || sw.isTransparent) return -2
-            return indexById.get(sw.id) ?? -1
-        }
-
-        const importCells = v1.importLayer.cells.map(mapCell)
-
-        const strokeCells = v1.strokeLayer.cells.map((c) => ({
-            cellIndex: c.cellIndex,
-            swatchIndex: mapCell(c.swatchIndex),
-        }))
-
-        return {
-            magic: "PIXTUDIO",
-            version: 2,
-            gridSize: v1.gridSize,
-            palette: { swatches },
-            importLayer: { cells: importCells },
-            strokeLayer: { cells: strokeCells },
-            ref: v1.ref,
         }
     }
 
@@ -3726,6 +3951,11 @@ function PixelEditorFramer({
 
         paletteCount?: number
 
+        smartObjectState?: {
+            version: typeof SMART_REFERENCE_VERSION_1
+            adjustments: SmartReferenceAdjustments
+        }
+
         autoOverrides?: AutoSwatchOverridesMap
 
         importLayer: {
@@ -3750,9 +3980,6 @@ function PixelEditorFramer({
             b64: string // base64 of raw RGBA bytes
         }
     }
-
-    // На будущее (пока NO-OP): общий тип слепка, когда loader начнёт различать версии.
-    type ProjectSnapshotAny = ProjectSnapshotV1 | ProjectSnapshotV2
 
     type LoadGateErrorCode =
         | "E_READ"
@@ -3821,6 +4048,21 @@ function PixelEditorFramer({
             throw makeLoadGateError(code, `${where}: out of range`)
     }
 
+    function assertFiniteNumberInRange(
+        n: any,
+        min: number,
+        max: number,
+        code: LoadGateErrorCode,
+        where: string
+    ) {
+        if (typeof n !== "number" || !Number.isFinite(n)) {
+            throw makeLoadGateError(code, `${where}: not finite number`)
+        }
+        if (n < min || n > max) {
+            throw makeLoadGateError(code, `${where}: out of range`)
+        }
+    }
+
     function assertString(n: any, code: LoadGateErrorCode, where: string) {
         if (typeof n !== "string")
             throw makeLoadGateError(code, `${where}: not string`)
@@ -3853,221 +4095,6 @@ function PixelEditorFramer({
         return (b64.length / 4) * 3 - pad
     }
 
-    function validateProjectSnapshotV1OrThrow(raw: any): ValidatedSnapshotV1 {
-        if (!isPlainObject(raw)) {
-            throw makeLoadGateError("E_ROOT_KEYS", "root: not an object")
-        }
-
-        assertExactKeys(
-            raw,
-            [
-                "magic",
-                "version",
-                "gridSize",
-                "palette",
-                "importLayer",
-                "strokeLayer",
-                "ref",
-            ],
-            "E_ROOT_KEYS",
-            "root"
-        )
-
-        // magic/version whitelist
-        if (raw.magic !== "PIXTUDIO") {
-            throw makeLoadGateError("E_MAGIC", "magic: not allowed")
-        }
-        if (raw.version !== 1) {
-            throw makeLoadGateError("E_VERSION", "version: not allowed")
-        }
-
-        // gridSize (фиксированные bounds — выбирай свои; сейчас делаю безопасный диапазон MVP)
-        assertIntInRange(raw.gridSize, 4, 128, "E_GRID", "gridSize")
-        const g = raw.gridSize
-        const cellsN = g * g
-
-        // palette
-        const pal = raw.palette
-        if (!isPlainObject(pal))
-            throw makeLoadGateError("E_PALETTE", "palette: not object")
-        assertExactKeys(
-            pal,
-            ["swatches", "transparentIndex"],
-            "E_PALETTE",
-            "palette"
-        )
-
-        if (!Array.isArray(pal.swatches)) {
-            throw makeLoadGateError("E_PALETTE", "palette.swatches: not array")
-        }
-        const swatches = pal.swatches
-        // sanity cap
-        if (swatches.length <= 0 || swatches.length > 256) {
-            throw makeLoadGateError(
-                "E_PALETTE",
-                "palette.swatches: invalid length"
-            )
-        }
-
-        assertIntInRange(
-            pal.transparentIndex,
-            0,
-            swatches.length - 1,
-            "E_PALETTE",
-            "palette.transparentIndex"
-        )
-
-        for (let i = 0; i < swatches.length; i++) {
-            const sw = swatches[i]
-            if (!isPlainObject(sw))
-                throw makeLoadGateError(
-                    "E_PALETTE",
-                    `swatches[${i}]: not object`
-                )
-            assertExactKeys(
-                sw,
-                ["index", "id", "hex", "isTransparent", "isUser"],
-                "E_PALETTE",
-                `swatches[${i}]`
-            )
-
-            // index должен совпадать позиции
-            if (sw.index !== i)
-                throw makeLoadGateError(
-                    "E_PALETTE",
-                    `swatches[${i}].index mismatch`
-                )
-            assertString(sw.id, "E_PALETTE", `swatches[${i}].id`)
-            if (!sw.id)
-                throw makeLoadGateError("E_PALETTE", `swatches[${i}].id empty`)
-
-            assertString(sw.hex, "E_PALETTE", `swatches[${i}].hex`)
-            if (!/^#[0-9A-F]{6}$/.test(sw.hex)) {
-                throw makeLoadGateError(
-                    "E_PALETTE",
-                    `swatches[${i}].hex invalid`
-                )
-            }
-            assertBool(
-                sw.isTransparent,
-                "E_PALETTE",
-                `swatches[${i}].isTransparent`
-            )
-            assertBool(sw.isUser, "E_PALETTE", `swatches[${i}].isUser`)
-        }
-
-        // importLayer
-        const imp = raw.importLayer
-        if (!isPlainObject(imp))
-            throw makeLoadGateError("E_IMPORT_LAYER", "importLayer: not object")
-        assertExactKeys(imp, ["cells"], "E_IMPORT_LAYER", "importLayer")
-        if (!Array.isArray(imp.cells))
-            throw makeLoadGateError(
-                "E_IMPORT_LAYER",
-                "importLayer.cells: not array"
-            )
-        if (imp.cells.length !== cellsN) {
-            throw makeLoadGateError(
-                "E_IMPORT_LAYER",
-                "importLayer.cells: length mismatch"
-            )
-        }
-        for (let i = 0; i < imp.cells.length; i++) {
-            const v = imp.cells[i]
-            // -1 или индекс свотча
-            if (!isInt(v))
-                throw makeLoadGateError(
-                    "E_IMPORT_LAYER",
-                    `importLayer.cells[${i}]: not int`
-                )
-            if (v !== -1)
-                assertIntInRange(
-                    v,
-                    0,
-                    swatches.length - 1,
-                    "E_IMPORT_LAYER",
-                    `importLayer.cells[${i}]`
-                )
-        }
-
-        // strokeLayer (sparse)
-        const st = raw.strokeLayer
-        if (!isPlainObject(st))
-            throw makeLoadGateError("E_STROKE_LAYER", "strokeLayer: not object")
-        assertExactKeys(st, ["cells"], "E_STROKE_LAYER", "strokeLayer")
-        if (!Array.isArray(st.cells))
-            throw makeLoadGateError(
-                "E_STROKE_LAYER",
-                "strokeLayer.cells: not array"
-            )
-        if (st.cells.length > cellsN)
-            throw makeLoadGateError(
-                "E_STROKE_LAYER",
-                "strokeLayer.cells: too large"
-            )
-
-        for (let i = 0; i < st.cells.length; i++) {
-            const cell = st.cells[i]
-            if (!isPlainObject(cell))
-                throw makeLoadGateError(
-                    "E_STROKE_LAYER",
-                    `strokeLayer.cells[${i}]: not object`
-                )
-            assertExactKeys(
-                cell,
-                ["cellIndex", "swatchIndex"],
-                "E_STROKE_LAYER",
-                `strokeLayer.cells[${i}]`
-            )
-            assertIntInRange(
-                cell.cellIndex,
-                0,
-                cellsN - 1,
-                "E_STROKE_LAYER",
-                `strokeLayer.cells[${i}].cellIndex`
-            )
-            assertIntInRange(
-                cell.swatchIndex,
-                0,
-                swatches.length - 1,
-                "E_STROKE_LAYER",
-                `strokeLayer.cells[${i}].swatchIndex`
-            )
-        }
-
-        // ref
-        const ref = raw.ref
-        if (ref !== null) {
-            if (!isPlainObject(ref))
-                throw makeLoadGateError("E_REF", "ref: not null/object")
-            assertExactKeys(ref, ["w", "h", "ext", "b64"], "E_REF", "ref")
-
-            if (ref.w !== 512 || ref.h !== 512) {
-                throw makeLoadGateError("E_REF", "ref: invalid size")
-            }
-            if (ref.ext !== "rgba8") {
-                throw makeLoadGateError("E_REF", "ref.ext: not allowed")
-            }
-            assertString(ref.b64, "E_REF", "ref.b64")
-
-            const expectedLen = 512 * 512 * 4
-            const decodedLen = base64DecodedLenOrThrow(
-                ref.b64,
-                "E_REF",
-                "ref.b64"
-            )
-            if (decodedLen !== expectedLen) {
-                throw makeLoadGateError(
-                    "E_REF",
-                    "ref.b64: decoded length mismatch"
-                )
-            }
-        }
-
-        // ✅ если дошли сюда — snapshot валиден
-        return raw as ValidatedSnapshotV1
-    }
-
     function validateProjectSnapshotV2OrThrow(raw: any): ValidatedSnapshotV2 {
         if (!isPlainObject(raw)) {
             throw makeLoadGateError("E_ROOT_KEYS", "root: not an object")
@@ -4077,7 +4104,7 @@ function PixelEditorFramer({
         // paletteCount ОБЯЗАТЕЛЕН, autoOverrides ОПЦИОНАЛЕН
         const keys = Object.keys(raw).sort().join("|")
 
-        const allowB = [
+        const allowBase = [
             "magic",
             "version",
             "gridSize",
@@ -4087,38 +4114,31 @@ function PixelEditorFramer({
             "ref",
             "paletteCount",
         ]
-            .sort()
-            .join("|")
 
-        const allowD = [
-            "magic",
-            "version",
-            "gridSize",
-            "palette",
-            "importLayer",
-            "strokeLayer",
-            "ref",
-            "paletteCount",
-            "autoOverrides",
-        ]
-            .sort()
-            .join("|")
+        const allowedRootKeySets = new Set([
+            [...allowBase].sort().join("|"),
+            [...allowBase, "autoOverrides"].sort().join("|"),
+            [...allowBase, "smartObjectState"].sort().join("|"),
+            [...allowBase, "autoOverrides", "smartObjectState"]
+                .sort()
+                .join("|"),
+        ])
 
-        // paletteCount обязателен по root-keys (allowB/allowD),
-        // но дополнительно валидируем диапазон, если ключ присутствует
-        if ("paletteCount" in raw) {
-            assertIntInRange(
-                raw.paletteCount,
-                PALETTE_MIN,
-                PALETTE_MAX,
-                "E_PALETTE",
-                "paletteCount"
-            )
-        }
-
-        if (keys !== allowB && keys !== allowD) {
+        if (!allowedRootKeySets.has(keys)) {
             throw makeLoadGateError("E_ROOT_KEYS", "root: unexpected keys")
         }
+
+        if (!("paletteCount" in raw)) {
+            throw makeLoadGateError("E_PALETTE", "paletteCount: missing")
+        }
+
+        assertIntInRange(
+            raw.paletteCount,
+            PALETTE_MIN,
+            PALETTE_MAX,
+            "E_PALETTE",
+            "paletteCount"
+        )
 
         if ("autoOverrides" in raw) {
             const ao = raw.autoOverrides
@@ -4188,6 +4208,110 @@ function PixelEditorFramer({
                     )
                 }
             }
+        }
+
+        if ("smartObjectState" in raw) {
+            const so = raw.smartObjectState
+            if (!isPlainObject(so)) {
+                throw makeLoadGateError(
+                    "E_ROOT_KEYS",
+                    "smartObjectState: not object"
+                )
+            }
+
+            assertExactKeys(
+                so,
+                ["version", "adjustments"],
+                "E_ROOT_KEYS",
+                "smartObjectState"
+            )
+
+            if (so.version !== SMART_REFERENCE_VERSION_1) {
+                throw makeLoadGateError(
+                    "E_ROOT_KEYS",
+                    "smartObjectState.version: not supported"
+                )
+            }
+
+            const adj = so.adjustments
+            if (!isPlainObject(adj)) {
+                throw makeLoadGateError(
+                    "E_ROOT_KEYS",
+                    "smartObjectState.adjustments: not object"
+                )
+            }
+
+            assertExactKeys(
+                adj,
+                [
+                    "exposure",
+                    "whiteBalance",
+                    "contrast",
+                    "saturation",
+                    "shadows",
+                    "midtones",
+                    "highlights",
+                ],
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments"
+            )
+
+            assertFiniteNumberInRange(
+                adj.exposure,
+                -100,
+                100,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.exposure"
+            )
+            assertFiniteNumberInRange(
+                adj.whiteBalance,
+                0,
+                1,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.whiteBalance"
+            )
+            assertFiniteNumberInRange(
+                adj.contrast,
+                -100,
+                100,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.contrast"
+            )
+            assertFiniteNumberInRange(
+                adj.saturation,
+                -100,
+                100,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.saturation"
+            )
+            assertFiniteNumberInRange(
+                adj.shadows,
+                0,
+                100,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.shadows"
+            )
+            assertFiniteNumberInRange(
+                adj.midtones,
+                -100,
+                100,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.midtones"
+            )
+            assertFiniteNumberInRange(
+                adj.highlights,
+                0,
+                100,
+                "E_ROOT_KEYS",
+                "smartObjectState.adjustments.highlights"
+            )
+        }
+
+        if ("smartObjectState" in raw && raw.ref === null) {
+            throw makeLoadGateError(
+                "E_REF",
+                "ref: must not be null when smartObjectState is present"
+            )
         }
 
         // magic/version whitelist
@@ -4392,14 +4516,6 @@ function PixelEditorFramer({
         return raw as ValidatedSnapshotV2
     }
 
-    const lastValidatedSnapshotRef = React.useRef<ValidatedSnapshotV1 | null>(
-        null
-    )
-
-    const lastValidatedSnapshotV2Ref = React.useRef<ValidatedSnapshotV2 | null>(
-        null
-    )
-
     // =====================
     // L1 — IMPORT TXN (NO-UI SIDE EFFECTS)
     // =====================
@@ -4417,14 +4533,13 @@ function PixelEditorFramer({
     }
 
     // сюда L1 складывает результат (без setState)
-    const nextLoadStateRef = React.useRef<LoadNextState | null>(null)
-
     const loadedCanonicalChecksumRef = React.useRef<string | null>(null)
-    const loadedSnapshotVersionRef = React.useRef<1 | 2 | null>(null)
 
     const [postLoadCheckNonce, setPostLoadCheckNonce] = React.useState(0)
 
     const postLoadCheckNonceRef = React.useRef(0)
+
+    const silentLoadHydrationRef = React.useRef(false)
 
     // B2 restore-trigger nonce: нужен, чтобы один раз прогнать визуальный композит
     // после того, как isRestoringFromSaveRef.current станет false.
@@ -4436,11 +4551,7 @@ function PixelEditorFramer({
 
     const isRestoringFromSaveRef = React.useRef(false)
 
-    const skipNextRepixelizeAfterLoadRef = React.useRef(false)
-
     const loadTraceSeqRef = React.useRef(0)
-
-    const paletteOrderRef = React.useRef<string[] | null>(null)
 
     function traceLoad(tag: string, meta?: any) {
         if (!ENABLE_LOAD_TRACE_LOGS) return
@@ -4454,38 +4565,10 @@ function PixelEditorFramer({
     }
 
     // =====================
-    // SAVE/LOAD — S0 STRICT SNAPSHOT (NO-OP SAVE)
+    // SAVE/LOAD — STRICT SNAPSHOT
     // =====================
 
-    // Единственный допустимый формат (v1)
-    type ProjectSnapshotV1 = {
-        magic: "PIXTUDIO"
-        version: 1
-        gridSize: number
-        palette: {
-            swatches: Array<{
-                index: number
-                id: string
-                hex: string
-                isTransparent: boolean
-                isUser: boolean
-            }>
-            transparentIndex: number
-        }
-        importLayer: {
-            cells: number[] // len = gridSize*gridSize, value = swatchIndex or -1
-        }
-        strokeLayer: {
-            cells: Array<{ cellIndex: number; swatchIndex: number }>
-        }
-        ref: null | {
-            w: 512
-            h: 512
-            ext: "rgba8"
-            b64: string // base64 of raw RGBA bytes
-        }
-    }
-
+    // Единственный допустимый формат — V2
     // sRGB hex normalize (без вычислений “умной палитры” — просто чтение)
     function toHexUpperSafe(css: string | null): string {
         const hx = (cssColorToHex(css) || "#FF0000").toUpperCase()
@@ -4507,161 +4590,23 @@ function PixelEditorFramer({
         return btoa(bin)
     }
 
-    function buildProjectSnapshotV1(): ProjectSnapshotV1 {
-        const g = gridSize
-
-        // ---- palette: prefer loaded order if present ----
-        const swatchById = new Map<string, Swatch>()
-        for (const s of autoSwatches) swatchById.set(s.id, s)
-        for (const s of userSwatches) swatchById.set(s.id, s)
-
-        const base: Swatch[] = []
-        const seen = new Set<string>()
-
-        const order = paletteOrderRef.current
-        const orderSet = order && order.length > 0 ? new Set(order) : null
-
-        if (order && order.length > 0) {
-            // 1) собираем в точном порядке из файла (и без дублей)
-            for (const id of order) {
-                if (!id || seen.has(id)) continue
-
-                const sw = swatchById.get(id)
-                if (sw) {
-                    base.push(sw)
-                    seen.add(id)
-                    continue
-                }
-
-                // если в рантайме нет прозрачного свотча, но в файле он был
-                if (id === "transparent") {
-                    base.push({
-                        id: "transparent",
-                        color: "#000000",
-                        isTransparent: true,
-                        isUser: false,
-                    })
-                    seen.add(id)
-                }
-            }
-
-            // 2) если в рантайме есть свотчи, которых нет в order — добавляем в конец (уникально)
-            for (const sw of [...autoSwatches, ...userSwatches]) {
-                if (!sw?.id) continue
-                if (orderSet && orderSet.has(sw.id)) continue
-                if (seen.has(sw.id)) continue
-                base.push(sw)
-                seen.add(sw.id)
-            }
-        } else {
-            // дефолт: как раньше, но без дублей
-            for (const sw of [...autoSwatches, ...userSwatches]) {
-                if (!sw?.id) continue
-                if (seen.has(sw.id)) continue
-                base.push(sw)
-                seen.add(sw.id)
-            }
-        }
-
-        let transparentIndex = -1
-
-        const swatches: ProjectSnapshotV1["palette"]["swatches"] = base.map(
-            (sw, idx) => {
-                if (transparentIndex < 0 && !!(sw as any)?.isTransparent) {
-                    transparentIndex = idx
-                }
-                return {
-                    index: idx,
-                    id: sw.id,
-                    hex: toHexUpperSafe(sw.color),
-                    isTransparent: !!(sw as any)?.isTransparent,
-                    isUser: !!(sw as any)?.isUser,
-                }
-            }
-        )
-
-        // если прозрачного свотча в runtime-палитре нет — добавляем синтетический в конец
-        if (transparentIndex < 0) {
-            transparentIndex = swatches.length
-            swatches.push({
-                index: transparentIndex,
-                id: "transparent",
-                hex: "#000000",
-                isTransparent: true,
-                isUser: false,
-            })
-        }
-
-        const indexById = new Map<string, number>()
-        for (const s of swatches) indexById.set(s.id, s.index)
-
-        const mapPixelToSwatchIndex = (v: PixelValue): number => {
-            if (v === null) return -1
-            if (v === TRANSPARENT_PIXEL) return transparentIndex
-            const idx = indexById.get(v)
-            return typeof idx === "number" ? idx : -1
-        }
-
-        // ---- importLayer: full grid, flat ----
-        const importCells: number[] = new Array(g * g)
-        for (let r = 0; r < g; r++) {
-            const row = imagePixels[r] || []
-            for (let c = 0; c < g; c++) {
-                importCells[r * g + c] = mapPixelToSwatchIndex(
-                    (row[c] ?? null) as PixelValue
-                )
-            }
-        }
-
-        // ---- strokeLayer: sparse ----
-        const strokeCells: Array<{ cellIndex: number; swatchIndex: number }> =
-            []
-        for (let r = 0; r < g; r++) {
-            const row = overlayPixels[r] || []
-            for (let c = 0; c < g; c++) {
-                const v = (row[c] ?? null) as PixelValue
-                if (v === null) continue
-                const si = mapPixelToSwatchIndex(v)
-                if (si < 0) continue
-                strokeCells.push({ cellIndex: r * g + c, swatchIndex: si })
-            }
-        }
-
-        // ---- ref: originalImageData (512x512 RGBA) or null ----
-        let ref: ProjectSnapshotV1["ref"] = null
-        if (
-            originalImageData &&
-            originalImageData.width === 512 &&
-            originalImageData.height === 512
-        ) {
-            ref = {
-                w: 512,
-                h: 512,
-                ext: "rgba8",
-                b64: bytesToBase64(originalImageData.data),
-            }
-        }
-
-        return {
-            magic: "PIXTUDIO",
-            version: 1,
-            gridSize: g,
-            palette: {
-                swatches,
-                transparentIndex,
-            },
-            importLayer: {
-                cells: importCells,
-            },
-            strokeLayer: {
-                cells: strokeCells,
-            },
-            ref,
-        }
-    }
-
     function buildProjectSnapshotV2(): ProjectSnapshotV2 {
         const g = gridSize
+
+        const smartReferenceBaseForSave =
+            onCaptureSmartReferenceBaseForSave?.() ?? originalImageData
+
+        const smartCommittedStateForSave =
+            onCaptureSmartObjectCommittedStateForSave?.() ?? null
+
+        const smartAdjustmentsForSave: SmartReferenceAdjustments | null =
+            smartCommittedStateForSave
+                ? {
+                      ...ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                      ...(smartCommittedStateForSave.adjustments ??
+                          ZERO_SMART_REFERENCE_ADJUSTMENTS),
+                  }
+                : null
 
         // palette V2 — только цветовые свотчи
         const swatchById = new Map<string, Swatch>()
@@ -4717,16 +4662,24 @@ function PixelEditorFramer({
             gridSize: g,
             palette: { swatches },
             paletteCount: clampInt(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            smartObjectState:
+                smartReferenceBaseForSave && smartAdjustmentsForSave
+                    ? {
+                          version: SMART_REFERENCE_VERSION_1,
+                          adjustments: {
+                              ...smartAdjustmentsForSave,
+                          },
+                      }
+                    : undefined,
             importLayer: { cells: importCells },
             strokeLayer: { cells: strokeCells },
             autoOverrides: hasAutoOverrides ? autoOverrides : undefined,
-            //paletteCount: pc,
-            ref: originalImageData
+            ref: smartReferenceBaseForSave
                 ? {
                       w: 512,
                       h: 512,
                       ext: "rgba8",
-                      b64: bytesToBase64(originalImageData.data),
+                      b64: bytesToBase64(smartReferenceBaseForSave.data),
                   }
                 : null,
         }
@@ -4859,142 +4812,13 @@ function PixelEditorFramer({
     }
 
     function decodeRefToImageData(
-        ref: ProjectSnapshotV1["ref"] | ProjectSnapshotV2["ref"]
+        ref: ProjectSnapshotV2["ref"]
     ): ImageData | null {
         if (!ref) return null
         // ref.ext строго "rgba8", ref.w/h строго 512 — L0 уже гарантировал
         const bytes = base64ToBytes(ref.b64)
         // ImageData ждёт Uint8ClampedArray
         return new ImageData(bytes, 512, 512)
-    }
-
-    function buildNextStateFromValidatedSnapshot(
-        validated: ValidatedSnapshotV1
-    ): LoadNextState {
-        const g = validated.gridSize
-        const cellsN = g * g
-        const transparentIndex = validated.palette.transparentIndex
-
-        // 0) палитровый порядок ровно как в файле (важно для checksum/слепка)
-        const paletteOrderIds: string[] = validated.palette.swatches.map(
-            (s) => s.id
-        )
-
-        // 1) palette ровно как в файле
-        const allSwatches: Swatch[] = validated.palette.swatches
-            .filter((s) => !s.isTransparent)
-            .map((s) => ({
-                id: s.id,
-                color: s.hex,
-                isTransparent: false,
-                isUser: !!s.isUser,
-            }))
-
-        // runtime хранит два массива, но порядок внутри каждого сохраняем из файла
-        const isTransparentSwatch = (s: Swatch) =>
-            !!s.isTransparent || s.id === "transparent"
-
-        const nextAutoSwatches = allSwatches.filter(
-            (s) => !s.isUser && !isTransparentSwatch(s)
-        )
-
-        const nextUserSwatches = allSwatches.filter(
-            (s) => s.isUser && !isTransparentSwatch(s)
-        )
-
-        // paletteCount (в файле его нет) — детерминированно от фактической палитры
-        const nonTransparentCount = allSwatches.filter(
-            (s) => !s.isTransparent
-        ).length
-        const nextPaletteCount = clampInt(
-            nonTransparentCount || PALETTE_MIN,
-            PALETTE_MIN,
-            PALETTE_MAX
-        )
-
-        // 2) importLayer напрямую (без пайплайна)
-        const imagePixelsNext: PixelValue[][] = createEmptyPixels(g)
-
-        const idxToPixelValue = (swatchIndex: number): PixelValue => {
-            if (swatchIndex < 0) return null
-            if (swatchIndex === transparentIndex) return TRANSPARENT_PIXEL
-
-            const swFile = validated.palette.swatches[swatchIndex]
-            if (!swFile) return null
-            if (swFile.isTransparent) return TRANSPARENT_PIXEL // safety
-
-            return swFile.id as PixelValue
-        }
-
-        const imp = validated.importLayer.cells
-        for (let i = 0; i < cellsN; i++) {
-            const pv = idxToPixelValue(imp[i] as number)
-            const r = Math.floor(i / g)
-            const c = i - r * g
-            imagePixelsNext[r][c] = pv
-        }
-
-        // 4) ref строго по формату
-        const original = decodeRefToImageData(validated.ref)
-
-        routeLog("L1 mapped importLayer.cells -> imagePixelsNext", {
-            g,
-            cellsN,
-            imageNonNull: countNonNullCells(imagePixelsNext),
-        })
-
-        // 3) strokeLayer без вычислений (sparse -> grid)
-        const overlayPixelsNext: PixelValue[][] = createEmptyPixels(g)
-
-        routeLog("L1 built overlay + decoded ref", {
-            overlayNonNull: countNonNullCells(overlayPixelsNext),
-            hasRef: original != null,
-        })
-
-        const st = validated.strokeLayer.cells
-        for (let i = 0; i < st.length; i++) {
-            const cellIndex = st[i].cellIndex
-            const swatchIndex = st[i].swatchIndex
-            const r = Math.floor(cellIndex / g)
-            const c = cellIndex - r * g
-            if (r < 0 || c < 0 || r >= g || c >= g) continue
-            overlayPixelsNext[r][c] = idxToPixelValue(swatchIndex)
-        }
-
-        // selectedSwatch: детерминированно — первый НЕ прозрачный в порядке файла
-        const firstPaintable = allSwatches.find((s) => !s.isTransparent)?.id
-        const selectedSwatchNext: SwatchId | "transparent" = firstPaintable
-            ? firstPaintable
-            : "transparent"
-
-        // showImage/hasOriginalImageData: если ref есть — считаем импортный контекст восстановленным
-        const hasOriginal = original != null
-
-        const loadedAutoOverrides: AutoSwatchOverridesMap = {}
-
-        const nextAutoEffective = applyAutoOverrides(
-            nextAutoSwatches,
-            loadedAutoOverrides // {}
-        )
-
-        const project: ProjectState = {
-            gridSize: g,
-            paletteCount: nextPaletteCount,
-            imagePixels: imagePixelsNext,
-            overlayPixels: overlayPixelsNext,
-            showImage: hasOriginal ? true : false,
-            hasOriginalImageData: hasOriginal,
-            autoSwatches: nextAutoEffective,
-            userSwatches: nextUserSwatches,
-            selectedSwatch: selectedSwatchNext,
-            autoOverrides: {}, // ← строго пусто
-        }
-
-        return {
-            project,
-            originalImageData: original,
-            paletteOrderIds: paletteOrderIds,
-        }
     }
 
     function buildNextStateFromValidatedSnapshotV2(
@@ -5105,6 +4929,7 @@ function PixelEditorFramer({
         const project: ProjectState = {
             gridSize: g,
             paletteCount: nextPaletteCount,
+            brushSize: DEFAULT_BRUSH_SIZE,
             imagePixels: imagePixelsNext,
             overlayPixels: overlayPixelsNext,
             showImage: hasOriginal ? true : false,
@@ -5242,14 +5067,25 @@ function PixelEditorFramer({
         return `g=${params.gridSize}|p=${params.paletteCount}|a=${autoH}|u=${userH}|ref=${params.refNonce}`
     }
 
-    function commitPaintRefIfDirty(reason: string) {
+    function commitPaintRefIfDirty(
+        reason: string,
+        snapshot?: {
+            overlay: PixelValue[][]
+            autoSwatches: Swatch[]
+            userSwatches: Swatch[]
+        }
+    ) {
         if (!overlayDirtyRef.current) return
+
+        const overlayForRef = snapshot?.overlay ?? overlayPixels
+        const autoSwatchesForRef = snapshot?.autoSwatches ?? autoSwatches
+        const userSwatchesForRef = snapshot?.userSwatches ?? userSwatches
 
         // Снимаем эталон ОДИН РАЗ на завершение штриха
         const snap = renderPaintGridToImageData({
-            paintGrid: overlayPixels,
-            autoSwatches,
-            userSwatches,
+            paintGrid: overlayForRef,
+            autoSwatches: autoSwatchesForRef,
+            userSwatches: userSwatchesForRef,
         })
 
         setPaintRefImageData(snap)
@@ -5332,7 +5168,7 @@ function PixelEditorFramer({
         canvas.width = CANVAS_SIZE
         canvas.height = CANVAS_SIZE
 
-        const ctx = canvas.getContext("2d")
+        const ctx = get2dReadFrequentlyContext(canvas)
         if (!ctx) {
             return new ImageData(CANVAS_SIZE, CANVAS_SIZE)
         }
@@ -5655,10 +5491,7 @@ function PixelEditorFramer({
 
         // ✅ После Load не делаем repixelize автоматически (это проверяется в repixelizeEffect).
         // Но витрину (canvasPixels) мы обязаны синхронизировать сразу, поэтому здесь НЕ return.
-        if (skipNextRepixelizeAfterLoadRef.current) {
-            skipNextRepixelizeAfterLoadRef.current = false
-            // НЕ return!
-        }
+
         if (p3InFlightKeyRef.current) return
 
         if (liveGridPreviewOwnerRef.current) {
@@ -5897,15 +5730,16 @@ function PixelEditorFramer({
 
     React.useEffect(() => {
         if (!initialImageData) return
+        if (initialImageRouteKind !== "import") return
 
-        // если пришёл новый ImageData (импорт)
+        // если пришёл новый ImageData (только реальный import)
         if (lastImportedImageRef.current !== initialImageData) {
             lastImportedImageRef.current = initialImageData
 
-            // импорт = единственный выключатель сетки
+            // import = единственный выключатель сетки
             setGridSuppressed(true, "import-initialImageData")
         }
-    }, [initialImageData])
+    }, [initialImageData, initialImageRouteKind])
 
     // ✅ Авто-свотчи (квантование/дефолт) + пользовательские (не трогаются при изменениях paletteCount)
     const [autoSwatches, setAutoSwatches] = React.useState<Swatch[]>(() =>
@@ -5933,9 +5767,6 @@ function PixelEditorFramer({
             return
         }
 
-        // сбрасываем сразу, чтобы не зациклиться
-        pendingBlankCheckReasonRef.current = null
-
         autoEnableGridIfBlank(
             { imagePixels, overlayPixels, autoSwatches, userSwatches },
             reason
@@ -5952,7 +5783,9 @@ function PixelEditorFramer({
     //const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const cameraInputRef = React.useRef<HTMLInputElement | null>(null)
     const [isDrawing, setIsDrawing] = React.useState(false)
-    const [brushSize, setBrushSize] = React.useState<number>(3)
+    const DEFAULT_BRUSH_SIZE = 3
+
+    const [brushSize, setBrushSize] = React.useState<number>(DEFAULT_BRUSH_SIZE)
     const viewportRef = React.useRef<HTMLDivElement | null>(null)
 
     const [viewportSize, setViewportSize] = React.useState({ w: 0, h: 0 })
@@ -5978,33 +5811,14 @@ function PixelEditorFramer({
 
     const loadFileInputRef = React.useRef<HTMLInputElement | null>(null)
 
-    // =====================
-    // UNDO / REDO (Step 1: infra only, no UI changes)
-    // =====================
+    // H3:
+    // локальный runtime-state editor теперь совпадает
+    // с module-scope контрактом EditorCommittedState.
+    type ProjectState = EditorCommittedState
 
-    type ProjectState = {
-        // grid
-        gridSize: number
-        paletteCount: number
-
-        // canvas layers (indices into palette)
-        imagePixels: PixelValue[][]
-        overlayPixels: PixelValue[][]
-
-        // visibility
-        showImage: boolean
-
-        hasOriginalImageData: boolean
-
-        // palette
-        autoSwatches: Swatch[]
-        userSwatches: Swatch[]
-
-        // selection
-        selectedSwatch: SwatchId | "transparent"
-
-        // auto-swatches overrides (diff-only, Step 1 infra)
-        autoOverrides: AutoSwatchOverridesMap
+    type SliderTransactionRef = {
+        before: ProjectState | null
+        keyboardActive: boolean
     }
 
     type AutoSwatchOverride = {
@@ -6077,6 +5891,15 @@ function PixelEditorFramer({
 
     const MAX_HISTORY = 50
 
+    // S2 LEGACY:
+    // pastRef / futureRef временно остаются внутри редактора,
+    // но больше не считаются канонической пользовательской историей.
+    //
+    // Их роль на текущем этапе:
+    // - технический fallback
+    // - совместимость со старым editor-path
+    //
+    // user-facing Undo/Redo должны опираться на root history engine.
     const pastRef = React.useRef<ProjectState[]>([])
     const futureRef = React.useRef<ProjectState[]>([])
     const pendingBlankCheckReasonRef = React.useRef<string | null>(null)
@@ -6098,10 +5921,23 @@ function PixelEditorFramer({
         return src.map((s) => ({ ...s }))
     }
 
+    // H0:
+    // Editor domain contract for future History Engine:
+    //
+    // makeProjectState()
+    //   = capture editor committed-state
+    //
+    // applyProjectState(state)
+    //   = restore editor committed-state
+    //
+    // На H0-H2 это уже существующий рабочий editor-side фундамент истории.
+    // Поведение здесь не меняем.
+
     function makeProjectState(): ProjectState {
         return {
             gridSize,
             paletteCount,
+            brushSize,
             imagePixels: clonePixelsGrid(imagePixels),
             overlayPixels: clonePixelsGrid(overlayPixels),
             showImage,
@@ -6112,7 +5948,35 @@ function PixelEditorFramer({
             hasOriginalImageData: hasImportContext,
 
             autoOverrides: { ...autoOverrides },
+        } as ProjectState
+    }
+
+    const latestProjectStateRef = React.useRef<ProjectState | null>(null)
+
+    React.useEffect(() => {
+        latestProjectStateRef.current = makeProjectState()
+    }, [
+        gridSize,
+        paletteCount,
+        brushSize,
+        imagePixels,
+        overlayPixels,
+        showImage,
+        autoSwatches,
+        userSwatches,
+        selectedSwatch,
+        hasImportContext,
+        autoOverrides,
+    ])
+
+    function makeProjectStateWithOverlay(
+        overlayOverride: PixelValue[][] | null
+    ): ProjectState {
+        const base = makeProjectState()
+        if (overlayOverride) {
+            base.overlayPixels = clonePixelsGrid(overlayOverride)
         }
+        return base
     }
 
     pendingBlankCheckReasonRef.current = null
@@ -6121,12 +5985,11 @@ function PixelEditorFramer({
         isRestoringHistoryRef.current = true
         setGridSize(state.gridSize)
         setPaletteCount(state.paletteCount)
+        setBrushSize((state as any).brushSize ?? DEFAULT_BRUSH_SIZE)
         setHasImportContext(state.hasOriginalImageData)
 
         setImagePixels(clonePixelsGrid(state.imagePixels))
         setOverlayPixels(clonePixelsGrid(state.overlayPixels))
-
-        setOverlayPixels(state.overlayPixels)
 
         // ✅ Шаг 6: Undo/Redo/restore должны обновлять эталон,
         // иначе GRID SIZE “воскресит” старые штрихи из прошлого эталона.
@@ -6161,6 +6024,38 @@ function PixelEditorFramer({
         // Важно: флаги истории не меняем здесь — их меняют undo/redo/pushCommit
     }
 
+    // H3:
+    // editor умеет:
+    // 1) capture current committed-state
+    // 2) apply committed-state back from Root/History Engine
+    const committedStateCaptureRef = React.useRef<() => EditorCommittedState>(
+        () => makeProjectState()
+    )
+
+    const committedStateApplyRef = React.useRef<
+        (state: EditorCommittedState) => void
+    >((state) => applyProjectState(state))
+
+    committedStateCaptureRef.current = () => makeProjectState()
+    committedStateApplyRef.current = (state) => applyProjectState(state)
+
+    React.useEffect(() => {
+        if (!onEditorCommittedStateBridgeReady) return
+        onEditorCommittedStateBridgeReady({
+            captureCommittedState: () => committedStateCaptureRef.current(),
+            applyCommittedState: (state) =>
+                committedStateApplyRef.current(state),
+            resetHistory: () => {
+                pastRef.current = []
+                futureRef.current = []
+                syncHistoryFlags()
+            },
+        })
+        return () => {
+            onEditorCommittedStateBridgeReady(null)
+        }
+    }, [onEditorCommittedStateBridgeReady])
+
     function restoreProjectFromLoadPayload(payload: LoadPayload) {
         const next = payload.nextState as any
 
@@ -6186,7 +6081,6 @@ function PixelEditorFramer({
             traceLoad("commit: history reset")
 
             // keep diagnostics (optional)
-            loadedSnapshotVersionRef.current = payload.snapshotVersion
             if (payload.canonicalChecksum) {
                 loadedCanonicalChecksumRef.current = payload.canonicalChecksum
             }
@@ -6199,7 +6093,23 @@ function PixelEditorFramer({
             isRestoringFromSaveRef.current = true
             traceLoad("commit: restoring=true")
 
-            paletteOrderRef.current = next.paletteOrderIds
+            // UX: сразу очищаем ВИДИМЫЙ canvas, чтобы старый кадр
+            // не висел на экране во время restore-gate.
+            const visibleCanvas = canvasRef.current
+            if (visibleCanvas) {
+                visibleCanvas.width = CANVAS_SIZE
+                visibleCanvas.height = CANVAS_SIZE
+
+                const visibleCtx = visibleCanvas.getContext("2d")
+                if (visibleCtx) {
+                    visibleCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+                    drawCheckerboard(
+                        visibleCtx,
+                        CANVAS_SIZE,
+                        Math.max(1, next.project.gridSize || gridSize)
+                    )
+                }
+            }
 
             // 1) применяем ProjectState (ядро проекта)
             // --------------------------
@@ -6245,8 +6155,9 @@ function PixelEditorFramer({
                 user: fixedProject.userSwatches.length,
             })
 
-            // ✅ после load не делаем repixelize автоматически
-            skipNextRepixelizeAfterLoadRef.current = true
+            // Первый post-load проход repixelizeEffect должен быть заблокирован
+            // всегда, а не только при включённых checksum/debug-логах.
+            postLoadCheckNonceRef.current = 1
 
             applyProjectState(fixedProject)
 
@@ -6271,19 +6182,28 @@ function PixelEditorFramer({
                 }
             )
 
-            // 2) восстановить эталон (ref)
-            setOriginalImageData(next.originalImageData)
+            // 2) восстановить Smart Object через root gateway
+            if (!onRestoreSmartObjectFromLoad) {
+                throw new Error(
+                    "[LOAD] onRestoreSmartObjectFromLoad is missing"
+                )
+            }
 
-            routeLog("L2 commit setOriginalImageData(ref storage)", {
-                hasRef: next.originalImageData != null,
-                refSize: next.originalImageData
+            onRestoreSmartObjectFromLoad({
+                base: next.originalImageData,
+                adjustments: payload.loadedSmartAdjustments,
+            })
+
+            routeLog("L2 commit restore Smart Object via root gateway", {
+                hasRefBase: next.originalImageData != null,
+                refBaseSize: next.originalImageData
                     ? `${next.originalImageData.width}x${next.originalImageData.height}`
                     : null,
             })
 
-            traceLoad("commit: setOriginalImageData called", {
-                hasRef: next.originalImageData != null,
-                refSize: next.originalImageData
+            traceLoad("commit: restored Smart Object via root gateway", {
+                hasRefBase: next.originalImageData != null,
+                refBaseSize: next.originalImageData
                     ? `${next.originalImageData.width}x${next.originalImageData.height}`
                     : null,
             })
@@ -6384,13 +6304,13 @@ function PixelEditorFramer({
     }, [postLoadCheckNonce])
 
     function isSameProjectState(a: ProjectState, b: ProjectState): boolean {
-        // быстрые проверки по ссылкам и примитивам
         if (a.gridSize !== b.gridSize) return false
         if (a.paletteCount !== b.paletteCount) return false
+        if ((a as any).brushSize !== (b as any).brushSize) return false
         if (a.showImage !== b.showImage) return false
         if (a.selectedSwatch !== b.selectedSwatch) return false
+        if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
 
-        // autoOverrides (diff-only)
         const aOv = a.autoOverrides || {}
         const bOv = b.autoOverrides || {}
 
@@ -6403,30 +6323,124 @@ function PixelEditorFramer({
             const k = aKeys[i]
             const av = aOv[k]
             const bv = bOv[k]
-            // поля только hex/isTransparent, сравниваем строго
             if ((av?.hex ?? null) !== (bv?.hex ?? null)) return false
             if ((av?.isTransparent ?? null) !== (bv?.isTransparent ?? null))
                 return false
         }
 
-        // палитра
         if (a.autoSwatches.length !== b.autoSwatches.length) return false
+        for (let i = 0; i < a.autoSwatches.length; i++) {
+            const sa = a.autoSwatches[i]
+            const sb = b.autoSwatches[i]
+            if (!sb) return false
+            if (sa.id !== sb.id) return false
+            if (sa.color !== sb.color) return false
+            if (sa.isTransparent !== sb.isTransparent) return false
+            if (sa.isUser !== sb.isUser) return false
+        }
+
         if (a.userSwatches.length !== b.userSwatches.length) return false
+        for (let i = 0; i < a.userSwatches.length; i++) {
+            const sa = a.userSwatches[i]
+            const sb = b.userSwatches[i]
+            if (!sb) return false
+            if (sa.id !== sb.id) return false
+            if (sa.color !== sb.color) return false
+            if (sa.isTransparent !== sb.isTransparent) return false
+            if (sa.isUser !== sb.isUser) return false
+        }
 
-        // пиксели (быстро: размеры)
+        if (a.imagePixels.length !== b.imagePixels.length) return false
+        for (let r = 0; r < a.imagePixels.length; r++) {
+            const ra = a.imagePixels[r] || []
+            const rb = b.imagePixels[r] || []
+            if (ra.length !== rb.length) return false
+            for (let c = 0; c < ra.length; c++) {
+                if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
+            }
+        }
+
         if (a.overlayPixels.length !== b.overlayPixels.length) return false
+        for (let r = 0; r < a.overlayPixels.length; r++) {
+            const ra = a.overlayPixels[r] || []
+            const rb = b.overlayPixels[r] || []
+            if (ra.length !== rb.length) return false
+            for (let c = 0; c < ra.length; c++) {
+                if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
+            }
+        }
 
-        return false
+        return true
     }
 
-    function pushCommit(before: ProjectState) {
-        const now = makeProjectState()
+    function isSliderKeyboardDragKey(key: string): boolean {
+        return (
+            key === "ArrowLeft" ||
+            key === "ArrowRight" ||
+            key === "ArrowUp" ||
+            key === "ArrowDown"
+        )
+    }
+
+    function beginEditorActionTransaction(
+        kind: "editor-action",
+        beforeState?: ProjectState
+    ) {
+        const before = beforeState ?? makeProjectState()
+
+        // если вдруг не закрыли предыдущую — безопасно перезаписываем
+        pendingEditorActionTransactionRef.current = {
+            kind,
+            before,
+        }
+
+        onBeginUserAction?.({
+            kind,
+            editorBefore: before,
+        })
+    }
+
+    function commitEditorActionTransaction(afterState?: ProjectState) {
+        const tx = pendingEditorActionTransactionRef.current
+        if (!tx) return
+
+        const after = afterState ?? makeProjectState()
+
+        if (isSameProjectState(tx.before, after)) {
+            pendingEditorActionTransactionRef.current = null
+            onAbortUserAction?.()
+            return
+        }
+
+        onCommitUserAction?.({
+            editorAfter: after,
+        })
+
+        pendingEditorActionTransactionRef.current = null
+    }
+
+    function abortEditorActionTransaction() {
+        pendingEditorActionTransactionRef.current = null
+        onAbortUserAction?.()
+    }
+
+    function pushCommit(
+        before: ProjectState,
+        options?: {
+            publishToRoot?: boolean
+            afterState?: ProjectState
+        }
+    ) {
+        const now = options?.afterState ?? makeProjectState()
 
         // ✅ STEP 7: защита от пустых коммитов
         if (isSameProjectState(before, now)) {
             return
         }
 
+        // S2 LEGACY:
+        // локальная editor-history пока ещё живёт внутри редактора
+        // как технический fallback.
         pastRef.current.push(before)
 
         // ✅ лимит истории
@@ -6436,11 +6450,23 @@ function PixelEditorFramer({
 
         // ✅ любое новое действие убивает redo
         futureRef.current = []
-
         syncHistoryFlags()
-
         pendingBlankCheckReasonRef.current = "commit-allwhite"
+
+        // Step 0:
+        // pushCommit больше не пишет root history напрямую.
+        // Он только закрывает локальный editor transaction,
+        // а root history получает commit через единый user-action protocol.
+        const publishToRoot = options?.publishToRoot ?? true
+        if (publishToRoot) {
+            commitEditorActionTransaction(now)
+        }
     }
+
+    // S2 LEGACY:
+    // doUndo / doRedo сохраняются как внутренний editor fallback,
+    // но не должны считаться главным пользовательским undo/redo path.
+    // Пользовательские кнопки уже должны ходить через root engine.
 
     function doUndo() {
         if (pastRef.current.length === 0) return
@@ -6494,27 +6520,22 @@ function PixelEditorFramer({
         syncHistoryFlags()
     }
 
-    // ------------------- GRID SIZE COMMIT (STEP 4) -------------------
+    // ------------------- GRID SIZE COMMIT (UNIFIED) -------------------
 
-    const gridResizeBeforeRef = React.useRef<ProjectState | null>(null)
-    function commitGridResizeIfNeeded() {
-        const before = gridResizeBeforeRef.current
-        if (!before) return
-        gridResizeBeforeRef.current = null
+    const gridSliderTxRef = React.useRef<SliderTransactionRef>({
+        before: null,
+        keyboardActive: false,
+    })
 
-        commitPruneAutoOverridesAndPush(before)
-    }
+    // S-MOBILE:
+    const gridTouchActiveRef = React.useRef(false)
 
-    function commitPruneAutoOverridesAndPush(before: ProjectState | null) {
-        if (!before) return
-
-        // 1) Считаем cleaned только по текущим autoSwatches (текущая "реальность" палитры)
+    function commitGridResizeFromBefore(before: ProjectState) {
         const cleaned = pruneAutoOverridesForCurrentAuto(
             autoSwatches,
             autoOverrides
         )
 
-        // 2) Если отличается — фиксируем в state (НО: только на commit-event)
         const prevKeys = Object.keys(autoOverrides || {})
         const nextKeys = Object.keys(cleaned || {})
         const changed =
@@ -6529,44 +6550,221 @@ function PixelEditorFramer({
             setAutoOverrides(cleaned)
         }
 
-        // 3) Коммитим историю ПОСЛЕ того, как state успеет применить setAutoOverrides
-        // (rAF = тот же паттерн, что у тебя уже применяется для атомарных коммитов)
         requestAnimationFrame(() => {
-            pushCommit(before)
+            const afterState = {
+                ...(latestProjectStateRef.current ?? makeProjectState()),
+                autoOverrides: { ...cleaned },
+            }
+
+            pushCommit(before, {
+                afterState,
+            })
         })
     }
 
-    function beginGridResizeCaptureIfNeeded() {
+    function beginGridSliderTransactionIfNeeded(
+        source: "pointer" | "keyboard"
+    ) {
         liveGridPreviewOwnerRef.current = true
 
-        if (!gridResizeBeforeRef.current) {
-            gridResizeBeforeRef.current = makeProjectState()
+        const tx = gridSliderTxRef.current
+
+        if (tx.before) {
+            if (source === "keyboard") {
+                tx.keyboardActive = true
+            }
+            return
         }
+
+        const before = latestProjectStateRef.current ?? makeProjectState()
+
+        beginEditorActionTransaction("editor-action", before)
+
+        tx.before = before
+        tx.keyboardActive = source === "keyboard"
     }
 
-    function endGridResizeCaptureIfNeeded() {
+    function commitGridSliderTransactionIfNeeded() {
+        const tx = gridSliderTxRef.current
+        const before = tx.before
+
         liveGridPreviewOwnerRef.current = false
 
+        if (!before) {
+            return
+        }
+
+        tx.before = null
+        tx.keyboardActive = false
+
         enqueueTxn("gridCommit", () => {
-            commitGridResizeIfNeeded()
+            commitGridResizeFromBefore(before)
         })
     }
 
-    // ------------------- PALETTE SIZE COMMIT (NEW) -------------------
+    function abortGridSliderTransactionIfNeeded() {
+        const tx = gridSliderTxRef.current
 
-    const paletteResizeBeforeRef = React.useRef<ProjectState | null>(null)
+        liveGridPreviewOwnerRef.current = false
+        tx.before = null
+        tx.keyboardActive = false
 
-    function commitPaletteResizeIfNeeded() {
-        const before = paletteResizeBeforeRef.current
-        if (!before) return
-        paletteResizeBeforeRef.current = null
+        abortEditorActionTransaction()
+    }
+
+    // ------------------- PALETTE SIZE COMMIT (UNIFIED) -------------------
+
+    const paletteSliderTxRef = React.useRef<SliderTransactionRef>({
+        before: null,
+        keyboardActive: false,
+    })
+
+    function commitPruneAutoOverridesAndPush(before: ProjectState) {
+        const cleaned = pruneAutoOverridesForCurrentAuto(
+            autoSwatches,
+            autoOverrides
+        )
+
+        const prevKeys = Object.keys(autoOverrides || {})
+        const nextKeys = Object.keys(cleaned || {})
+        const changed =
+            prevKeys.length !== nextKeys.length ||
+            prevKeys.some((k) => {
+                const a = (autoOverrides as any)?.[k]
+                const b = (cleaned as any)?.[k]
+                return JSON.stringify(a) !== JSON.stringify(b)
+            })
+
+        if (changed) {
+            setAutoOverrides(cleaned)
+        }
+
+        requestAnimationFrame(() => {
+            const afterState = {
+                ...(latestProjectStateRef.current ?? makeProjectState()),
+                autoOverrides: { ...cleaned },
+            }
+
+            pushCommit(before, {
+                afterState,
+            })
+        })
+    }
+
+    // S-MOBILE:
+    const paletteTouchActiveRef = React.useRef(false)
+
+    function beginPaletteSliderTransactionIfNeeded(
+        source: "pointer" | "keyboard"
+    ) {
+        const tx = paletteSliderTxRef.current
+
+        if (tx.before) {
+            if (source === "keyboard") {
+                tx.keyboardActive = true
+            }
+            return
+        }
+
+        const before = latestProjectStateRef.current ?? makeProjectState()
+
+        beginEditorActionTransaction("editor-action", before)
+
+        tx.before = before
+        tx.keyboardActive = source === "keyboard"
+    }
+
+    function commitPaletteSliderTransactionIfNeeded() {
+        const tx = paletteSliderTxRef.current
+        const before = tx.before
+
+        if (!before) {
+            return
+        }
+
+        tx.before = null
+        tx.keyboardActive = false
 
         commitPruneAutoOverridesAndPush(before)
+    }
+
+    function abortPaletteSliderTransactionIfNeeded() {
+        const tx = paletteSliderTxRef.current
+
+        tx.before = null
+        tx.keyboardActive = false
+
+        abortEditorActionTransaction()
+    }
+
+    // ------------------- BRUSH SIZE COMMIT (UNIFIED) -------------------
+
+    const brushSliderTxRef = React.useRef<SliderTransactionRef>({
+        before: null,
+        keyboardActive: false,
+    })
+
+    // S-MOBILE:
+    const brushTouchActiveRef = React.useRef(false)
+
+    function beginBrushSliderTransactionIfNeeded(
+        source: "pointer" | "keyboard"
+    ) {
+        const tx = brushSliderTxRef.current
+
+        if (tx.before) {
+            if (source === "keyboard") {
+                tx.keyboardActive = true
+            }
+            return
+        }
+
+        const before = latestProjectStateRef.current ?? makeProjectState()
+
+        beginEditorActionTransaction("editor-action", before)
+
+        tx.before = before
+        tx.keyboardActive = source === "keyboard"
+    }
+
+    function commitBrushSliderTransactionIfNeeded() {
+        const tx = brushSliderTxRef.current
+        const before = tx.before
+
+        if (!before) {
+            return
+        }
+
+        tx.before = null
+        tx.keyboardActive = false
+
+        const afterState = {
+            ...(latestProjectStateRef.current ?? makeProjectState()),
+            brushSize,
+        } as ProjectState & { brushSize?: number }
+
+        pushCommit(before, {
+            afterState: afterState as ProjectState,
+        })
+    }
+
+    function abortBrushSliderTransactionIfNeeded() {
+        const tx = brushSliderTxRef.current
+
+        tx.before = null
+        tx.keyboardActive = false
+
+        abortEditorActionTransaction()
     }
 
     // ------------------- STROKE UNDO (STEP 6) -------------------
 
     const strokeBeforeRef = React.useRef<ProjectState | null>(null)
+
+    // S4:
+    // текущая открытая транзакция editor action
+    const pendingEditorActionTransactionRef =
+        React.useRef<EditorActionTransaction | null>(null)
     const strokeDidMutateRef = React.useRef(false)
     const lastDrawPointRef = React.useRef<{ x: number; y: number } | null>(null)
     const strokeAfterOverlayRef = React.useRef<PixelValue[][] | null>(null)
@@ -6658,8 +6856,12 @@ function PixelEditorFramer({
             paintValue: currentPaintValue,
         })
 
-        // ✅ STEP 6: начало stroke — сохраняем состояние ДО
-        strokeBeforeRef.current = makeProjectState()
+        // Step 1:
+        // before для stroke снимается ОДИН раз в начале жеста.
+        const before = makeProjectState()
+
+        beginEditorActionTransaction("editor-action", before)
+        strokeBeforeRef.current = before
         strokeDidMutateRef.current = false
 
         // переводим позицию указателя (0..CANVAS_SIZE) в индексы клетки
@@ -6913,6 +7115,7 @@ function PixelEditorFramer({
     const SWATCH_ICON = 44
     const [editingSwatchId, setEditingSwatchId] =
         React.useState<SwatchId | null>(null)
+    const swatchEditBeforeRef = React.useRef<ProjectState | null>(null)
     const [pendingColor, setPendingColor] = React.useState("#FF0000")
     const [pendingTransparent, setPendingTransparent] = React.useState(false)
 
@@ -7213,23 +7416,107 @@ function PixelEditorFramer({
     const BRUSH_STEP = 1
     const pendingImportBeforeRef = React.useRef<ProjectState | null>(null)
 
+    // H3:
+    // после входа committed reference editor должен сообщить наружу,
+    // когда новый editor committed-state уже реально собран.
+    const pendingCommittedStateSettledKindRef = React.useRef<
+        "import" | "load" | "smart-object-apply" | null
+    >(null)
+
     // ------------------- IMAGE INPUT -------------------
 
     React.useEffect(() => {
-        if (initialImageData) {
-            // FIX: если перед импортом был “all-white commit”, мог остаться pending blank-check.
-            // Его нужно сбросить, иначе он иногда включает сетку обратно уже ПОСЛЕ импорта.
-            pendingBlankCheckReasonRef.current = null
-            setAutoOverrides({})
+        const routeKind = initialImageRouteKind ?? "import"
+
+        // Blank import тоже является полноценным import-entry.
+        // А load с null-snapshot всё равно обязан дойти до своей cleanup-ветки.
+        // Поэтому ранний return здесь запрещён.
+        if (!initialImageData && routeKind == null) return
+
+        // FIX: если раньше был pending blank-check, он не должен доезжать
+        // ни в import, ни в SmartObject Apply.
+        pendingBlankCheckReasonRef.current = null
+
+        if (routeKind === "load") {
+            // LOAD уже восстановил project state отдельно.
+            // Он НЕ имеет права входить в import-style pending/history plumbing.
+            pendingImportBeforeRef.current = null
+
+            // Но Root всё равно должен получить settled-сигнал,
+            // когда committed reference уже доедет до editor.
+            pendingCommittedStateSettledKindRef.current = "load"
+        } else {
             const before = makeProjectState()
-
             pendingImportBeforeRef.current = before
-            pendingBlankCheckReasonRef.current = null
-            setGridSuppressed(true, "import")
-            setOriginalImageData(initialImageData)
 
-            // ✅ NEW IMPORT = новая сессия:
-            // очищаем слой штрихов И его эталон, чтобы старые штрихи не пере-наложились после repixelize.
+            // H3:
+            // Root позже должен получить editor committed-state
+            // уже ПОСЛЕ того, как этот reference реально доедет в editor pipeline.
+            pendingCommittedStateSettledKindRef.current = routeKind
+        }
+
+        if (routeKind === "import") {
+            // Step 7 + S-K1:
+            // import kills both pointer and keyboard slider transactions.
+            // A new import starts a completely fresh editor session.
+            const nextGridSize = DEFAULT_EDITOR_GRID_SIZE
+            const nextPaletteCount = DEFAULT_EDITOR_PALETTE_COUNT
+
+            setGridSize(nextGridSize)
+            setPaletteCount(nextPaletteCount)
+            setBrushSize(DEFAULT_BRUSH_SIZE)
+
+            abortEditorActionTransaction()
+
+            brushSliderTxRef.current.before = null
+            brushSliderTxRef.current.keyboardActive = false
+
+            gridSliderTxRef.current.before = null
+            gridSliderTxRef.current.keyboardActive = false
+
+            paletteSliderTxRef.current.before = null
+            paletteSliderTxRef.current.keyboardActive = false
+
+            liveGridPreviewOwnerRef.current = false
+
+            pastRef.current = []
+            futureRef.current = []
+            syncHistoryFlags()
+
+            setAutoOverrides({})
+            setUserSwatches([])
+            setSelectedSwatch("auto-0")
+
+            // Blank import = новая пустая сессия.
+            if (!initialImageData) {
+                // blank import не имеет права наследовать load-only guard'ы
+                postLoadCheckNonceRef.current = 0
+                silentLoadHydrationRef.current = false
+
+                applyBlankProject(nextGridSize)
+                setPaletteCount(nextPaletteCount)
+                setBrushSize(DEFAULT_BRUSH_SIZE)
+                setGridSuppressed(false, "blank-import")
+
+                // новый import-cycle должен гарантированно иметь rebuild
+                setRepixelizeKick((x) => x + 1)
+
+                return
+            }
+
+            // Общая часть: editor получает новый committed reference.
+            // Import — это новая import-сессия, а не продолжение post-load hydration.
+            // Поэтому все load-only guards обязаны быть погашены ДО нового ref-driven rebuild.
+            silentLoadHydrationRef.current = false
+            postLoadCheckNonceRef.current = 0
+            setOriginalImageData(initialImageData)
+            setShowImage(true)
+            setHasImportContext(true)
+
+            setGridSuppressed(true, "import")
+
+            // Очищаем overlay и его эталон, чтобы старые штрихи
+            // не переехали на новое импортированное изображение.
             setPaintRefImageData(null)
             overlayDirtyRef.current = false
             paintSnapshotNonceRef.current = 0
@@ -7237,11 +7524,86 @@ function PixelEditorFramer({
             p3LastProcessedKeyRef.current = null
             p3InFlightKeyRef.current = null
 
-            setOverlayPixels(createEmptyPixels(gridSize))
-            setShowImage(true)
-            setHasImportContext(true)
+            setOverlayPixels(createEmptyPixels(nextGridSize))
+
+            // Страховка: новый import обязан гарантированно запустить rebuild,
+            // даже если перед ним была load-hydration цепочка.
+            setRepixelizeKick((x) => x + 1)
+
+            return
         }
-    }, [initialImageData])
+
+        if (routeKind === "load") {
+            // LOAD уже восстановил ProjectState отдельно.
+            // Здесь editor получает только committed reference snapshot,
+            // без import-side reset'ов и без визуального rebuild из ref.
+
+            if (initialImageData) {
+                // обычный load с reference:
+                // допускаем один silent hydration pass
+                silentLoadHydrationRef.current = true
+
+                setOriginalImageData(initialImageData)
+                setShowImage(true)
+                setHasImportContext(true)
+            } else {
+                // load без reference:
+                // никаких load-only guard'ов оставаться не должно
+                postLoadCheckNonceRef.current = 0
+                silentLoadHydrationRef.current = false
+
+                setOriginalImageData(null)
+                setShowImage(false)
+                setHasImportContext(false)
+            }
+            return
+        }
+
+        // SmartObject Apply = НЕ импорт.
+        // Слой штрихов и его эталон обязаны сохраниться.
+        // Никаких import-side effects здесь не допускается:
+        // - no setGridSuppressed(true, "import")
+        // - no setAutoOverrides({})
+        // - no setPaintRefImageData(null)
+        // - no overlay reset
+
+        if (!initialImageData) return
+
+        // Общая часть: editor получает новый committed reference.
+        setOriginalImageData(initialImageData)
+        setShowImage(true)
+        setHasImportContext(true)
+    }, [initialImageData, initialImageRouteKind])
+
+    React.useEffect(() => {
+        if (!onEditorCommittedStateSettled) return
+
+        const routeKind = pendingCommittedStateSettledKindRef.current
+        if (!routeKind) return
+
+        // Пока import/smart-object rebuild ещё не завершён,
+        // committed-state наружу отдавать нельзя.
+        if (pendingImportBeforeRef.current) return
+
+        pendingCommittedStateSettledKindRef.current = null
+
+        onEditorCommittedStateSettled({
+            state: makeProjectState(),
+            routeKind,
+        })
+    }, [
+        onEditorCommittedStateSettled,
+        gridSize,
+        paletteCount,
+        imagePixels,
+        overlayPixels,
+        showImage,
+        hasImportContext,
+        autoSwatches,
+        userSwatches,
+        selectedSwatch,
+        autoOverrides,
+    ])
 
     const [repixelizeKick, setRepixelizeKick] = React.useState(0)
 
@@ -7277,19 +7639,34 @@ function PixelEditorFramer({
             return
         }
 
-        // ✅ G1.7 (FIX): postLoadCheckNonce больше НЕ должен "съедать" единственный repixelize.
-        // Мы используем его как "маркер, что это первый проход после load":
-        //  - сбрасываем nonce,
-        //  - и ПРОДОЛЖАЕМ выполнение эффекта, чтобы он обновил canvasPixels.
+        // LOAD не должен входить в legacy ref-driven repixelize/import pipeline.
+        // Первый проход после load нужен только для завершения restore-cycle,
+        // но НЕ для rebuild из originalImageData.
         if (postLoadCheckNonceRef.current > 0) {
-            traceLoad(
-                "repixelizeEffect PASS (postLoadCheckNonce>0) — allowing first repixelize after load"
-            )
-
-            // Важно: сбросить флаг, чтобы следующие вызовы repixelize уже не считались "пост-лоадом".
             postLoadCheckNonceRef.current = 0
 
-            // НЕ return!
+            // ВАЖНО:
+            // первый post-load skip обязан погасить оба load-only guard'а.
+            // Иначе silentLoadHydrationRef может пережить этот return
+            // и задушить следующий уже валидный repixelize.
+            silentLoadHydrationRef.current = false
+
+            pendingImportBeforeRef.current = null
+            return
+        }
+
+        // Silent Smart Object load hydration:
+        // reference-domain должен восстановиться,
+        // но визуальный слой уже восстановлен из save-файла и не должен
+        // заново входить в ref-driven rebuild pipeline.
+        if (silentLoadHydrationRef.current) {
+            traceLoad(
+                "repixelizeEffect SKIP (silent load hydration) — blocking rebuild from Smart Object load reference"
+            )
+
+            silentLoadHydrationRef.current = false
+            pendingImportBeforeRef.current = null
+            return
         }
 
         const hasSnap = paintRefImageData != null
@@ -7361,7 +7738,7 @@ function PixelEditorFramer({
                 if (beforeImport) {
                     pendingImportBeforeRef.current = null
                     requestAnimationFrame(() => {
-                        pushCommit(beforeImport)
+                        pushCommit(beforeImport, { publishToRoot: false })
                     })
                 }
 
@@ -7458,19 +7835,6 @@ function PixelEditorFramer({
                 // ✅ NEW: overlay тоже обязан быть ремапнут, иначе он может ссылаться на "удалённый" свотч
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setSelectedSwatch (with-original)",
-                })
-                setSelectedSwatch((prev) => {
-                    if (prev === "transparent") return prev
-                    if (typeof prev === "string" && prev.startsWith("auto-")) {
-                        const idx = parseInt(prev.replace("auto-", ""), 10)
-                        if (
-                            !Number.isFinite(idx) ||
-                            idx < 0 ||
-                            idx >= nextAuto.length
-                        )
-                            return "auto-0"
-                    }
-                    return prev
                 })
 
                 traceLoad("repixelizeEffect MUTATE", {
@@ -7608,6 +7972,13 @@ function PixelEditorFramer({
         const ctx = canvas.getContext("2d")
         if (!ctx) return
 
+        // Во время restore R0 не имеет права перерисовывать старый canvasPixels.
+        // Канонический кадр после load будет опубликован позже через B1-SYNC,
+        // когда isRestoringFromSaveRef.current станет false.
+        if (isRestoringFromSaveRef.current) {
+            return
+        }
+
         // ==========================
         // B1.4-FIX2:
         // Рендер берёт И размеры, И данные ТОЛЬКО из canvasPixels.
@@ -7741,6 +8112,7 @@ function PixelEditorFramer({
         resolveToColor,
         isTransparentValue,
         showGrid,
+        restoreVisualNonce,
     ])
 
     // ------------------- DRAWING -------------------
@@ -7789,11 +8161,6 @@ function PixelEditorFramer({
             Math.min(BRUSH_MAX, Math.floor(brushSize))
         )
 
-        // ✅ STEP 6: фиксируем, что stroke реально изменяет холст
-        if (!strokeDidMutateRef.current) {
-            strokeDidMutateRef.current = true
-        }
-
         const cellW = CANVAS_SIZE / cols
         const cellH = CANVAS_SIZE / rows
 
@@ -7816,12 +8183,23 @@ function PixelEditorFramer({
             let sampleC = Math.max(0, Math.min(gridSize - 1, col0))
             const beforeSample = prev?.[sampleR]?.[sampleC] ?? null
 
+            let changed = false
+
             for (let rr = row0; rr < row0 + s; rr++) {
                 for (let cc = col0; cc < col0 + s; cc++) {
                     if (rr < 0 || cc < 0 || rr >= gridSize || cc >= gridSize)
                         continue
-                    next[rr][cc] = value
+
+                    const prevValue = prev[rr]?.[cc] ?? null
+                    if (prevValue !== value) {
+                        next[rr][cc] = value
+                        changed = true
+                    }
                 }
+            }
+
+            if (changed && !strokeDidMutateRef.current) {
+                strokeDidMutateRef.current = true
             }
 
             const afterSample = next?.[sampleR]?.[sampleC] ?? null
@@ -8046,9 +8424,83 @@ function PixelEditorFramer({
         }
     }
 
-    function handlePointerLeave() {
-        pointerRef.current.inside = false
-        hideBrushPreview()
+    function buildPromotedStrokeCommitState(params: {
+        before: ProjectState
+        afterOverlayRaw: PixelValue[][]
+        autoSwatches: Swatch[]
+        userSwatches: Swatch[]
+        autoOverrides: AutoSwatchOverridesMap
+        selectedSwatch: SwatchId | "transparent"
+    }): {
+        remappedOverlay: PixelValue[][]
+        nextUserSwatches: Swatch[]
+        nextSelectedSwatch: SwatchId | "transparent"
+    } | null {
+        const strokeSwatchId = params.before.selectedSwatch
+
+        if (
+            typeof strokeSwatchId !== "string" ||
+            !strokeSwatchId.startsWith("auto-") ||
+            !params.autoOverrides?.[strokeSwatchId]
+        ) {
+            return null
+        }
+
+        const effectiveAuto = applyAutoOverrides(
+            params.autoSwatches,
+            params.autoOverrides
+        )
+
+        const sourceSwatch =
+            effectiveAuto.find((s) => s.id === strokeSwatchId) ??
+            params.autoSwatches.find((s) => s.id === strokeSwatchId) ??
+            null
+
+        if (!sourceSwatch) return null
+
+        const newUserSwatchId = `user-${Date.now().toString(36)}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`
+
+        const promotedUserSwatch: Swatch = {
+            id: newUserSwatchId,
+            color: sourceSwatch.color,
+            isTransparent: sourceSwatch.isTransparent,
+            isUser: true,
+        }
+
+        const beforeOverlay = params.before.overlayPixels
+        let changed = false
+
+        const remappedOverlay = params.afterOverlayRaw.map((row, r) => {
+            const beforeRow = beforeOverlay[r] || []
+            let rowChanged = false
+
+            const nextRow = row.map((cell, c) => {
+                const beforeCell = beforeRow[c] ?? null
+
+                if (beforeCell !== cell && cell === strokeSwatchId) {
+                    rowChanged = true
+                    changed = true
+                    return newUserSwatchId as PixelValue
+                }
+
+                return cell
+            })
+
+            return rowChanged ? nextRow : row
+        })
+
+        if (!changed) return null
+
+        return {
+            remappedOverlay,
+            nextUserSwatches: [...params.userSwatches, promotedUserSwatch],
+            nextSelectedSwatch:
+                params.selectedSwatch === strokeSwatchId
+                    ? newUserSwatchId
+                    : params.selectedSwatch,
+        }
     }
 
     function stopDrawing(e: any, reason: string = "pointerup") {
@@ -8066,19 +8518,73 @@ function PixelEditorFramer({
         lastDrawPointRef.current = null
         setIsDrawing(false)
 
-        if (strokeDidMutateRef.current && strokeBeforeRef.current) {
-            pushCommit(strokeBeforeRef.current)
+        let paintRefSnapshot:
+            | {
+                  overlay: PixelValue[][]
+                  autoSwatches: Swatch[]
+                  userSwatches: Swatch[]
+              }
+            | undefined
 
-            postCommitGridHook(
-                {
-                    imagePixels,
-                    overlayPixels:
-                        strokeAfterOverlayRef.current ?? overlayPixels,
+        if (strokeBeforeRef.current) {
+            if (strokeDidMutateRef.current) {
+                const before = strokeBeforeRef.current
+                const afterOverlayRaw =
+                    strokeAfterOverlayRef.current ?? overlayPixels
+
+                const promoted = buildPromotedStrokeCommitState({
+                    before,
+                    afterOverlayRaw,
                     autoSwatches,
                     userSwatches,
-                },
-                "stroke"
-            )
+                    autoOverrides,
+                    selectedSwatch,
+                })
+
+                let afterState: ProjectState
+
+                if (promoted) {
+                    setOverlayPixels(promoted.remappedOverlay)
+                    setUserSwatches(promoted.nextUserSwatches)
+
+                    if (promoted.nextSelectedSwatch !== selectedSwatch) {
+                        setSelectedSwatch(promoted.nextSelectedSwatch)
+                    }
+
+                    afterState = makeProjectStateWithOverlay(
+                        promoted.remappedOverlay
+                    )
+
+                    afterState.userSwatches = cloneSwatches(
+                        promoted.nextUserSwatches
+                    )
+                    afterState.selectedSwatch = promoted.nextSelectedSwatch
+                } else {
+                    afterState = makeProjectStateWithOverlay(afterOverlayRaw)
+                }
+
+                paintRefSnapshot = {
+                    overlay: afterState.overlayPixels,
+                    autoSwatches: afterState.autoSwatches,
+                    userSwatches: afterState.userSwatches,
+                }
+
+                pushCommit(before, {
+                    afterState,
+                })
+
+                postCommitGridHook(
+                    {
+                        imagePixels: afterState.imagePixels,
+                        overlayPixels: afterState.overlayPixels,
+                        autoSwatches: afterState.autoSwatches,
+                        userSwatches: afterState.userSwatches,
+                    },
+                    "stroke"
+                )
+            } else {
+                abortEditorActionTransaction()
+            }
         }
 
         // сброс refs stroke
@@ -8087,7 +8593,7 @@ function PixelEditorFramer({
         strokeAfterOverlayRef.current = null
 
         // ✅ эталон обновляем на завершение жеста (неважно как он закончился)
-        commitPaintRefIfDirty(reason)
+        commitPaintRefIfDirty(reason, paintRefSnapshot)
 
         // 🔒 S5 ARCH-INVARIANT:
         // 1) pointerup/cancel завершает STREAM
@@ -8101,10 +8607,9 @@ function PixelEditorFramer({
         }
     }
 
-    function handleCanvasPointerLeave(e: any) {
+    function handleCanvasPointerLeave(_e: any) {
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
-        stopDrawing(e, "pointerleave")
     }
 
     function handleCanvasPointerCancel(e: any) {
@@ -8152,7 +8657,13 @@ function PixelEditorFramer({
     }
 
     function toggleImageVisibility() {
+        beginEditorActionTransaction("editor-action")
+        const before = makeProjectState()
         setShowImage((prev) => !prev)
+
+        requestAnimationFrame(() => {
+            pushCommit(before)
+        })
     }
 
     // ------------------- SWATCH EDIT -------------------
@@ -8160,6 +8671,11 @@ function PixelEditorFramer({
     function openColorEditor(swatchId: SwatchId) {
         const sw = swatchById.get(swatchId)
         if (!sw) return
+
+        const before = latestProjectStateRef.current ?? makeProjectState()
+
+        beginEditorActionTransaction("editor-action", before)
+        swatchEditBeforeRef.current = before
 
         const hex = cssColorToHex(sw.color).toUpperCase()
         const { r, g, b } = hexToRgb(hex)
@@ -8175,58 +8691,6 @@ function PixelEditorFramer({
         setHexDraft((hex || "#FF0000").toUpperCase())
 
         setIsColorModalOpen(true)
-    }
-
-    function applySwatchChange(
-        swatchId: SwatchId,
-        newColor: string,
-        makeTransparent: boolean
-    ) {
-        // Step 2: для auto-* пишем diff в autoOverrides (без чистки)
-        if (typeof swatchId === "string" && swatchId.startsWith("auto-")) {
-            const hexUpper = (newColor || "").toUpperCase()
-
-            setAutoOverrides((prev) => {
-                const next: AutoSwatchOverridesMap = { ...(prev || {}) }
-
-                const isHex = /^#[0-9A-F]{6}$/.test(hexUpper)
-                const hasAny = isHex || typeof makeTransparent === "boolean"
-
-                if (!hasAny) {
-                    delete next[swatchId]
-                    return next
-                }
-
-                const entry: AutoSwatchOverride = {}
-                if (isHex) entry.hex = hexUpper
-                entry.isTransparent = !!makeTransparent
-
-                next[swatchId] = entry
-                return next
-            })
-        }
-        setAutoSwatches((prev) =>
-            prev.map((s) =>
-                s.id === swatchId
-                    ? {
-                          ...s,
-                          color: newColor.toUpperCase(),
-                          isTransparent: makeTransparent,
-                      }
-                    : s
-            )
-        )
-        setUserSwatches((prev) =>
-            prev.map((s) =>
-                s.id === swatchId
-                    ? {
-                          ...s,
-                          color: newColor.toUpperCase(),
-                          isTransparent: makeTransparent,
-                      }
-                    : s
-            )
-        )
     }
 
     function buildNextSwatchesForEdit(
@@ -8372,11 +8836,16 @@ function PixelEditorFramer({
 
     function handleModalApply() {
         if (!editingSwatchId) {
+            abortEditorActionTransaction()
+            swatchEditBeforeRef.current = null
             setIsColorModalOpen(false)
             return
         }
 
-        const before = makeProjectState()
+        const before =
+            swatchEditBeforeRef.current ??
+            latestProjectStateRef.current ??
+            makeProjectState()
 
         // 1) вычисляем “истинный” цвет для применения:
         //    - если прозрачный: цвет неважен, но оставим pendingColor
@@ -8430,23 +8899,38 @@ function PixelEditorFramer({
         setAutoOverrides(collapsed.autoOverrides)
         setSelectedSwatch(collapsed.selectedSwatch as any)
 
+        const afterState: ProjectState = {
+            ...(latestProjectStateRef.current ?? makeProjectState()),
+            imagePixels: clonePixelsGrid(collapsed.imagePixels),
+            overlayPixels: clonePixelsGrid(collapsed.overlayPixels),
+            autoSwatches: cloneSwatches(collapsed.autoSwatches),
+            userSwatches: cloneSwatches(collapsed.userSwatches),
+            selectedSwatch: collapsed.selectedSwatch as any,
+            autoOverrides: { ...collapsed.autoOverrides },
+        }
+
         postCommitGridHook(
             {
-                imagePixels: collapsed.imagePixels,
-                overlayPixels: collapsed.overlayPixels,
-                autoSwatches: collapsed.autoSwatches,
-                userSwatches: collapsed.userSwatches,
+                imagePixels: afterState.imagePixels,
+                overlayPixels: afterState.overlayPixels,
+                autoSwatches: afterState.autoSwatches,
+                userSwatches: afterState.userSwatches,
             },
             "swatch-edit"
         )
 
-        pushCommit(before)
+        pushCommit(before, {
+            afterState,
+        })
 
+        swatchEditBeforeRef.current = null
         setIsColorModalOpen(false)
         setEditingSwatchId(null)
     }
 
     function handleModalCancel() {
+        abortEditorActionTransaction()
+        swatchEditBeforeRef.current = null
         setIsColorModalOpen(false)
         setEditingSwatchId(null)
     }
@@ -8454,16 +8938,37 @@ function PixelEditorFramer({
     // ------------------- ADD SWATCH -------------------
 
     function addUserSwatch() {
+        const before = latestProjectStateRef.current ?? makeProjectState()
+
         const id = `user-${Date.now().toString(36)}-${Math.random()
             .toString(36)
             .slice(2, 8)}`
+
         const newSwatch: Swatch = {
             id,
-            color: bg, // ✅ цвет фона
+            color: bg,
             isTransparent: false,
             isUser: true,
         }
-        setUserSwatches((prev) => [...prev, newSwatch])
+
+        const nextUserSwatches = [...userSwatches, newSwatch]
+
+        setUserSwatches(nextUserSwatches)
+        setSelectedSwatch(id)
+
+        const afterState: ProjectState = {
+            ...before,
+            imagePixels: clonePixelsGrid(imagePixels),
+            overlayPixels: clonePixelsGrid(overlayPixels),
+            autoSwatches: cloneSwatches(autoSwatches),
+            userSwatches: cloneSwatches(nextUserSwatches),
+            selectedSwatch: id,
+            autoOverrides: { ...autoOverrides },
+        }
+
+        pushCommit(before, {
+            afterState,
+        })
     }
 
     // ------------------- EXPORT -------------------
@@ -8566,6 +9071,26 @@ function PixelEditorFramer({
         const blob = await produceBlob()
         if (!blob) return
         downloadBlob(blob, filename)
+    }
+
+    async function imageDataToPngBlob(
+        imageData: ImageData | null
+    ): Promise<Blob | null> {
+        if (!imageData) return null
+        if (typeof document === "undefined") return null
+
+        const canvas = document.createElement("canvas")
+        canvas.width = imageData.width
+        canvas.height = imageData.height
+
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return null
+
+        ctx.putImageData(imageData, 0, 0)
+
+        return await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob((blob) => resolve(blob), "image/png")
+        })
     }
 
     async function saveBlob(blob: Blob, filename: string) {
@@ -8837,23 +9362,6 @@ function PixelEditorFramer({
         }
     }
 
-    const handleBlankCanvas = () => {
-        // S2-1: закрыть Import overlay СРАЗУ, чтобы UI не зависал
-        closeOverlay()
-
-        // S2-2: busy lock через очередь транзакций (без async/heavy)
-        enqueueTxn("importLoad", () => {
-            // S3: инициализация пустого проекта (строго синхронно)
-            applyBlankProject(gridSize)
-
-            // S2-4: “перейти в Editor”
-            // В текущей архитектуре Editor уже под overlay,
-            // закрытие overlay выше делает Editor видимым.
-            // Если у тебя есть router/screen — дерни здесь:
-            // setScreen("editor")
-        })
-    }
-
     const updateOverlayAnchor = React.useCallback(() => {
         const el =
             overlayMode === "import"
@@ -9046,6 +9554,8 @@ function PixelEditorFramer({
                 fitScaleRef.current = Math.max(0.0001, s || 1)
             }}
         >
+            <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
+
             <div
                 style={{
                     position: "relative",
@@ -9066,371 +9576,426 @@ function PixelEditorFramer({
                         "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
                     //background: bg,
                 }}
+            />
+            {/* Top toolbar (unified layout) */}
+            <div
+                style={{
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "center",
+                    marginBottom: 12,
+                }}
             >
-                {/* Top toolbar (unified layout) */}
                 <div
                     style={{
                         width: "100%",
+                        maxWidth: canvasMax,
                         display: "flex",
-                        justifyContent: "center",
-                        marginBottom: 12,
+                        alignItems: "stretch",
+
+                        // ✅ распределяем кнопки на всю ширину тулбара (ширина = ширина холста)
+                        justifyContent: "space-between",
+                        gap: "clamp(7px, 0.6vw, 8px)",
+
+                        flexWrap: "nowrap",
+                        minWidth: 0,
                     }}
                 >
-                    <div
-                        style={{
-                            width: "100%",
-                            maxWidth: canvasMax,
-                            display: "flex",
-                            alignItems: "stretch",
+                    {/* Block 0: Save / Load */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            onClick={onSaveProject}
+                            aria-label="Save"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <SaveIcon />
+                        </button>
 
-                            // ✅ распределяем кнопки на всю ширину тулбара (ширина = ширина холста)
-                            justifyContent: "space-between",
-                            gap: "clamp(7px, 0.6vw, 8px)",
+                        <button
+                            type="button"
+                            onClick={onLoadProject}
+                            aria-label="Load"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <LoadIcon />
+                        </button>
+                    </div>
 
-                            flexWrap: "nowrap",
-                            minWidth: 0,
-                        }}
-                    >
-                        {/* Block 0: Save / Load */}
-                        <div style={{ display: "contents" }}>
-                            <button
-                                type="button"
-                                onClick={onSaveProject}
-                                aria-label="Save"
-                                style={iconOnlyButton(true)}
-                            >
-                                <SaveIcon />
-                            </button>
+                    {/* Block 1: Undo / Redo */}
+                    {/* S2:
+    Если Root дал coordinated undo/redo, именно они являются
+    user-facing историей. doUndo/doRedo остаются только fallback-path. */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            onClick={onCoordinatedUndo ?? doUndo}
+                            disabled={
+                                onCoordinatedUndo
+                                    ? !coordinatedCanUndo
+                                    : !canUndo
+                            }
+                            aria-label="Undo"
+                            className="pxUiAnim"
+                            style={{
+                                ...iconOnlyButton(
+                                    onCoordinatedUndo
+                                        ? !!coordinatedCanUndo
+                                        : canUndo
+                                ),
+                                opacity: onCoordinatedUndo
+                                    ? coordinatedCanUndo
+                                        ? 1
+                                        : 0.35
+                                    : canUndo
+                                      ? 1
+                                      : 0.35,
+                            }}
+                        >
+                            <UndoIcon />
+                        </button>
 
-                            <button
-                                type="button"
-                                onClick={onLoadProject}
-                                aria-label="Load"
-                                style={iconOnlyButton(true)}
-                            >
-                                <LoadIcon />
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={onCoordinatedRedo ?? doRedo}
+                            disabled={
+                                onCoordinatedRedo
+                                    ? !coordinatedCanRedo
+                                    : !canRedo
+                            }
+                            aria-label="Redo"
+                            className="pxUiAnim"
+                            style={{
+                                ...iconOnlyButton(
+                                    onCoordinatedRedo
+                                        ? !!coordinatedCanRedo
+                                        : canRedo
+                                ),
+                                opacity: onCoordinatedRedo
+                                    ? coordinatedCanRedo
+                                        ? 1
+                                        : 0.35
+                                    : canRedo
+                                      ? 1
+                                      : 0.35,
+                            }}
+                        >
+                            <RedoIcon />
+                        </button>
+                    </div>
 
-                        {/* Block 1: Undo / Redo */}
-                        <div style={{ display: "contents" }}>
-                            <button
-                                type="button"
-                                onClick={doUndo}
-                                disabled={!canUndo}
-                                aria-label="Undo"
+                    {/* Block 2: Import / Export (keep refs + dropdown anchoring) */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            ref={importBtnRef}
+                            onClick={(e) => openImport(e)}
+                            style={iconOnlyButton(true)}
+                            aria-label="Import (Camera / Image)"
+                            className="pxUiAnim"
+                        >
+                            <SvgTopButton3
                                 style={{
-                                    ...iconOnlyButton(canUndo),
-                                    opacity: canUndo ? 1 : 0.35,
+                                    width: "100%",
+                                    height: "100%",
+                                    display: "block",
+                                    transform: "translateY(0px)",
                                 }}
-                            >
-                                <UndoIcon />
-                            </button>
+                            />
+                        </button>
 
-                            <button
-                                type="button"
-                                onClick={doRedo}
-                                disabled={!canRedo}
-                                aria-label="Redo"
+                        <button
+                            ref={exportBtnRef}
+                            onClick={(e) => openExport(e)}
+                            style={iconOnlyButton(true)}
+                            aria-label="Export (PNG / SVG)"
+                            className="pxUiAnim"
+                        >
+                            <SvgTopButton4
                                 style={{
-                                    ...iconOnlyButton(canRedo),
-                                    opacity: canRedo ? 1 : 0.35,
+                                    width: "100%",
+                                    height: "100%",
+                                    display: "block",
+                                    transform: "translateY(0px)",
                                 }}
-                            >
-                                <RedoIcon />
-                            </button>
-                        </div>
+                            />
+                        </button>
+                    </div>
 
-                        {/* Block 2: Import / Export (keep refs + dropdown anchoring) */}
-                        <div style={{ display: "contents" }}>
-                            <button
-                                ref={importBtnRef}
-                                onClick={(e) => openImport(e)}
-                                style={iconOnlyButton(true)}
-                                aria-label="Import (Camera / Image)"
-                            >
-                                <SvgTopButton3
-                                    style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        display: "block",
-                                        transform: "translateY(0px)",
-                                    }}
-                                />
-                            </button>
+                    {/* Block 3: Zoom out / Zoom in */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            onClick={handleZoomOut}
+                            onPointerDown={handleZoomOutPointerDown}
+                            onPointerUp={handleZoomOutPointerUp}
+                            onPointerCancel={handleZoomOutPointerUp}
+                            onPointerLeave={handleZoomOutPointerUp}
+                            onContextMenu={(e) => {
+                                e.preventDefault()
+                                resetView()
+                            }}
+                            aria-label="Zoom out (tap) / Reset view (long-press or right-click)"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <ZoomOutIcon />
+                        </button>
 
-                            <button
-                                ref={exportBtnRef}
-                                onClick={(e) => openExport(e)}
-                                style={iconOnlyButton(true)}
-                                aria-label="Export (PNG / SVG)"
-                            >
-                                <SvgTopButton4
-                                    style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        display: "block",
-                                        transform: "translateY(0px)",
-                                    }}
-                                />
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={handleZoomIn}
+                            aria-label="Zoom in"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <ZoomInIcon />
+                        </button>
+                    </div>
 
-                        {/* Block 3: Zoom out / Zoom in */}
-                        <div style={{ display: "contents" }}>
-                            <button
-                                type="button"
-                                onClick={handleZoomOut}
-                                onPointerDown={handleZoomOutPointerDown}
-                                onPointerUp={handleZoomOutPointerUp}
-                                onPointerCancel={handleZoomOutPointerUp}
-                                onPointerLeave={handleZoomOutPointerUp}
-                                onContextMenu={(e) => {
-                                    e.preventDefault()
-                                    resetView()
-                                }}
-                                aria-label="Zoom out (tap) / Reset view (long-press or right-click)"
-                                style={iconOnlyButton(true)}
-                            >
-                                <ZoomOutIcon />
-                            </button>
+                    {/* Block 4: Pipette / Hand */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            aria-label="Pipette tool"
+                            className="pxUiAnim"
+                            onClick={() =>
+                                setToolMode((m) =>
+                                    m === "pipette" ? "brush" : "pipette"
+                                )
+                            }
+                            style={{
+                                ...iconOnlyButton(true),
+                                opacity: toolMode === "pipette" ? 1 : 0.85,
+                                cursor: "pointer",
+                            }}
+                        >
+                            <PipetteIcon
+                                size={50}
+                                active={toolMode === "pipette"}
+                            />
+                        </button>
 
-                            <button
-                                type="button"
-                                onClick={handleZoomIn}
-                                aria-label="Zoom in"
-                                style={iconOnlyButton(true)}
-                            >
-                                <ZoomInIcon />
-                            </button>
-                        </div>
+                        <button
+                            type="button"
+                            aria-label="Hand tool"
+                            className="pxUiAnim"
+                            onClick={() =>
+                                setToolMode((m) =>
+                                    m === "hand" ? "brush" : "hand"
+                                )
+                            }
+                            style={{
+                                ...iconOnlyButton(false),
+                                opacity: toolMode === "hand" ? 1 : 0.85,
+                                cursor: "pointer",
+                            }}
+                        >
+                            {toolMode === "hand" ? (
+                                <HandIconOn size={50} />
+                            ) : (
+                                <HandIconOff size={50} />
+                            )}
+                        </button>
+                    </div>
 
-                        {/* Block 4: Pipette / Hand */}
-                        <div style={{ display: "contents" }}>
-                            <button
-                                type="button"
-                                aria-label="Pipette tool"
-                                onClick={() =>
-                                    setToolMode((m) =>
-                                        m === "pipette" ? "brush" : "pipette"
-                                    )
-                                }
+                    {/* Manual */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            //ref={exportBtnRef}
+                            type="button"
+                            onClick={() => {
+                                toggleManual()
+                            }}
+                            style={iconOnlyButton(true)}
+                            aria-label="Manual button"
+                            className="pxUiAnim"
+                        >
+                            <SvgManualButton
                                 style={{
-                                    ...iconOnlyButton(true),
-                                    opacity: toolMode === "pipette" ? 1 : 0.85,
-                                    cursor: "pointer",
+                                    width: "100%",
+                                    height: "100%",
+                                    display: "block",
+                                    transform: "translateY(0px)",
                                 }}
-                            >
-                                <PipetteIcon
-                                    size={50}
-                                    active={toolMode === "pipette"}
-                                />
-                            </button>
-
-                            <button
-                                type="button"
-                                aria-label="Hand tool"
-                                onClick={() =>
-                                    setToolMode((m) =>
-                                        m === "hand" ? "brush" : "hand"
-                                    )
-                                }
-                                style={{
-                                    ...iconOnlyButton(false),
-                                    opacity: toolMode === "hand" ? 1 : 0.85,
-                                    cursor: "pointer",
-                                }}
-                            >
-                                {toolMode === "hand" ? (
-                                    <HandIconOn size={50} />
-                                ) : (
-                                    <HandIconOff size={50} />
-                                )}
-                            </button>
-                        </div>
-
-                        {/* Manual */}
-                        <div style={{ display: "contents" }}>
-                            <button
-                                //ref={exportBtnRef}
-                                type="button"
-                                onClick={() => {
-                                    toggleManual()
-                                }}
-                                style={iconOnlyButton(true)}
-                                aria-label="Manual button"
-                            >
-                                <SvgManualButton
-                                    style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        display: "block",
-                                        transform: "translateY(0px)",
-                                    }}
-                                />
-                            </button>
-                        </div>
+                            />
+                        </button>
                     </div>
                 </div>
+            </div>
 
-                {/* UI1: hidden file input for project load (NO-OP) */}
-                <input
-                    ref={loadFileInputRef}
-                    type="file"
-                    accept=".pixtudio,application/json"
-                    onChange={handlePickedProjectFile}
-                    style={{ display: "none" }}
-                />
+            {/* UI1: hidden file input for project load (NO-OP) */}
+            <input
+                ref={loadFileInputRef}
+                type="file"
+                accept=".pixtudio,application/json"
+                onChange={handlePickedProjectFile}
+                style={{ display: "none" }}
+            />
 
-                {/* Canvas */}
+            {/* Canvas */}
+            <div
+                style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                }}
+            >
                 <div
                     style={{
                         width: "100%",
+                        maxWidth: canvasMax,
+                        aspectRatio: "1 / 1",
+                        border: "2px solid rgba(0,0,0,0.55)",
+                        background: "#ffffff",
+                        backgroundClip: "padding-box",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        boxSizing: "border-box",
                     }}
                 >
+                    {/* ✅ ZOOM STEP 1: Viewport wrapper + Content layer (no transform yet) */}
                     <div
+                        ref={viewportRef}
                         style={{
+                            position: "relative",
                             width: "100%",
-                            maxWidth: canvasMax,
-                            aspectRatio: "1 / 1",
-                            border: "2px solid rgba(0,0,0,0.55)",
-                            background: "#ffffff",
-                            backgroundClip: "padding-box",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            boxSizing: "border-box",
+                            height: "100%",
+                            overflow: "hidden", // важно: клиппинг "окна холста"
+
+                            // --- Step 10: cursors ---
+                            cursor:
+                                toolMode === "hand"
+                                    ? isPanning
+                                        ? "grabbing"
+                                        : "grab"
+                                    : toolMode === "pipette"
+                                      ? "crosshair"
+                                      : "crosshair",
+
+                            userSelect: "none",
+
+                            touchAction: "manipulation",
                         }}
                     >
-                        {/* ✅ ZOOM STEP 1: Viewport wrapper + Content layer (no transform yet) */}
+                        {/* Content layer (пока без transform) */}
                         <div
-                            ref={viewportRef}
                             style={{
-                                position: "relative",
+                                position: "absolute",
+                                left: 0,
+                                top: 0,
                                 width: "100%",
                                 height: "100%",
-                                overflow: "hidden", // важно: клиппинг "окна холста"
-
-                                // --- Step 10: cursors ---
-                                cursor:
-                                    toolMode === "hand"
-                                        ? isPanning
-                                            ? "grabbing"
-                                            : "grab"
-                                        : toolMode === "pipette"
-                                          ? "crosshair"
-                                          : "crosshair",
-
-                                userSelect: "none",
-
-                                touchAction: "manipulation",
+                                transformOrigin: "0 0",
+                                transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
                             }}
                         >
-                            {/* Content layer (пока без transform) */}
+                            {/* ✅ ZOOM STEP 2: Canvas + overlay stack inside Content */}
                             <div
                                 style={{
-                                    position: "absolute",
-                                    left: 0,
-                                    top: 0,
+                                    position: "relative",
                                     width: "100%",
                                     height: "100%",
-                                    transformOrigin: "0 0",
-                                    transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
                                 }}
                             >
-                                {/* ✅ ZOOM STEP 2: Canvas + overlay stack inside Content */}
-                                <div
+                                <canvas
+                                    ref={canvasRef}
                                     style={{
-                                        position: "relative",
                                         width: "100%",
                                         height: "100%",
+                                        imageRendering: "pixelated",
+                                        touchAction: "none",
+                                        cursor: overlayMode
+                                            ? "default"
+                                            : toolMode === "hand"
+                                              ? isPanning
+                                                  ? "grabbing"
+                                                  : "grab"
+                                              : "crosshair",
+
+                                        display: "block",
+                                    }}
+                                    onPointerDown={handlePointerDown}
+                                    onPointerMove={handlePointerMove}
+                                    // Step 1:
+                                    // stroke commit happens only on pointerup/cancel,
+                                    // not on pointerleave.
+                                    onPointerUp={stopDrawing}
+                                    onPointerLeave={handleCanvasPointerLeave}
+                                    onPointerCancel={handleCanvasPointerCancel}
+                                />
+
+                                {/* overlay слой (Единственный) */}
+                                <div
+                                    style={{
+                                        position: "absolute",
+                                        inset: 0,
+                                        pointerEvents: "none",
                                     }}
                                 >
-                                    <canvas
-                                        ref={canvasRef}
-                                        style={{
-                                            width: "100%",
-                                            height: "100%",
-                                            imageRendering: "pixelated",
-                                            touchAction: "none",
-                                            cursor: overlayMode
-                                                ? "default"
-                                                : toolMode === "hand"
-                                                  ? isPanning
-                                                      ? "grabbing"
-                                                      : "grab"
-                                                  : "crosshair",
-
-                                            display: "block",
-                                        }}
-                                        onPointerDown={handlePointerDown}
-                                        onPointerMove={handlePointerMove}
-                                        onPointerUp={stopDrawing}
-                                        onPointerLeave={
-                                            handleCanvasPointerLeave
-                                        }
-                                        onPointerCancel={
-                                            handleCanvasPointerCancel
-                                        }
-                                    />
-
-                                    {/* overlay слой (Единственный) */}
-                                    <div
-                                        style={{
-                                            position: "absolute",
-                                            inset: 0,
-                                            pointerEvents: "none",
-                                        }}
-                                    >
-                                        {/* рамка кисти (двигается через brushPreviewRef) */}
-                                        {SHOW_BRUSH_PREVIEW && !overlayMode && (
-                                            <div
-                                                ref={brushPreviewRef}
-                                                style={{
-                                                    position: "absolute",
-                                                    border: "2px solid rgba(255,255,255,0.9)",
-                                                    boxSizing: "border-box",
-                                                    borderRadius: 0,
-                                                    display: "none", // покажем, когда inside:true
-                                                }}
-                                            />
-                                        )}
-                                    </div>
+                                    {/* рамка кисти (двигается через brushPreviewRef) */}
+                                    {SHOW_BRUSH_PREVIEW && !overlayMode && (
+                                        <div
+                                            ref={brushPreviewRef}
+                                            style={{
+                                                position: "absolute",
+                                                border: "2px solid rgba(255,255,255,0.9)",
+                                                boxSizing: "border-box",
+                                                borderRadius: 0,
+                                                display: "none", // покажем, когда inside:true
+                                            }}
+                                        />
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Controls area */}
-                <div
-                    style={{
-                        width: "100%",
-                        display: "flex",
-                        justifyContent: "center",
-                        marginTop: 18,
-                    }}
-                >
-                    <div style={{ width: "100%", maxWidth: canvasMax }}>
-                        {/* BRUSH SIZE (dummy UI only) */}
-                        <div style={{ marginBottom: 18 }}>
+            {/* Controls area */}
+            <div
+                style={{
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "center",
+                    marginTop: 0,
+                }}
+            >
+                <div style={{ width: "100%", maxWidth: canvasMax }}>
+                    {/* BRUSH SIZE + Smart Object */}
+                    <div style={{ marginBottom: 18 }}>
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 20,
+                            }}
+                        >
                             <div
                                 style={{
-                                    display: "flex",
-                                    alignItems: "baseline",
+                                    flex: "1 1 auto",
+                                    minWidth: 0,
+                                    paddingTop: 18,
                                 }}
                             >
-                                <div style={labelStyle}>BRUSH SIZE:</div>
-                                <div style={subLabelStyle}>
-                                    {brushSize} × {brushSize}
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        alignItems: "baseline",
+                                        marginBottom: 8,
+                                    }}
+                                >
+                                    <div style={labelStyle}>BRUSH SIZE:</div>
+                                    <div style={subLabelStyle}>
+                                        {brushSize} × {brushSize}
+                                    </div>
                                 </div>
-                            </div>
-
-                            {/* ---------- RANGE THUMB: use RangeCircle SVG as native slider thumb ---------- */}
-                            <style>{`
+                                {/* ---------- RANGE THUMB: use RangeCircle SVG as native slider thumb ---------- */}
+                                <style>{`
   :root{
     --px-range-thumb: 30px; /* размер кружка */
     --px-track-h: 6px;      /* толщина полоски */
@@ -9521,64 +10086,165 @@ function PixelEditorFramer({
   }
 `}</style>
 
-                            {(() => {
-                                const RANGE_CIRCLE_SVG = `
+                                {(() => {
+                                    const RANGE_CIRCLE_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 134 134">
   <g fill="#FF00FF">
     <polygon points="58.6,134 58.6,125.6 33.5,125.6 33.5,117.2 25.1,117.2 25.1,108.8 16.7,108.8 16.7,100.5 8.4,100.5 8.4,75.3 0,75.3 0,58.6 8.4,58.6 8.4,33.5 16.7,33.5 16.7,25.1 25.1,25.1 25.1,16.7 33.5,16.7 33.5,8.4 58.6,8.4 58.6,0 75.3,0 75.3,8.4 100.5,8.4 100.5,16.7 108.8,16.7 108.8,25.1 117.2,25.1 117.2,33.5 125.6,33.5 125.6,58.6 134,58.6 134,75.3 125.6,75.3 125.6,100.5 117.2,100.5 117.2,108.8 108.8,108.8 108.8,117.2 100.5,117.2 100.5,125.6 75.3,125.6 75.3,134"/>
   </g>
 </svg>`.trim()
 
-                                const svgToDataUrl = (svg: string) => {
-                                    const encoded = encodeURIComponent(svg)
-                                        .replace(/'/g, "%27")
-                                        .replace(/"/g, "%22")
-                                    return `url("data:image/svg+xml,${encoded}")`
-                                }
+                                    const svgToDataUrl = (svg: string) => {
+                                        const encoded = encodeURIComponent(svg)
+                                            .replace(/'/g, "%27")
+                                            .replace(/"/g, "%22")
+                                        return `url("data:image/svg+xml,${encoded}")`
+                                    }
 
-                                const circleUrl = svgToDataUrl(RANGE_CIRCLE_SVG)
+                                    const circleUrl =
+                                        svgToDataUrl(RANGE_CIRCLE_SVG)
 
-                                return (
-                                    <style>{`
+                                    return (
+                                        <style>{`
 :root{
   --px-range-circle: ${circleUrl};
 }
 `}</style>
-                                )
-                            })()}
+                                    )
+                                })()}
 
-                            {/* ---------- /RANGE THUMB ---------- */}
+                                {/* ---------- /RANGE THUMB ---------- */}
 
-                            <div style={trackWrap}>
-                                <input
-                                    type="range"
-                                    className="pxRange"
-                                    min={BRUSH_MIN}
-                                    max={BRUSH_MAX}
-                                    step={BRUSH_STEP}
-                                    value={brushSize}
-                                    onChange={(e) => {
-                                        setBrushSize(
-                                            parseInt(e.currentTarget.value, 10)
-                                        )
-                                    }}
-                                    style={
-                                        {
-                                            ...rangeStyleBase,
-                                            ...(rangeTrackStyle
-                                                ? rangeTrackStyle(
-                                                      brushSize,
-                                                      BRUSH_MIN,
-                                                      BRUSH_MAX,
-                                                      "#2F6BFF"
-                                                  )
-                                                : {}),
-                                            "--px-thumb-color": "#2F6BFF",
-                                        } as React.CSSProperties
-                                    }
-                                    disabled={!!overlayMode}
-                                />
+                                <div style={trackWrap}>
+                                    <input
+                                        type="range"
+                                        className="pxRange"
+                                        min={BRUSH_MIN}
+                                        max={BRUSH_MAX}
+                                        step={BRUSH_STEP}
+                                        value={brushSize}
+                                        onChange={(e) => {
+                                            setBrushSize(
+                                                parseInt(
+                                                    e.currentTarget.value,
+                                                    10
+                                                )
+                                            )
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (!isSliderKeyboardDragKey(e.key))
+                                                return
+                                            beginBrushSliderTransactionIfNeeded(
+                                                "keyboard"
+                                            )
+                                        }}
+                                        onKeyUp={() => {
+                                            if (
+                                                !brushSliderTxRef.current
+                                                    .keyboardActive
+                                            )
+                                                return
+                                            commitBrushSliderTransactionIfNeeded()
+                                        }}
+                                        onPointerDown={() => {
+                                            if (isMobileUI) return
+                                            beginBrushSliderTransactionIfNeeded(
+                                                "pointer"
+                                            )
+                                        }}
+                                        onPointerUp={() => {
+                                            if (isMobileUI) return
+                                            commitBrushSliderTransactionIfNeeded()
+                                        }}
+                                        onPointerCancel={() => {
+                                            if (isMobileUI) return
+                                            commitBrushSliderTransactionIfNeeded()
+                                        }}
+                                        onPointerLeave={() => {
+                                            // no-op:
+                                            // drag may temporarily leave range bounds;
+                                            // commit must happen only on pointerup / pointercancel / touchend / touchcancel / blur.
+                                        }}
+                                        onTouchStart={() => {
+                                            brushTouchActiveRef.current = true
+                                            beginBrushSliderTransactionIfNeeded(
+                                                "pointer"
+                                            )
+                                        }}
+                                        onTouchEnd={() => {
+                                            if (!brushTouchActiveRef.current)
+                                                return
+
+                                            brushTouchActiveRef.current = false
+                                            commitBrushSliderTransactionIfNeeded()
+                                        }}
+                                        onTouchCancel={() => {
+                                            if (!brushTouchActiveRef.current)
+                                                return
+
+                                            brushTouchActiveRef.current = false
+                                            commitBrushSliderTransactionIfNeeded()
+                                        }}
+                                        onBlur={() => {
+                                            if (isMobileUI) return
+
+                                            commitBrushSliderTransactionIfNeeded()
+                                        }}
+                                        style={
+                                            {
+                                                ...rangeStyleBase,
+                                                ...(rangeTrackStyle
+                                                    ? rangeTrackStyle(
+                                                          brushSize,
+                                                          BRUSH_MIN,
+                                                          BRUSH_MAX,
+                                                          "#2F6BFF"
+                                                      )
+                                                    : {}),
+                                                "--px-thumb-color": "#2F6BFF",
+                                            } as React.CSSProperties
+                                        }
+                                        disabled={!!overlayMode}
+                                    />
+                                </div>
                             </div>
+
+                            <button
+                                type="button"
+                                onClick={onOpenSmartReferenceTest}
+                                disabled={!onOpenSmartReferenceTest}
+                                aria-label="Smart Object"
+                                className="pxUiAnim"
+                                style={{
+                                    width: 60,
+                                    height: 60,
+                                    flex: "0 0 60px",
+                                    alignSelf: "flex-start",
+                                    border: "0",
+                                    borderRadius: 0,
+                                    background: "transparent",
+                                    padding: 0,
+                                    margin: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: onOpenSmartReferenceTest
+                                        ? "pointer"
+                                        : "default",
+                                    opacity: onOpenSmartReferenceTest
+                                        ? 1
+                                        : 0.45,
+                                }}
+                            >
+                                <SvgSmartObject
+                                    style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        display: "block",
+                                        color: "#C02C66",
+                                    }}
+                                />
+                            </button>
                         </div>
 
                         {/* GRID SIZE (real slider) */}
@@ -9604,34 +10270,73 @@ function PixelEditorFramer({
                                     step={1}
                                     value={gridSize}
                                     onChange={(e) => {
-                                        if (isMobileUI) {
-                                            beginGridResizeCaptureIfNeeded()
-                                        }
-
                                         setGridSize(
                                             parseInt(e.currentTarget.value, 10)
                                         )
                                     }}
+                                    onKeyDown={(e) => {
+                                        if (!isSliderKeyboardDragKey(e.key))
+                                            return
+                                        beginGridSliderTransactionIfNeeded(
+                                            "keyboard"
+                                        )
+                                    }}
+                                    onKeyUp={() => {
+                                        if (
+                                            !gridSliderTxRef.current
+                                                .keyboardActive
+                                        )
+                                            return
+                                        commitGridSliderTransactionIfNeeded()
+                                    }}
                                     onPointerDown={() => {
-                                        beginGridResizeCaptureIfNeeded()
+                                        if (isMobileUI) return
+                                        beginGridSliderTransactionIfNeeded(
+                                            "pointer"
+                                        )
                                     }}
                                     onPointerUp={() => {
-                                        endGridResizeCaptureIfNeeded()
-                                    }}
-                                    onPointerLeave={() => {
-                                        endGridResizeCaptureIfNeeded()
+                                        if (isMobileUI) return
+                                        commitGridSliderTransactionIfNeeded()
                                     }}
                                     onPointerCancel={() => {
-                                        endGridResizeCaptureIfNeeded()
+                                        if (isMobileUI) return
+                                        commitGridSliderTransactionIfNeeded()
                                     }}
+                                    // S-MOBILE:
+                                    // mobile slider history is driven ONLY by touch lifecycle:
+                                    // touchstart = begin, touchend/touchcancel = commit.
+                                    // Pointer and blur paths must stay desktop-only.
                                     onTouchStart={() => {
-                                        beginGridResizeCaptureIfNeeded()
+                                        gridTouchActiveRef.current = true
+                                        beginGridSliderTransactionIfNeeded(
+                                            "pointer"
+                                        )
                                     }}
+                                    onPointerLeave={() => {
+                                        // no-op:
+                                        // drag may temporarily leave range bounds;
+                                        // commit must happen only on pointerup / pointercancel / touchend / touchcancel / blur.
+                                    }}
+                                    // S-MOBILE-3:
                                     onTouchEnd={() => {
-                                        endGridResizeCaptureIfNeeded()
+                                        if (!gridTouchActiveRef.current) return
+
+                                        gridTouchActiveRef.current = false
+                                        commitGridSliderTransactionIfNeeded()
                                     }}
+                                    // S-MOBILE-4:
+                                    onTouchCancel={() => {
+                                        if (!gridTouchActiveRef.current) return
+
+                                        gridTouchActiveRef.current = false
+                                        commitGridSliderTransactionIfNeeded()
+                                    }}
+                                    // S-MOBILE-5:
                                     onBlur={() => {
-                                        endGridResizeCaptureIfNeeded()
+                                        if (isMobileUI) return
+
+                                        commitGridSliderTransactionIfNeeded()
                                     }}
                                     style={
                                         {
@@ -9677,27 +10382,64 @@ function PixelEditorFramer({
                                             parseInt(e.currentTarget.value, 10)
                                         )
                                     }}
+                                    onKeyDown={(e) => {
+                                        if (!isSliderKeyboardDragKey(e.key))
+                                            return
+                                        beginPaletteSliderTransactionIfNeeded(
+                                            "keyboard"
+                                        )
+                                    }}
+                                    onKeyUp={() => {
+                                        if (
+                                            !paletteSliderTxRef.current
+                                                .keyboardActive
+                                        )
+                                            return
+                                        commitPaletteSliderTransactionIfNeeded()
+                                    }}
                                     onPointerDown={() => {
-                                        // ✅ если начинаем менять paletteCount — запоминаем состояние ДО первого изменения
-                                        if (!paletteResizeBeforeRef.current) {
-                                            paletteResizeBeforeRef.current =
-                                                makeProjectState()
-                                        }
+                                        if (isMobileUI) return
+                                        beginPaletteSliderTransactionIfNeeded(
+                                            "pointer"
+                                        )
                                     }}
                                     onPointerUp={() => {
-                                        commitPaletteResizeIfNeeded()
-                                    }}
-                                    onPointerLeave={() => {
-                                        commitPaletteResizeIfNeeded()
+                                        if (isMobileUI) return
+                                        commitPaletteSliderTransactionIfNeeded()
                                     }}
                                     onPointerCancel={() => {
-                                        commitPaletteResizeIfNeeded()
+                                        if (isMobileUI) return
+                                        commitPaletteSliderTransactionIfNeeded()
+                                    }}
+                                    onPointerLeave={() => {
+                                        // no-op:
+                                        // drag may temporarily leave range bounds;
+                                        // commit must happen only on pointerup / pointercancel / touchend / touchcancel / blur.
                                     }}
                                     onBlur={() => {
-                                        commitPaletteResizeIfNeeded()
+                                        if (isMobileUI) return
+
+                                        commitPaletteSliderTransactionIfNeeded()
+                                    }}
+                                    onTouchStart={() => {
+                                        paletteTouchActiveRef.current = true
+                                        beginPaletteSliderTransactionIfNeeded(
+                                            "pointer"
+                                        )
                                     }}
                                     onTouchEnd={() => {
-                                        commitPaletteResizeIfNeeded()
+                                        if (!paletteTouchActiveRef.current)
+                                            return
+
+                                        paletteTouchActiveRef.current = false
+                                        commitPaletteSliderTransactionIfNeeded()
+                                    }}
+                                    onTouchCancel={() => {
+                                        if (!paletteTouchActiveRef.current)
+                                            return
+
+                                        paletteTouchActiveRef.current = false
+                                        commitPaletteSliderTransactionIfNeeded()
                                     }}
                                     style={
                                         {
@@ -9776,6 +10518,7 @@ function PixelEditorFramer({
                                 <button
                                     type="button"
                                     onClick={addUserSwatch}
+                                    className="pxUiAnim"
                                     title="Add swatch"
                                     style={{
                                         width: SWATCH_PX,
@@ -9985,7 +10728,7 @@ function PixelEditorFramer({
                                                     type="button"
                                                     onClick={() => {
                                                         closeOverlay()
-                                                        handleBlankCanvas()
+                                                        onRequestBlankImport?.()
                                                     }}
                                                     style={overlayButtonStyle}
                                                     aria-label="Blank canvas"
@@ -10005,6 +10748,7 @@ function PixelEditorFramer({
                                                     onClick={closeOverlay}
                                                     style={okCancelButtonStyle}
                                                     aria-label="Close"
+                                                    className="pxUiAnim"
                                                 >
                                                     <SvgCancelButton
                                                         style={okCancelSvgStyle}
@@ -10328,6 +11072,7 @@ function PixelEditorFramer({
                                                             okCancelButtonStyle
                                                         }
                                                         aria-label="Close"
+                                                        className="pxUiAnim"
                                                     >
                                                         <SvgCancelButton
                                                             style={
@@ -10516,7 +11261,7 @@ function PixelEditorFramer({
                                             style={{
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: 8,
+                                                gap: 10,
                                                 fontSize:
                                                     SWATCH_EDIT_LABEL_FONT,
                                                 fontWeight: 900,
@@ -10524,6 +11269,7 @@ function PixelEditorFramer({
                                                     SWATCH_EDIT_LABEL_LETTER_SPACING,
                                                 color: "#001219",
                                                 userSelect: "none",
+                                                cursor: "pointer",
                                             }}
                                         >
                                             <div
@@ -10542,42 +11288,36 @@ function PixelEditorFramer({
                                                             e.target.checked
                                                         )
                                                     }
+                                                    aria-label="Transparent"
+                                                    style={{
+                                                        position: "absolute",
+                                                        inset: 0,
+                                                        opacity: 0,
+                                                        margin: 0,
+                                                        cursor: "pointer",
+                                                    }}
+                                                />
+
+                                                <div
                                                     style={{
                                                         width: SWATCH_EDIT_CHECK_SIZE,
                                                         height: SWATCH_EDIT_CHECK_SIZE,
-                                                        appearance: "none",
-                                                        WebkitAppearance:
-                                                            "none",
-                                                        border: SWATCH_EDIT_BORDER,
-                                                        background: "#fff",
-                                                        display: "inline-block",
-                                                        position: "relative",
-                                                        cursor: "pointer",
-                                                        flex: "0 0 auto",
+                                                        display: "grid",
+                                                        placeItems: "center",
+                                                        pointerEvents: "none",
                                                     }}
-                                                />
-                                                {pendingTransparent && (
-                                                    <div
-                                                        style={{
-                                                            position:
-                                                                "absolute",
-                                                            inset: 0,
-                                                            display: "grid",
-                                                            placeItems:
-                                                                "center",
-                                                            pointerEvents:
-                                                                "none",
-                                                            fontSize:
-                                                                SWATCH_EDIT_CHECKMARK_FONT,
-                                                            fontWeight: 900,
-                                                            color: "#001219",
-                                                            lineHeight: 1,
-                                                        }}
-                                                    >
-                                                        ✓
-                                                    </div>
-                                                )}
+                                                >
+                                                    <ExportCheckboxIcon
+                                                        checked={
+                                                            pendingTransparent
+                                                        }
+                                                        size={
+                                                            SWATCH_EDIT_CHECK_SIZE
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
+
                                             <div
                                                 style={{
                                                     fontSize:
@@ -10593,22 +11333,18 @@ function PixelEditorFramer({
                                             </div>
                                         </label>
 
-                                        {!isMobileUI && (
-                                            <div
-                                                style={{
-                                                    flex: "1 1 auto",
-                                                    minWidth: 0,
-                                                }}
-                                            />
-                                        )}
-
                                         <div
                                             style={{
                                                 display: "flex",
                                                 alignItems: "center",
                                                 gap: 12,
                                                 minWidth: 0,
-                                                flex: "0 1 auto",
+                                                flex: "0 0 auto",
+                                                width:
+                                                    SWATCH_EDIT_PREVIEW_SIZE +
+                                                    12 +
+                                                    SWATCH_EDIT_HEX_BOX_WIDTH,
+                                                justifyContent: "flex-end",
                                             }}
                                         >
                                             <div
@@ -10625,19 +11361,37 @@ function PixelEditorFramer({
                                                 }}
                                                 aria-label="Color preview"
                                             />
+
                                             <div
                                                 style={{
-                                                    flex: "1 1 auto",
-                                                    minWidth: 0,
+                                                    width: SWATCH_EDIT_HEX_BOX_WIDTH,
+                                                    minWidth:
+                                                        SWATCH_EDIT_HEX_BOX_WIDTH,
+                                                    maxWidth:
+                                                        SWATCH_EDIT_HEX_BOX_WIDTH,
+                                                    height: SWATCH_EDIT_HEX_INPUT_HEIGHT,
+                                                    flex: "0 0 auto",
                                                     display: "flex",
-                                                    justifyContent: "flex-end",
                                                     alignItems: "center",
+                                                    justifyContent: "flex-end",
                                                 }}
                                                 aria-label="HEX value"
                                             >
                                                 {pendingTransparent ? (
                                                     <div
                                                         style={{
+                                                            width: "100%",
+                                                            height: "100%",
+                                                            border: SWATCH_EDIT_BORDER,
+                                                            boxSizing:
+                                                                "border-box",
+                                                            background:
+                                                                "rgba(255,255,255,0.9)",
+                                                            display: "flex",
+                                                            alignItems:
+                                                                "center",
+                                                            justifyContent:
+                                                                "center",
                                                             fontSize:
                                                                 SWATCH_EDIT_HEX_FONT,
                                                             fontWeight: 800,
@@ -10655,7 +11409,6 @@ function PixelEditorFramer({
                                                     <input
                                                         value={hexDraft}
                                                         onChange={(e) => {
-                                                            // ВАЖНО: не нормализуем в процессе ввода
                                                             setHexDraft(
                                                                 e.target.value
                                                             )
@@ -10678,20 +11431,17 @@ function PixelEditorFramer({
                                                         spellCheck={false}
                                                         aria-label="HEX input"
                                                         onFocus={() => {
-                                                            hexIsEditingRef.current =
-                                                                true
+                                                            hexIsEditingRef.current = true
                                                         }}
                                                         onBlur={() => {
-                                                            // ВАЖНО: при уходе из поля фиксируем hexDraft -> pendingColor/picker
                                                             commitHexDraft()
-                                                            hexIsEditingRef.current =
-                                                                false
+                                                            hexIsEditingRef.current = false
                                                         }}
                                                         style={{
                                                             width: "100%",
                                                             minWidth: 0,
                                                             maxWidth:
-                                                                SWATCH_EDIT_HEX_MAX_WIDTH,
+                                                                SWATCH_EDIT_HEX_BOX_WIDTH,
                                                             height: SWATCH_EDIT_HEX_INPUT_HEIGHT,
                                                             border: SWATCH_EDIT_BORDER,
                                                             background:
@@ -10751,6 +11501,7 @@ function PixelEditorFramer({
                                     onClick={handleModalCancel}
                                     style={okCancelButtonStyle}
                                     aria-label="Cancel"
+                                    className="pxUiAnim"
                                 >
                                     <SvgCancelButton style={okCancelSvgStyle} />
                                 </button>
@@ -10760,6 +11511,7 @@ function PixelEditorFramer({
                                     onClick={handleModalApply}
                                     style={okCancelButtonStyle}
                                     aria-label="OK"
+                                    className="pxUiAnim"
                                 >
                                     <SvgOkButton style={okCancelSvgStyle} />
                                 </button>
@@ -10822,17 +11574,563 @@ function commitImportTxn(
 // ------------------- ROOT MVP -------------------
 
 export default function PIXTUDIO_Mobile_MVP() {
-    const [screen, setScreen] = React.useState<"start" | "editor">("start")
+    const [screen, setScreen] = React.useState<
+        "start" | "editor" | "smart-reference"
+    >("start")
     const [pendingProjectFile, setPendingProjectFile] =
         React.useState<File | null>(null)
-    const [editorImageData, setEditorImageData] =
+
+    const pendingProjectOpenFromStartRef = React.useRef(false)
+
+    // =====================
+    // ROOT / GATEWAY — S1 PASS-THROUGH CUT
+    // Пока без SmartObject UI и без математики.
+    // bakedReferenceFromImport:
+    //   результат import/crop/preprocess до editor
+    // gatewayCommittedReference:
+    //   будущий committed snapshot от SmartObject;
+    //   на S1 это просто pass-through копия baked reference
+    // =====================
+
+    // H1 / H2:
+    // Import не создаёт HistoryEntry.
+    // Import:
+    // - очищает past
+    // - очищает future
+    // - удаляет pending transaction
+    // - начинает новую session
+    //
+    // Undo/redo не имеет права возвращать состояние до импорта.
+
+    // S2: отдельный SmartReferenceEditor существует как внешний модуль, но сюда ещё не подключён.
+
+    const [bakedReferenceFromImport, setBakedReferenceFromImport] =
         React.useState<ImageData | null>(null)
+
+    const [gatewayCommittedReference, setGatewayCommittedReference] =
+        React.useState<ImageData | null>(null)
+
+    const [gatewayCommittedReferenceKind, setGatewayCommittedReferenceKind] =
+        React.useState<"import" | "load" | "smart-object-apply" | null>(null)
+
+    const [smartReferenceBase, setSmartReferenceBase] =
+        React.useState<ImageData | null>(null)
+
+    // S3:
+    // root only routes seeds into SmartReferenceEditor.
+    // Ownership of smart-object state belongs to the module itself.
+    const [smartReferenceSeedAdjustments, setSmartReferenceSeedAdjustments] =
+        React.useState(ZERO_SMART_REFERENCE_ADJUSTMENTS)
+
+    const [smartReferenceLoadPublishNonce, setSmartReferenceLoadPublishNonce] =
+        React.useState(0)
 
     const [setImportPresetId] = React.useState<
         "DEFAULT" | "NEON" | "GRAYSCALE" | "BW"
     >("DEFAULT")
 
     const [cameraOpen, setCameraOpen] = React.useState(false)
+
+    // H1 / H2:
+    // Root-level History Engine scaffold.
+    //
+    // committedHistoryRef:
+    //   будущий список committed history entries текущей session
+    //
+    // redoHistoryRef:
+    //   будущий список redo entries текущей session
+    //
+    // pendingHistoryTransactionRef:
+    //   временный before-state между beginTransaction и commit/abort
+    const committedHistoryRef = React.useRef<HistoryEntry[]>([])
+    const redoHistoryRef = React.useRef<HistoryEntry[]>([])
+    const pendingHistoryTransactionRef =
+        React.useRef<PendingHistoryTransaction | null>(null)
+
+    const [rootCanUndo, setRootCanUndo] = React.useState(false)
+    const [rootCanRedo, setRootCanRedo] = React.useState(false)
+
+    // H3:
+    // Root получает прямой bridge к editor committed-state boundary.
+    const editorCommittedStateBridgeRef =
+        React.useRef<EditorCommittedStateBridge | null>(null)
+
+    // H4:
+    // Root получает прямой bridge к smart-object committed-state boundary.
+    const smartObjectCommittedStateBridgeRef =
+        React.useRef<SmartObjectCommittedStateBridge | null>(null)
+
+    const syncRootHistoryFlags = React.useCallback(() => {
+        setRootCanUndo(committedHistoryRef.current.length > 0)
+        setRootCanRedo(redoHistoryRef.current.length > 0)
+    }, [])
+
+    const commitGatewaySnapshotToEditor = React.useCallback(
+        (
+            snapshot: ImageData | null,
+            kind: "import" | "load" | "smart-object-apply"
+        ) => {
+            // Любой вход эталона в editor идёт через эту точку,
+            // но editor обязан знать ПРИЧИНУ входа:
+            // обычный import или SmartObject Apply.
+            setGatewayCommittedReference(snapshot)
+            setGatewayCommittedReferenceKind(kind)
+
+            if (kind === "import" || kind === "load") {
+                // Step 7:
+                // import/load/open-draw = new life boundary.
+                // No previous user action may survive this point.
+                committedHistoryRef.current = []
+                redoHistoryRef.current = []
+                pendingHistoryTransactionRef.current = null
+                editorCommittedStateBridgeRef.current?.resetHistory?.()
+                syncRootHistoryFlags()
+            }
+        },
+        [syncRootHistoryFlags]
+    )
+
+    const captureEditorCommittedState = React.useCallback(() => {
+        return (
+            editorCommittedStateBridgeRef.current?.captureCommittedState() ??
+            null
+        )
+    }, [])
+
+    const restoreEditorCommittedState = React.useCallback(
+        (state: EditorCommittedState | null) => {
+            if (!state) return
+            editorCommittedStateBridgeRef.current?.applyCommittedState(state)
+        },
+        []
+    )
+
+    const captureSmartObjectCommittedState = React.useCallback(() => {
+        return (
+            smartObjectCommittedStateBridgeRef.current?.captureCommittedState() ??
+            null
+        )
+    }, [])
+
+    const restoreSmartObjectCommittedState = React.useCallback(
+        (state: SmartObjectCommittedState | null) => {
+            if (!state) return
+            smartObjectCommittedStateBridgeRef.current?.applyCommittedState(
+                state
+            )
+        },
+        []
+    )
+
+    const handleRestoreSmartObjectFromLoad = React.useCallback(
+        (payload: {
+            base: ImageData | null
+            adjustments: SmartReferenceAdjustments
+        }) => {
+            const safeAdjustments: SmartReferenceAdjustments = {
+                ...ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                ...(payload.adjustments ?? ZERO_SMART_REFERENCE_ADJUSTMENTS),
+            }
+
+            setBakedReferenceFromImport(payload.base)
+            setSmartReferenceSeedAdjustments(safeAdjustments)
+            setSmartReferenceBase(payload.base)
+
+            // LOAD snapshot больше не строится в root.
+            // Root только seed'ит raw Smart state и просит SmartReferenceEditor
+            // опубликовать канонический load-snapshot.
+            setSmartReferenceLoadPublishNonce((x) => x + 1)
+        },
+        []
+    )
+
+    const handleCaptureSmartReferenceBaseForSave = React.useCallback(() => {
+        return smartReferenceBase
+    }, [smartReferenceBase])
+
+    const handleCaptureSmartObjectCommittedStateForSave =
+        React.useCallback(() => {
+            return captureSmartObjectCommittedState()
+        }, [captureSmartObjectCommittedState])
+
+    // S1/S2:
+    // Root-level History Engine = единственный user-facing источник истины.
+    //
+    // Что это значит на практике:
+    //
+    // - beginTransaction / abortTransaction / commitTransaction работают только
+    //   с root history.
+    //
+    // - undo / redo пользователя обязаны идти через этот слой,
+    //   потому что только root history знает про оба домена:
+    //   editor + smart-object.
+    //
+    // - внутренняя editor-history пока ещё может существовать,
+    //   но только как legacy/fallback механизм редактора,
+    //   а не как главная пользовательская история.
+    const resetHistory = React.useCallback(() => {
+        // S1/S2:
+        // resetHistory = reset КАНОНИЧЕСКОЙ root history
+        // + сброс legacy editor-history, чтобы старый undo-path
+        // не переживал новый import и не конфликтовал с root history.
+        committedHistoryRef.current = []
+        redoHistoryRef.current = []
+        pendingHistoryTransactionRef.current = null
+
+        editorCommittedStateBridgeRef.current?.resetHistory()
+        syncRootHistoryFlags()
+    }, [syncRootHistoryFlags])
+
+    const beginTransaction = React.useCallback(
+        (input: BeginHistoryTransactionInput) => {
+            pendingHistoryTransactionRef.current = {
+                kind: input.kind,
+                editorBefore: input.editorBefore,
+                smartBefore: input.smartBefore,
+                smartAfter: null,
+            }
+            syncRootHistoryFlags()
+        },
+        [syncRootHistoryFlags]
+    )
+
+    const abortTransaction = React.useCallback(() => {
+        pendingHistoryTransactionRef.current = null
+        syncRootHistoryFlags()
+    }, [syncRootHistoryFlags])
+
+    const commitTransaction = React.useCallback(
+        (editorAfter: EditorCommittedState | null) => {
+            const pending = pendingHistoryTransactionRef.current
+            if (!pending) return
+
+            committedHistoryRef.current.push({
+                kind: pending.kind,
+                editorBefore: pending.editorBefore,
+                editorAfter,
+                smartBefore: pending.smartBefore,
+                smartAfter: pending.smartAfter,
+            })
+
+            redoHistoryRef.current = []
+            pendingHistoryTransactionRef.current = null
+            syncRootHistoryFlags()
+        },
+        [syncRootHistoryFlags]
+    )
+
+    // Step 0 canonical user-action protocol:
+    // begin → optional finalize metadata → commit / abort
+    const beginUserAction = React.useCallback(
+        (input: UserActionBeginInput) => {
+            beginTransaction({
+                kind: input.kind,
+                editorBefore: input.editorBefore,
+                smartBefore:
+                    input.smartBefore ?? captureSmartObjectCommittedState(),
+            })
+        },
+        [beginTransaction, captureSmartObjectCommittedState]
+    )
+
+    const finalizePendingUserAction = React.useCallback(
+        (input?: UserActionFinalizeInput) => {
+            if (!pendingHistoryTransactionRef.current) return
+
+            pendingHistoryTransactionRef.current.smartAfter =
+                input?.smartAfter ?? captureSmartObjectCommittedState()
+        },
+        [captureSmartObjectCommittedState]
+    )
+
+    const commitUserAction = React.useCallback(
+        (input: UserActionCommitInput) => {
+            finalizePendingUserAction({
+                smartAfter: input.smartAfter,
+            })
+            commitTransaction(input.editorAfter)
+        },
+        [finalizePendingUserAction, commitTransaction]
+    )
+
+    const abortUserAction = React.useCallback(() => {
+        abortTransaction()
+    }, [abortTransaction])
+
+    const undo = React.useCallback(() => {
+        // S2:
+        // Это канонический пользовательский Undo.
+        // Он обязан восстанавливать ОБА домена из root history.
+        const entry = committedHistoryRef.current.pop()
+        if (!entry) return
+
+        redoHistoryRef.current.push(entry)
+        restoreEditorCommittedState(entry.editorBefore)
+        restoreSmartObjectCommittedState(entry.smartBefore)
+        syncRootHistoryFlags()
+    }, [
+        restoreEditorCommittedState,
+        restoreSmartObjectCommittedState,
+        syncRootHistoryFlags,
+    ])
+
+    const redo = React.useCallback(() => {
+        // S2:
+        // Это канонический пользовательский Redo.
+        // Он обязан восстанавливать ОБА домена из root history.
+        const entry = redoHistoryRef.current.pop()
+        if (!entry) return
+
+        committedHistoryRef.current.push(entry)
+        restoreEditorCommittedState(entry.editorAfter)
+        restoreSmartObjectCommittedState(entry.smartAfter)
+        syncRootHistoryFlags()
+    }, [
+        restoreEditorCommittedState,
+        restoreSmartObjectCommittedState,
+        syncRootHistoryFlags,
+    ])
+
+    const debugHistoryInfo = React.useCallback(() => {
+        return {
+            committed: committedHistoryRef.current.length,
+            redo: redoHistoryRef.current.length,
+            hasPending: pendingHistoryTransactionRef.current != null,
+        }
+    }, [])
+
+    const closeSmartReferenceEditor = React.useCallback(() => {
+        // Step 6:
+        // Smart Object = strict modal action.
+        // Cancel does not create history entry and must abort
+        // the pending user action through the canonical protocol.
+        abortUserAction()
+        setScreen("editor")
+    }, [abortUserAction])
+
+    const openSmartReferenceFromEditorTest = React.useCallback(() => {
+        const before = captureEditorCommittedState()
+        if (ENABLE_ROOT_HISTORY_LOGS) {
+            console.log("H3 editorBefore capture:", before)
+        }
+
+        const smartBefore = captureSmartObjectCommittedState()
+
+        // Step 6:
+        // open Smart Object = begin modal user action.
+        // editorBefore and smartBefore are captured exactly once here.
+        beginUserAction({
+            kind: "smart-object-apply",
+            editorBefore: before,
+            smartBefore,
+        })
+
+        setScreen("smart-reference")
+    }, [
+        captureEditorCommittedState,
+        captureSmartObjectCommittedState,
+        beginUserAction,
+    ])
+
+    const handlePublishedReferenceEnvelope = React.useCallback(
+        (envelope: ReferenceSnapshotEnvelope) => {
+            // Step 6:
+            // Smart Object Apply is a strict modal action:
+            // 1) finalize smartAfter
+            // 2) route committed snapshot into editor-domain
+            // 3) wait for settled editorAfter
+            if (envelope.kind === "smart-object-apply") {
+                finalizePendingUserAction({
+                    smartAfter: captureSmartObjectCommittedState(),
+                })
+            }
+
+            commitGatewaySnapshotToEditor(envelope.snapshot, envelope.kind)
+
+            if (envelope.kind === "smart-object-apply") {
+                setScreen("editor")
+            }
+        },
+        [
+            commitGatewaySnapshotToEditor,
+            captureSmartObjectCommittedState,
+            finalizePendingUserAction,
+        ]
+    )
+
+    const handleEditorCommittedStateSettled = React.useCallback(
+        (payload: EditorCommittedStateSettledPayload) => {
+            if (ENABLE_ROOT_HISTORY_LOGS) {
+                console.log("H3 settled payload:", payload)
+            }
+
+            // Step 6:
+            // smart-object-apply commits only after editor-domain
+            // finishes its rebuild and yields final editorAfter.
+            if (payload.routeKind !== "smart-object-apply") return
+
+            commitUserAction({
+                editorAfter: payload.state,
+            })
+
+            if (ENABLE_ROOT_HISTORY_LOGS) {
+                console.log(
+                    "STEP6 committed history entry:",
+                    committedHistoryRef.current[
+                        committedHistoryRef.current.length - 1
+                    ]
+                )
+            }
+        },
+        [commitUserAction]
+    )
+
+    const handleBeginUserAction = React.useCallback(
+        (input: UserActionBeginInput) => {
+            beginUserAction(input)
+        },
+        [beginUserAction]
+    )
+
+    const handleFinalizePendingUserAction = React.useCallback(
+        (input?: UserActionFinalizeInput) => {
+            finalizePendingUserAction(input)
+        },
+        [finalizePendingUserAction]
+    )
+
+    const handleCommitUserAction = React.useCallback(
+        (input: UserActionCommitInput) => {
+            commitUserAction(input)
+        },
+        [commitUserAction]
+    )
+
+    const handleAbortUserAction = React.useCallback(() => {
+        abortUserAction()
+    }, [abortUserAction])
+
+    const rootSupportsFileSystemAccess =
+        typeof window !== "undefined" && "showSaveFilePicker" in window
+
+    function getRootSavePickerOptionsForFilename(filename: string) {
+        const lower = filename.toLowerCase()
+        const isPng = lower.endsWith(".png")
+        const isSvg = lower.endsWith(".svg")
+
+        const pickerOpts: any = {
+            suggestedName: filename,
+        }
+
+        if (isPng) {
+            pickerOpts.types = [
+                {
+                    description: "PNG Image",
+                    accept: { "image/png": [".png"] },
+                },
+            ]
+        } else if (isSvg) {
+            pickerOpts.types = [
+                {
+                    description: "SVG Image",
+                    accept: { "image/svg+xml": [".svg"] },
+                },
+            ]
+        }
+
+        return pickerOpts
+    }
+
+    function downloadBlobFromRoot(blob: Blob, filename: string) {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    }
+
+    async function saveBlobFromProducerAtRoot(
+        produceBlob: () => Promise<Blob | null>,
+        filename: string
+    ) {
+        if (typeof window === "undefined") {
+            const b = await produceBlob()
+            if (b) downloadBlobFromRoot(b, filename)
+            return
+        }
+
+        const anyWin = window as any
+        const canSaveAs =
+            rootSupportsFileSystemAccess &&
+            window.isSecureContext &&
+            typeof anyWin.showSaveFilePicker === "function"
+
+        if (canSaveAs) {
+            let handle: any = null
+            try {
+                handle = await anyWin.showSaveFilePicker(
+                    getRootSavePickerOptionsForFilename(filename)
+                )
+            } catch (e: any) {
+                if (e?.name === "AbortError") return
+                handle = null
+            }
+
+            const blob = await produceBlob()
+            if (!blob) return
+
+            if (handle) {
+                try {
+                    const writable = await handle.createWritable()
+                    await writable.write(blob)
+                    await writable.close()
+                    return
+                } catch (e: any) {}
+            }
+
+            downloadBlobFromRoot(blob, filename)
+            return
+        }
+
+        const blob = await produceBlob()
+        if (!blob) return
+        downloadBlobFromRoot(blob, filename)
+    }
+
+    async function imageDataToPngBlobAtRoot(
+        imageData: ImageData | null
+    ): Promise<Blob | null> {
+        if (!imageData) return null
+        if (typeof document === "undefined") return null
+
+        const canvas = document.createElement("canvas")
+        canvas.width = imageData.width
+        canvas.height = imageData.height
+
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return null
+
+        ctx.putImageData(imageData, 0, 0)
+
+        return await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob((blob) => resolve(blob), "image/png")
+        })
+    }
+
+    const handleSmartReferenceExport = React.useCallback(
+        async (payload: {
+            previewImage: ImageData | null
+            adjustments: SmartReferenceAdjustments
+        }) => {
+            await saveBlobFromProducerAtRoot(async () => {
+                return await imageDataToPngBlobAtRoot(payload.previewImage)
+            }, "pixtudio-smart-object.png")
+        },
+        []
+    )
 
     const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -10996,6 +12294,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                           }}
                           style={okCancelButtonStyle}
                           aria-label="OK"
+                          className="pxUiAnim"
                       >
                           <SvgOkButton style={okCancelSvgStyle} />
                       </button>
@@ -11061,6 +12360,10 @@ export default function PIXTUDIO_Mobile_MVP() {
         []
     )
 
+    // ROOT GATEWAY ENTRY:
+    // Именно здесь baked reference после import впервые входит
+    // в новый маршрут Root -> (future SmartObject) -> Editor.
+
     function handleImportDecision(decision: ImportDecision) {
         const base = decision.preparedImageData
 
@@ -11086,9 +12389,13 @@ export default function PIXTUDIO_Mobile_MVP() {
             "gallery" // было "file" — лучше держать в рамках union-типа
         )
 
-        setEditorImageData(preprocessed)
+        // S1 gateway cut:
+        // import pipeline -> baked reference -> gateway slot -> editor reference
+        setBakedReferenceFromImport(preprocessed)
+        setSmartReferenceBase(preprocessed)
+        setSmartReferenceSeedAdjustments(ZERO_SMART_REFERENCE_ADJUSTMENTS)
+        commitGatewaySnapshotToEditor(preprocessed, "import")
         setScreen("editor")
-
         return preprocessed
     }
 
@@ -11189,15 +12496,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         bakedRef512: ImageData
     }
 
-    // Единственный вход в редактор (пока НЕ используется — NO-OP).
-    function commitImport(_artifact: ImportArtifact) {
-        // C0: NO-OP stub. Реальная проводка будет в E1/E2.
-    }
-
     type PresetId = "DEFAULT" | "NEON" | "GRAYSCALE" | "BW"
-
-    const [lastImportPresetId, setLastImportPresetId] =
-        React.useState<PresetId>("DEFAULT")
 
     const [selectedPresetId, setSelectedPresetId] =
         React.useState<PresetId | null>(null)
@@ -11238,8 +12537,6 @@ export default function PIXTUDIO_Mobile_MVP() {
         },
         [showImportError]
     )
-
-    const { alertBoxSize, alertMeasureRef } = useImportAlertBoxSizing(false, "")
 
     // LEGACY (to be removed):
     // ImportDecision carries presetId past crop boundary -> violates Chinese Room.
@@ -11320,11 +12617,14 @@ export default function PIXTUDIO_Mobile_MVP() {
         }
     }
 
-    // E1B: новый апплаер (старый НЕ трогаем)
-
+    // ROOT GATEWAY ENTRY:
+    // Альтернативный импортный путь тоже обязан входить в editor
+    // только через gateway-slot, без прямого setEditorImageData(...).
     function handleImportArtifact(a: ImportArtifact) {
-        setEditorImageData(a.bakedRef512)
-
+        setBakedReferenceFromImport(a.bakedRef512)
+        setSmartReferenceBase(a.bakedRef512)
+        setSmartReferenceSeedAdjustments(ZERO_SMART_REFERENCE_ADJUSTMENTS)
+        commitGatewaySnapshotToEditor(a.bakedRef512, "import")
         setScreen("editor")
     }
 
@@ -11521,25 +12821,6 @@ export default function PIXTUDIO_Mobile_MVP() {
         if (typeof navigator === "undefined") return false
         const ua = navigator.userAgent || ""
         return /Android|iPhone|iPad|iPod/i.test(ua)
-    }, [])
-
-    React.useEffect(() => {
-        if (typeof window === "undefined") return
-        if (!window.matchMedia) return
-
-        const mql = window.matchMedia("(pointer: coarse)")
-
-        const apply = () => setIsCoarsePointer(!!mql.matches)
-        apply()
-
-        if (typeof mql.addEventListener === "function") {
-            mql.addEventListener("change", apply)
-            return () => mql.removeEventListener("change", apply)
-        }
-
-        // старые браузеры
-        ;(mql as any).addListener?.(apply)
-        return () => (mql as any).removeListener?.(apply)
     }, [])
 
     // активные pointers для pinch
@@ -11825,22 +13106,6 @@ export default function PIXTUDIO_Mobile_MVP() {
     React.useEffect(() => {
         if (!cropPending) return
 
-        const onUp = () => setIsCropDragging(false)
-
-        window.addEventListener("pointerup", onUp)
-        window.addEventListener("pointercancel", onUp)
-        window.addEventListener("blur", onUp)
-
-        return () => {
-            window.removeEventListener("pointerup", onUp)
-            window.removeEventListener("pointercancel", onUp)
-            window.removeEventListener("blur", onUp)
-        }
-    }, [cropPending])
-
-    React.useEffect(() => {
-        if (!cropPending) return
-
         // Freeze scroll + gestures while Crop overlay is open
         const prevOverflow = document.body.style.overflow
         const prevTouchAction = (document.body.style as any).touchAction
@@ -11958,7 +13223,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                     offCanvas.width = srcW
                     offCanvas.height = srcH
 
-                    const ctx = offCanvas.getContext("2d")
+                    const ctx = get2dReadFrequentlyContext(offCanvas)
                     if (!ctx) throw new Error("Failed to get 2D context")
 
                     ctx.clearRect(0, 0, srcW, srcH)
@@ -12012,7 +13277,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 offCanvas.width = srcW
                 offCanvas.height = srcH
 
-                const ctx = offCanvas.getContext("2d")
+                const ctx = get2dReadFrequentlyContext(offCanvas)
                 if (!ctx) throw new Error("Failed to get 2D context")
 
                 ctx.clearRect(0, 0, srcW, srcH)
@@ -12351,8 +13616,19 @@ export default function PIXTUDIO_Mobile_MVP() {
         st.pointerId = null
     }
 
+    // ROOT GATEWAY ENTRY:
+    // Даже пустой вход в editor (blank canvas) проходит через тот же gateway-slot.
+
+    // S3 note:
+    // SmartReferenceEditor уже подключён в root как отдельный модуль,
+    // но в обычный пользовательский UI ещё не врезан.
+
     function openDraw() {
-        setEditorImageData(null)
+        // S1: даже blank/open-editor идёт через тот же gateway-slot.
+        setBakedReferenceFromImport(null)
+        setSmartReferenceBase(null)
+        setSmartReferenceSeedAdjustments(ZERO_SMART_REFERENCE_ADJUSTMENTS)
+        commitGatewaySnapshotToEditor(null, "import")
         setScreen("editor")
     }
 
@@ -12416,71 +13692,131 @@ export default function PIXTUDIO_Mobile_MVP() {
             // важно: чтобы повторный выбор того же файла срабатывал
             event.target.value = ""
 
+            pendingProjectOpenFromStartRef.current = screen === "start"
+
             // 1) кладём файл в pending
             setPendingProjectFile(file)
 
             // 2) переключаемся в Editor (дальше Editor сам “съест” pending и восстановит)
             setScreen("editor")
         },
-        [setScreen]
+        [screen, setScreen]
     )
 
     const content =
         screen === "start" ? (
-            <>
-                <StartScreen
-                    onPickImage={openImagePicker}
-                    onOpenCamera={openCamera}
-                    onOpenDraw={openDraw}
-                    onOpenProject={openProjectPicker}
-                />
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handlePickedImage}
-                />
-                <input
-                    ref={loadFileInputRef}
-                    type="file"
-                    accept=".pixtudio,application/json"
-                    style={{ display: "none" }}
-                    onChange={handlePickedProjectFile}
-                />
-            </>
+            <StartScreen
+                onPickImage={openImagePicker}
+                onOpenCamera={openCamera}
+                onOpenDraw={openDraw}
+                onOpenProject={openProjectPicker}
+            />
         ) : (
             <>
+                {/* ROOT -> EDITOR:
+                Editor должен оставаться смонтированным и при screen === "editor",
+                и при screen === "smart-reference".
+                Иначе теряется editor-owned state:
+                overlay, undo/redo, refs и локальная история редактора. */}
                 <PixelEditorFramer
-                    initialImageData={editorImageData}
+                    initialImageData={gatewayCommittedReference}
+                    initialImageRouteKind={gatewayCommittedReferenceKind}
+                    onCaptureSmartReferenceBaseForSave={
+                        handleCaptureSmartReferenceBaseForSave
+                    }
+                    onCaptureSmartObjectCommittedStateForSave={
+                        handleCaptureSmartObjectCommittedStateForSave
+                    }
+                    onRestoreSmartObjectFromLoad={
+                        handleRestoreSmartObjectFromLoad
+                    }
                     startWithImageVisible={true}
                     onRequestCamera={openSystemCameraHead}
                     onRequestCropFromFile={async ({ file }) => {
                         const sourceImage = await decodeToSourceImage(file)
                         openCropFlow(sourceImage)
                     }}
+                    onRequestPickImage={openImagePicker}
+                    onRequestBlankImport={openDraw}
+                    onShowImportError={failImport}
+                    onOpenSmartReferenceTest={
+                        smartReferenceBase
+                            ? openSmartReferenceFromEditorTest
+                            : undefined
+                    }
+                    onEditorCommittedStateBridgeReady={(bridge) => {
+                        if (ENABLE_ROOT_HISTORY_LOGS) {
+                            console.log("H3 bridge ready:", bridge)
+                        }
+                        editorCommittedStateBridgeRef.current = bridge
+                    }}
+                    onEditorCommittedStateSettled={
+                        handleEditorCommittedStateSettled
+                    }
+                    onBeginUserAction={handleBeginUserAction}
+                    onFinalizePendingUserAction={
+                        handleFinalizePendingUserAction
+                    }
+                    onCommitUserAction={handleCommitUserAction}
+                    onAbortUserAction={handleAbortUserAction}
+                    onCoordinatedUndo={undo}
+                    onCoordinatedRedo={redo}
+                    coordinatedCanUndo={rootCanUndo}
+                    coordinatedCanRedo={rootCanRedo}
                     pendingProjectFile={pendingProjectFile}
                     onPendingProjectFileConsumed={() =>
                         setPendingProjectFile(null)
                     }
-                    onRequestPickImage={openImagePicker}
-                    onShowImportError={onShowImportError}
                 />
 
-                {/* общий file input: нужен и в start, и в editor */}
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handlePickedImage}
-                />
+                <div
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        zIndex: 20000,
+                        pointerEvents:
+                            screen === "smart-reference" ? "auto" : "none",
+                    }}
+                >
+                    <SmartReferenceEditor
+                        bakedBase={smartReferenceBase}
+                        seedCommittedAdjustments={smartReferenceSeedAdjustments}
+                        loadPublishNonce={smartReferenceLoadPublishNonce}
+                        isOpen={screen === "smart-reference"}
+                        onCancel={closeSmartReferenceEditor}
+                        onSmartObjectCommittedStateBridgeReady={(bridge) => {
+                            smartObjectCommittedStateBridgeRef.current = bridge
+                        }}
+                        onPublishEnvelope={handlePublishedReferenceEnvelope}
+                        onExport={handleSmartReferenceExport}
+                    />
+                </div>
             </>
         )
 
     return (
         <>
             {content}
+
+            {/* ROOT shared hidden inputs:
+                должны быть смонтированы независимо от текущего экрана,
+                потому что root-callbacks openImagePicker/openProjectPicker
+                могут вызываться из разных веток UI. */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handlePickedImage}
+            />
+
+            <input
+                ref={loadFileInputRef}
+                type="file"
+                accept=".pixtudio,application/json"
+                style={{ display: "none" }}
+                onChange={handlePickedProjectFile}
+            />
 
             {/* ------------------- FOOTER STUBS (Start Screen) ------------------- */}
             {screen === "start" && (
@@ -12535,104 +13871,133 @@ export default function PIXTUDIO_Mobile_MVP() {
                         >
                             <button
                                 type="button"
-                                onClick={() =>
-                                    console.log("[FOOTER] instagram")
-                                }
-                                style={footerIconStyle}
-                                aria-label="Instagram"
-                            >
-                                <svg
-                                    viewBox="0 0 71.78 71.78"
-                                    width="18"
-                                    height="18"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    {/* ...весь твой текущий svg без изменений... */}
-                                </svg>
-                            </button>
+                                onClick={() => {
+                                    if (typeof window === "undefined") return
 
-                            <button
-                                type="button"
-                                onClick={() => console.log("[FOOTER] mailto")}
-                                style={footerIconStyle}
-                                aria-label="Telegram"
-                            >
-                                <svg
-                                    viewBox="0 0 71.78 71.78"
-                                    width="18"
-                                    height="18"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <rect
-                                        x="0"
-                                        y="0"
-                                        width="71.78"
-                                        height="71.78"
-                                        rx="20.85"
-                                        ry="20.85"
-                                        fill="#0a000f"
-                                    />
-                                    <path
-                                        fill="#ffffff"
-                                        d="M46.74,63.89h-21.71c-9.45,0-17.14-7.69-17.14-17.14v-21.71c0-9.45,7.69-17.14,17.14-17.14h21.71c9.45,0,17.14,7.69,17.14,17.14v21.71c0,9.45-7.69,17.14-17.14,17.14ZM25.03,12.09c-7.14,0-12.95,5.81-12.95,12.95v21.71c0,7.14,5.81,12.95,12.95,12.95h21.71c7.14,0,12.95-5.81,12.95-12.95v-21.71c0-7.14-5.81-12.95-12.95-12.95h-21.71Z"
-                                    />
-                                    <path
-                                        fill="#ffffff"
-                                        d="M35.89,50.05c-7.81,0-14.16-6.35-14.16-14.16s6.35-14.16,14.16-14.16,14.16,6.35,14.16,14.16-6.35,14.16-14.16,14.16ZM35.89,26.02c-5.44,0-9.87,4.43-9.87,9.87s4.43,9.87,9.87,9.87,9.87-4.43,9.87-9.87-4.43-9.87-9.87-9.87Z"
-                                    />
-                                    <circle
-                                        cx="51.59"
-                                        cy="20.19"
-                                        r="3.69"
-                                        fill="#ffffff"
-                                    />
-                                </svg>
-                            </button>
+                                    const isMobile =
+                                        /Android|iPhone|iPad|iPod|Mobile/i.test(
+                                            navigator.userAgent
+                                        )
 
-                            <button
-                                type="button"
-                                onClick={() => console.log("[FOOTER] email")}
+                                    const mailtoHref =
+                                        "mailto:support@pixtudio.app?subject=PIXTUDIO%20support"
+
+                                    const gmailComposeUrl =
+                                        "https://mail.google.com/mail/?view=cm&fs=1&to=support@pixtudio.app&su=PIXTUDIO%20support"
+
+                                    if (isMobile) {
+                                        window.location.href = mailtoHref
+                                        return
+                                    }
+
+                                    window.open(
+                                        gmailComposeUrl,
+                                        "_blank",
+                                        "noopener,noreferrer"
+                                    )
+                                }}
                                 style={footerIconStyle}
                                 aria-label="Email"
+                                className="pxUiAnim"
                             >
                                 <svg
-                                    viewBox="0 0 79.8 63.84"
-                                    width="18"
-                                    height="15"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        fill="#0a000f"
-                                        d="M67.83,0H11.97C5.37,0,0,5.37,0,11.97v39.9c0,6.6,5.37,11.97,11.97,11.97h55.86c6.6,0,11.97-5.37,11.97-11.97V11.97c0-6.6-5.37-11.97-11.97-11.97Z"
-                                    />
-                                    <path
-                                        fill="#ffffff"
-                                        d="M67.83,7.98c.31,0,.62.04.91.11l-28.84,21.27L11.06,8.09c.29-.07.6-.11.91-.11h55.86Z"
-                                    />
-                                    <path
-                                        fill="#ffffff"
-                                        d="M67.83,55.86H11.97c-2.2,0-3.99-1.79-3.99-3.99V15.73l29.55,21.79c.7.52,1.54.78,2.37.78s1.66-.26,2.37-.78l29.55-21.79v36.14c0,2.2-1.79,3.99-3.99,3.99h0Z"
-                                    />
-                                </svg>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => console.log("[FOOTER] share")}
-                                style={footerIconStyle}
-                                aria-label="Share"
-                            >
-                                <svg
-                                    viewBox="0 0 70.47 70.47"
+                                    viewBox="0 0 103.2 103.2"
                                     width="22"
                                     height="22"
                                     xmlns="http://www.w3.org/2000/svg"
-                                    fill="#0a000f"
                                 >
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M14.09,28.63c3.89,0,7.05,3.16,7.05,7.05s-3.16,7.05-7.05,7.05-7.05-3.16-7.05-7.05,3.16-7.05,7.05-7.05M56.37,7.05c3.89,0,7.05,3.16,7.05,7.05s-3.16,7.05-7.05,7.05c-9.31,0-9.32-14.09,0-14.09M56.37,49.33c3.89,0,7.05,3.16,7.05,7.05s-3.16,7.05-7.05,7.05c-9.31,0-9.32-14.09,0-14.09M14.09,49.77c4.3,0,8.1-1.97,10.69-5.01l17.64,10.19c-.89,8.76,5.95,15.52,13.95,15.52s14.09-6.31,14.09-14.09-6.31-14.09-14.09-14.09c-4.75,0-8.92,2.36-11.48,5.96l-16.99-9.81c.38-1.92.37-3.76-.03-5.68l17.43-10.03c2.58,3.3,6.55,5.46,11.07,5.46,7.78,0,14.09-6.31,14.09-14.09S64.16,0,56.37,0c-8.32,0-15.23,7.3-13.88,16.21l-17.81,10.25c-2.58-2.97-6.35-4.88-10.59-4.88-7.78,0-14.09,6.31-14.09,14.09s6.31,14.09,14.09,14.09"
+                                    <polygon
+                                        fill="#001219"
+                                        points="45.2,103.2 45.2,96.8 25.8,96.8 25.8,90.3 19.4,90.3 19.4,83.9 12.9,83.9 12.9,77.4 6.5,77.4 
+		6.5,58.1 0,58.1 0,45.2 6.5,45.2 6.5,25.8 12.9,25.8 12.9,19.4 19.4,19.4 19.4,12.9 25.8,12.9 25.8,6.5 45.2,6.5 45.2,0 58.1,0 
+		58.1,6.5 77.4,6.5 77.4,12.9 83.9,12.9 83.9,19.4 90.3,19.4 90.3,25.8 96.8,25.8 96.8,45.2 103.2,45.2 103.2,58.1 96.8,58.1 
+		96.8,77.4 90.3,77.4 90.3,83.9 83.9,83.9 83.9,90.3 77.4,90.3 77.4,96.8 58.1,96.8 58.1,103.2 	"
                                     />
+                                    <path
+                                        fill="#ffffff"
+                                        d="M69.6,31.1h-36c-4.3,0-7.7,3.5-7.7,7.7v25.7c0,4.3,3.5,7.7,7.7,7.7h36c4.3,0,7.7-3.5,7.7-7.7V38.8
+	C77.3,34.5,73.8,31.1,69.6,31.1z M33.6,36.2h36c0.2,0,0.4,0,0.6,0.1L51.6,50L33,36.3C33.2,36.2,33.4,36.2,33.6,36.2z M72.2,64.5
+	c0,1.4-1.2,2.6-2.6,2.6h-36c-1.4,0-2.6-1.2-2.6-2.6V41.2l19,14c0.5,0.3,1,0.5,1.5,0.5c0.5,0,1.1-0.2,1.5-0.5l19-14V64.5z"
+                                    />
+                                </svg>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (typeof window === "undefined") return
+
+                                    const shareUrl = window.location.origin
+                                    const shareData = {
+                                        title: "PIXTUDIO",
+                                        text: "Create your pixel identity.",
+                                        url: shareUrl,
+                                    }
+
+                                    try {
+                                        if (
+                                            navigator.share &&
+                                            (!navigator.canShare ||
+                                                navigator.canShare(shareData))
+                                        ) {
+                                            await navigator.share(shareData)
+                                            return
+                                        }
+                                    } catch (error) {
+                                        // user cancel / unsupported / other runtime issue
+                                    }
+
+                                    try {
+                                        if (
+                                            navigator.clipboard &&
+                                            window.isSecureContext
+                                        ) {
+                                            await navigator.clipboard.writeText(
+                                                shareUrl
+                                            )
+                                            alert("Link copied")
+                                            return
+                                        }
+                                    } catch (error) {}
+
+                                    window.prompt("Copy this link:", shareUrl)
+                                }}
+                                style={footerIconStyle}
+                                aria-label="Share"
+                                className="pxUiAnim"
+                            >
+                                <svg
+                                    version="1.1"
+                                    viewBox="0 0 103.2 103.2"
+                                    width="22"
+                                    height="22"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <g>
+                                        <polygon
+                                            fill="#001219"
+                                            points="45.2,103.2 45.2,96.8 25.8,96.8 25.8,90.3 19.4,90.3 19.4,83.9 12.9,83.9 12.9,77.4 6.5,77.4 
+                6.5,58.1 0,58.1 0,45.2 6.5,45.2 6.5,25.8 12.9,25.8 12.9,19.4 19.4,19.4 19.4,12.9 25.8,12.9 25.8,6.5 45.2,6.5 45.2,0 58.1,0 
+                58.1,6.5 77.4,6.5 77.4,12.9 83.9,12.9 83.9,19.4 90.3,19.4 90.3,25.8 96.8,25.8 96.8,45.2 103.2,45.2 103.2,58.1 96.8,58.1 
+                96.8,77.4 90.3,77.4 90.3,83.9 83.9,83.9 83.9,90.3 77.4,90.3 77.4,96.8 58.1,96.8 58.1,103.2"
+                                        />
+                                    </g>
+                                    <g transform="translate(-380 -3319)">
+                                        <g transform="translate(56 160)">
+                                            <path
+                                                fill="#FFFFFF"
+                                                fillRule="evenodd"
+                                                clipRule="evenodd"
+                                                d="M357,3206.2c2.6,0,4.7,2.1,4.7,4.7s-2.1,4.7-4.7,4.7c-2.6,0-4.7-2.1-4.7-4.7
+                    S354.4,3206.2,357,3206.2 M384.9,3192c2.6,0,4.7,2.1,4.7,4.7c0,2.6-2.1,4.7-4.7,4.7C378.8,3201.3,378.8,3192,384.9,3192
+                    M384.9,3219.9c2.6,0,4.7,2.1,4.7,4.7s-2.1,4.7-4.7,4.7C378.8,3229.3,378.8,3219.9,384.9,3219.9 M357,3220.2
+                    c2.8,0,5.4-1.3,7.1-3.3l11.7,6.7c-0.6,5.8,3.9,10.3,9.2,10.3c5.1,0,9.3-4.2,9.3-9.3c0-5.1-4.2-9.3-9.3-9.3
+                    c-3.1,0-5.9,1.6-7.6,3.9l-11.2-6.5c0.3-1.3,0.2-2.5,0-3.8l11.5-6.6c1.7,2.2,4.3,3.6,7.3,3.6c5.1,0,9.3-4.2,9.3-9.3
+                    c0-5.1-4.2-9.3-9.3-9.3c-5.5,0-10.1,4.8-9.2,10.7l-11.8,6.8c-1.7-2-4.2-3.2-7-3.2c-5.1,0-9.3,4.2-9.3,9.3
+                    S351.8,3220.2,357,3220.2"
+                                            />
+                                        </g>
+                                    </g>
                                 </svg>
                             </button>
                         </div>
@@ -12771,8 +14136,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 }
                                                 style={{
                                                     position: "absolute",
-                                                    right: 25,
-                                                    top: 25,
+                                                    right: 50,
+                                                    top: 50,
                                                     width: 44,
                                                     height: 44,
 
@@ -12789,15 +14154,17 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 }}
                                             >
                                                 <svg
-                                                    width="44"
-                                                    height="44"
-                                                    viewBox="0 0 44 44"
+                                                    width="25"
+                                                    height="25"
+                                                    viewBox="0 0 63.1 66.8"
                                                     style={{ display: "block" }}
                                                     xmlns="http://www.w3.org/2000/svg"
                                                 >
-                                                    <polygon
+                                                    <path
                                                         fill="#fff"
-                                                        points="42.64 29.03 41.74 29.03 40.83 29.03 40.83 29.94 39.92 29.94 39.01 29.94 39.01 30.85 38.11 30.85 37.2 30.85 36.29 30.85 36.29 29.94 36.29 29.03 36.29 28.13 35.38 28.13 35.38 27.22 35.38 26.31 35.38 25.4 34.48 25.4 34.48 24.5 34.48 23.59 33.57 23.59 33.57 22.68 33.57 21.78 32.66 21.78 32.66 20.87 31.76 20.87 31.76 19.96 31.76 19.05 30.85 19.05 30.85 18.15 29.94 18.15 29.94 17.24 29.03 17.24 29.03 16.33 29.03 15.42 28.13 15.42 28.13 14.52 27.22 14.52 26.31 14.52 26.31 13.61 25.4 13.61 25.4 12.7 24.5 12.7 24.5 11.79 23.59 11.79 23.59 10.89 22.68 10.89 21.78 10.89 21.78 9.98 20.87 9.98 19.96 9.98 19.96 9.07 19.05 9.07 18.15 9.07 18.15 8.17 17.24 8.17 16.33 8.17 15.42 8.17 15.42 7.26 14.52 7.26 13.61 7.26 12.7 7.26 12.7 6.35 12.7 5.44 12.7 4.54 13.61 4.54 13.61 3.63 13.61 2.72 13.61 1.81 14.52 1.81 14.52 .91 14.52 0 13.61 0 13.61 .91 12.7 .91 12.7 1.81 11.79 1.81 11.79 2.72 10.89 2.72 9.98 2.72 9.98 3.63 9.07 3.63 8.17 3.63 8.17 4.54 7.26 4.54 7.26 5.44 6.35 5.44 5.44 5.44 5.44 6.35 4.54 6.35 3.63 6.35 3.63 7.26 2.72 7.26 1.81 7.26 .91 7.26 .91 8.17 0 8.17 0 9.07 .91 9.07 1.81 9.07 1.81 9.98 2.72 9.98 3.63 9.98 3.63 10.89 4.54 10.89 5.44 10.89 5.44 11.79 6.35 11.79 7.26 11.79 7.26 12.7 8.17 12.7 9.07 12.7 9.07 13.61 9.98 13.61 10.89 13.61 10.89 14.52 11.79 14.52 11.79 15.42 12.7 15.42 13.61 15.42 13.61 16.33 14.52 16.33 14.52 15.42 14.52 14.52 13.61 14.52 13.61 13.61 13.61 12.7 13.61 11.79 12.7 11.79 12.7 10.89 13.61 10.89 14.52 10.89 14.52 11.79 15.42 11.79 16.33 11.79 17.24 11.79 17.24 12.7 18.15 12.7 19.05 12.7 19.05 13.61 19.96 13.61 20.87 13.61 20.87 14.52 21.78 14.52 21.78 15.42 22.68 15.42 22.68 16.33 23.59 16.33 24.5 16.33 24.5 17.24 25.4 17.24 25.4 18.15 26.31 18.15 26.31 19.05 27.22 19.05 27.22 19.96 27.22 20.87 28.13 20.87 28.13 21.78 29.03 21.78 29.03 22.68 29.03 23.59 29.94 23.59 29.94 24.5 30.85 24.5 30.85 25.4 30.85 26.31 31.76 26.31 31.76 27.22 31.76 28.13 31.76 29.03 32.66 29.03 32.66 29.94 32.66 30.85 31.76 30.85 31.76 29.94 30.85 29.94 29.94 29.94 29.03 29.94 29.03 29.03 28.13 29.03 27.22 29.03 27.22 29.94 28.13 29.94 28.13 30.85 28.13 31.76 29.03 31.76 29.03 32.66 29.94 32.66 29.94 33.57 29.94 34.48 30.85 34.48 30.85 35.38 30.85 36.29 31.76 36.29 31.76 37.2 31.76 38.11 32.66 38.11 32.66 39.01 32.66 39.92 33.57 39.92 33.57 40.83 33.57 41.74 33.57 42.64 34.48 42.64 34.48 43.55 35.38 43.55 35.38 42.64 36.29 42.64 36.29 41.74 36.29 40.83 36.29 39.92 37.2 39.92 37.2 39.01 37.2 38.11 38.11 38.11 38.11 37.2 38.11 36.29 39.01 36.29 39.01 35.38 39.92 35.38 39.92 34.48 39.92 33.57 40.83 33.57 40.83 32.66 40.83 31.76 41.74 31.76 41.74 30.85 42.64 30.85 42.64 29.94 43.55 29.94 43.55 29.03 42.64 29.03"
+                                                        d="M32.5,66.8c-17.7,0-32.1-14.4-32.1-32.1c0-17.7,14.4-32,32.1-32c7,0,13.6,2.4,18.9,6.9l3.5,3V0h6.4v25H36.2
+	v-6.4h15.7l-4-3.7C43.6,11.1,38.3,9,32.5,9C18.3,9,6.7,20.5,6.7,34.7c0,14.2,11.5,25.7,25.7,25.7c10.7,0,20.3-6.8,24-16.8l6.2,1.7
+	C58.3,58.1,46.1,66.8,32.5,66.8z"
                                                     />
                                                 </svg>
                                             </div>
@@ -12812,8 +14179,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 }
                                                 style={{
                                                     position: "absolute",
-                                                    right: 25,
-                                                    bottom: 25,
+                                                    right: 50,
+                                                    bottom: 50,
                                                     width: 44,
                                                     height: 44,
 
@@ -12830,17 +14197,19 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 }}
                                             >
                                                 <svg
-                                                    width="44"
-                                                    height="44"
-                                                    viewBox="0 0 44 44"
+                                                    width="25"
+                                                    height="25"
+                                                    viewBox="0 0 66.8 66.8"
                                                     style={{ display: "block" }}
                                                     xmlns="http://www.w3.org/2000/svg"
                                                 >
                                                     {/* TODO: заменишь на свои пиксельные стрелки */}
                                                     {/* простая “масштаб” иконка-заглушка */}
-                                                    <polygon
+                                                    <path
                                                         fill="#fff"
-                                                        points="35.11 0 35.11 .78 34.33 .78 33.55 .78 32.77 .78 32.77 1.56 31.99 1.56 31.21 1.56 31.21 2.34 30.43 2.34 29.65 2.34 28.87 2.34 28.87 3.12 28.09 3.12 27.31 3.12 26.53 3.12 25.75 3.12 25.75 3.9 24.96 3.9 24.18 3.9 23.4 3.9 22.62 3.9 21.84 3.9 21.06 3.9 21.06 4.68 21.84 4.68 21.84 5.46 22.62 5.46 23.4 5.46 23.4 6.24 24.18 6.24 24.96 6.24 24.96 7.02 25.75 7.02 26.53 7.02 26.53 7.8 25.75 7.8 25.75 8.58 24.96 8.58 24.96 9.36 24.18 9.36 24.18 10.14 23.4 10.14 23.4 10.92 22.62 10.92 22.62 11.7 21.84 11.7 21.84 12.48 21.06 12.48 21.06 13.26 20.28 13.26 20.28 14.04 19.5 14.04 19.5 14.82 18.72 14.82 18.72 15.6 17.94 15.6 17.94 14.82 17.16 14.82 17.16 14.04 16.38 14.04 16.38 13.26 15.6 13.26 15.6 12.48 14.82 12.48 14.82 11.7 14.04 11.7 14.04 10.92 13.26 10.92 13.26 10.14 12.48 10.14 12.48 9.36 11.7 9.36 11.7 8.58 10.92 8.58 10.92 7.8 10.14 7.8 10.14 7.02 9.36 7.02 9.36 6.24 10.14 6.24 10.14 5.46 10.92 5.46 11.7 5.46 11.7 4.68 12.48 4.68 13.26 4.68 14.04 4.68 14.04 3.9 13.26 3.9 13.26 3.12 12.48 3.12 11.7 3.12 10.92 3.12 10.14 3.12 9.36 3.12 9.36 2.34 8.58 2.34 7.8 2.34 7.02 2.34 6.24 2.34 6.24 1.56 5.46 1.56 4.68 1.56 3.9 1.56 3.9 .78 3.12 .78 2.34 .78 2.34 0 1.56 0 .78 0 0 0 0 .78 0 1.56 .78 1.56 .78 2.34 .78 3.12 .78 3.9 1.56 3.9 1.56 4.68 1.56 5.46 1.56 6.24 2.34 6.24 2.34 7.02 2.34 7.8 2.34 8.58 3.12 8.58 3.12 9.36 3.12 10.14 3.12 10.92 3.12 11.7 3.12 12.48 3.9 12.48 3.9 13.26 3.9 14.04 4.68 14.04 4.68 13.26 4.68 12.48 5.46 12.48 5.46 11.7 5.46 10.92 5.46 10.14 6.24 10.14 6.24 9.36 7.02 9.36 7.8 9.36 7.8 10.14 8.58 10.14 8.58 10.92 9.36 10.92 9.36 11.7 10.14 11.7 10.14 12.48 10.92 12.48 10.92 13.26 11.7 13.26 11.7 14.04 12.48 14.04 12.48 14.82 13.26 14.82 13.26 15.6 14.04 15.6 14.04 16.38 14.82 16.38 14.82 17.16 15.6 17.16 15.6 17.94 15.6 18.72 14.82 18.72 14.82 19.5 14.04 19.5 14.04 20.28 13.26 20.28 13.26 21.06 12.48 21.06 12.48 21.84 11.7 21.84 11.7 22.62 10.92 22.62 10.92 23.4 10.14 23.4 10.14 24.18 9.36 24.18 9.36 24.96 8.58 24.96 8.58 25.74 7.8 25.74 7.8 26.53 7.02 26.53 6.24 26.53 6.24 25.74 5.46 25.74 5.46 24.96 5.46 24.18 5.46 23.4 4.68 23.4 4.68 22.62 4.68 21.84 3.9 21.84 3.9 22.62 3.9 23.4 3.12 23.4 3.12 24.18 3.12 24.96 3.12 25.74 3.12 26.53 3.12 27.31 2.34 27.31 2.34 28.09 2.34 28.87 2.34 29.65 1.56 29.65 1.56 30.43 1.56 31.21 1.56 31.99 .78 31.99 .78 32.77 .78 33.55 .78 34.33 0 34.33 0 35.11 0 35.89 .78 35.89 1.56 35.89 2.34 35.89 2.34 35.11 3.12 35.11 3.9 35.11 3.9 34.33 4.68 34.33 5.46 34.33 6.24 34.33 6.24 33.55 7.02 33.55 7.8 33.55 8.58 33.55 9.36 33.55 9.36 32.77 10.14 32.77 10.92 32.77 11.7 32.77 12.48 32.77 13.26 32.77 13.26 31.99 14.04 31.99 14.04 31.21 13.26 31.21 12.48 31.21 11.7 31.21 11.7 30.43 10.92 30.43 10.14 30.43 10.14 29.65 9.36 29.65 9.36 28.87 10.14 28.87 10.14 28.09 10.92 28.09 10.92 27.31 11.7 27.31 11.7 26.53 12.48 26.53 12.48 25.74 13.26 25.74 13.26 24.96 14.04 24.96 14.04 24.18 14.82 24.18 14.82 23.4 15.6 23.4 15.6 22.62 16.38 22.62 16.38 21.84 17.16 21.84 17.16 21.06 17.94 21.06 17.94 20.28 18.72 20.28 18.72 21.06 19.5 21.06 19.5 21.84 20.28 21.84 20.28 22.62 21.06 22.62 21.06 23.4 21.84 23.4 21.84 24.18 22.62 24.18 22.62 24.96 23.4 24.96 23.4 25.74 24.18 25.74 24.18 26.53 24.96 26.53 24.96 27.31 25.75 27.31 25.75 28.09 26.53 28.09 26.53 28.87 25.75 28.87 24.96 28.87 24.96 29.65 24.18 29.65 23.4 29.65 23.4 30.43 22.62 30.43 21.84 30.43 21.84 31.21 21.06 31.21 21.06 31.99 21.84 31.99 22.62 31.99 23.4 31.99 24.18 31.99 24.96 31.99 25.75 31.99 25.75 32.77 26.53 32.77 27.31 32.77 28.09 32.77 28.87 32.77 28.87 33.55 29.65 33.55 30.43 33.55 31.21 33.55 31.21 34.33 31.99 34.33 32.77 34.33 32.77 35.11 33.55 35.11 34.33 35.11 35.11 35.11 35.11 35.89 35.89 35.89 35.89 35.11 35.89 34.33 35.11 34.33 35.11 33.55 35.11 32.77 34.33 32.77 34.33 31.99 34.33 31.21 34.33 30.43 33.55 30.43 33.55 29.65 33.55 28.87 33.55 28.09 32.77 28.09 32.77 27.31 32.77 26.53 32.77 25.74 32.77 24.96 31.99 24.96 31.99 24.18 31.99 23.4 31.99 22.62 31.99 21.84 31.99 21.06 31.21 21.06 31.21 21.84 30.43 21.84 30.43 22.62 30.43 23.4 29.65 23.4 29.65 24.18 29.65 24.96 29.65 25.74 28.87 25.74 28.09 25.74 28.09 24.96 27.31 24.96 27.31 24.18 26.53 24.18 26.53 23.4 25.75 23.4 25.75 22.62 24.96 22.62 24.96 21.84 24.18 21.84 24.18 21.06 23.4 21.06 23.4 20.28 22.62 20.28 22.62 19.5 21.84 19.5 21.84 18.72 21.06 18.72 21.06 17.94 21.06 17.16 21.84 17.16 21.84 16.38 22.62 16.38 22.62 15.6 23.4 15.6 23.4 14.82 24.18 14.82 24.18 14.04 24.96 14.04 24.96 13.26 25.75 13.26 25.75 12.48 26.53 12.48 26.53 11.7 27.31 11.7 27.31 10.92 28.09 10.92 28.09 10.14 28.87 10.14 29.65 10.14 29.65 10.92 29.65 11.7 29.65 12.48 30.43 12.48 30.43 13.26 30.43 14.04 31.21 14.04 31.21 14.82 31.99 14.82 31.99 14.04 31.99 13.26 31.99 12.48 31.99 11.7 31.99 10.92 32.77 10.92 32.77 10.14 32.77 9.36 32.77 8.58 32.77 7.8 33.55 7.8 33.55 7.02 33.55 6.24 33.55 5.46 34.33 5.46 34.33 4.68 34.33 3.9 34.33 3.12 35.11 3.12 35.11 2.34 35.11 1.56 35.89 1.56 35.89 .78 35.89 0 35.11 0"
+                                                        d="M41.7,66.8v-6.4H57L40.3,43.7l3.4-3.4L60.4,57V41.7h6.4v25.1H41.7z M0,66.8V41.7h6.4V57l16.7-16.7l3.4,3.4
+	L9.8,60.4h15.3v6.4H0z M6.4,9.8v15.3H0V0h25.1v6.4H9.8l16.7,16.7l-3.4,3.4L6.4,9.8z M40.3,23.1L57,6.4H41.7V0h25.1v25.1h-6.4V9.8
+	L43.7,26.5L40.3,23.1z"
                                                     />
                                                 </svg>
                                             </div>
@@ -12927,27 +14296,6 @@ export default function PIXTUDIO_Mobile_MVP() {
 
                                         return (
                                             <>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        togglePreset("NEON")
-                                                    }
-                                                    style={{
-                                                        ...presetTextBtnStyle,
-                                                        opacity:
-                                                            opacityFor("NEON"),
-                                                    }}
-                                                    aria-label="NEON"
-                                                >
-                                                    <span
-                                                        style={{
-                                                            lineHeight: 1,
-                                                        }}
-                                                    >
-                                                        NEON
-                                                    </span>
-                                                </button>
-
                                                 <button
                                                     type="button"
                                                     onClick={() =>
@@ -13060,6 +14408,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 : okCancelButtonStyle.cursor,
                                     }}
                                     aria-label="Cancel"
+                                    className="pxUiAnim"
                                 >
                                     <SvgCancelButton style={okCancelSvgStyle} />
                                 </button>
@@ -13079,6 +14428,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 : okCancelButtonStyle.cursor,
                                     }}
                                     aria-label="OK"
+                                    className="pxUiAnim"
                                 >
                                     <SvgOkButton style={okCancelSvgStyle} />
                                 </button>
