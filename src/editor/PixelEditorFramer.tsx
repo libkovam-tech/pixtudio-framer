@@ -60,6 +60,8 @@ import {
     SvgSmartObject,
 } from "./SvgIcons.tsx"
 
+import { track } from "./analytics.ts"
+
 const CANVAS_SIZE = 512
 const TRANSPARENT_LABEL = "Transparent"
 const TRANSPARENT_PIXEL = "__PX_TRANSPARENT__" as const
@@ -7494,6 +7496,13 @@ function PixelEditorFramer({
             setShowImage(true)
             setHasImportContext(true)
 
+			track("import_image", {
+                source: "image_import",
+                routeKind: "import",
+                gridSize: nextGridSize,
+                paletteCount: nextPaletteCount,
+            })
+
             setGridSuppressed(true, "import")
 
             // Очищаем overlay и его эталон, чтобы старые штрихи
@@ -8910,12 +8919,13 @@ function PixelEditorFramer({
     async function saveBlobFromProducer(
         produceBlob: () => Promise<Blob | null>,
         filename: string
-    ) {
+    ): Promise<boolean> {
         // SSR safety
         if (typeof window === "undefined") {
             const b = await produceBlob()
-            if (b) downloadBlob(b, filename)
-            return
+            if (!b) return false
+            downloadBlob(b, filename)
+            return true
         }
 
         const anyWin = window as any
@@ -8932,22 +8942,22 @@ function PixelEditorFramer({
                     getSavePickerOptionsForFilename(filename)
                 )
             } catch (e: any) {
-                // cancel → ничего не делаем
-                if (e?.name === "AbortError") return
+                // cancel → считаем экспорт отменённым
+                if (e?.name === "AbortError") return false
                 // прочие ошибки → fallback download ниже
                 handle = null
             }
 
             // 2) Готовим blob уже после выбора файла
             const blob = await produceBlob()
-            if (!blob) return
+            if (!blob) return false
 
             if (handle) {
                 try {
                     const writable = await handle.createWritable()
                     await writable.write(blob)
                     await writable.close()
-                    return
+                    return true
                 } catch {
                     // permission/прочее → fallback download ниже
                 }
@@ -8955,8 +8965,16 @@ function PixelEditorFramer({
 
             // fallback download
             downloadBlob(blob, filename)
-            return
+            return true
         }
+
+        // нет API → старый download
+        const blob = await produceBlob()
+        if (!blob) return false
+
+        downloadBlob(blob, filename)
+        return true
+    }
 
         // нет API → старый download
         const blob = await produceBlob()
@@ -9048,7 +9066,7 @@ function PixelEditorFramer({
     async function exportPNG(p?: {
         includeStroke: boolean
         includeImage: boolean
-    }) {
+    }): Promise<boolean> {
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
 
@@ -9101,7 +9119,7 @@ function PixelEditorFramer({
             }
         }
 
-        await saveBlobFromProducer(async () => {
+        return await saveBlobFromProducer(async () => {
             const blob = await new Promise<Blob | null>((resolve) => {
                 out.toBlob((b) => resolve(b), "image/png")
             })
@@ -9112,7 +9130,7 @@ function PixelEditorFramer({
     async function exportSVG(p?: {
         includeStroke: boolean
         includeImage: boolean
-    }) {
+    }): Promise<boolean> {
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
 
@@ -9164,7 +9182,7 @@ function PixelEditorFramer({
             rects.join("") +
             `</svg>`
 
-        await saveBlobFromProducer(async () => {
+        return await saveBlobFromProducer(async () => {
             const blob = new Blob([svg], {
                 type: "image/svg+xml;charset=utf-8",
             })
@@ -9237,17 +9255,28 @@ function PixelEditorFramer({
 
         setIsExporting(true)
         try {
+            let ok = false
+
             // 2) SaveAs запускается строго от user gesture:
             // runExport() вызывается только из onClick PNG/SVG
             if (kind === "png") {
-                await exportPNG({
+                ok = await exportPNG({
                     includeStroke: exportIncludeStroke,
                     includeImage: exportIncludeImage,
                 })
             } else {
-                await exportSVG({
+                ok = await exportSVG({
                     includeStroke: exportIncludeStroke,
                     includeImage: exportIncludeImage,
+                })
+            }
+
+            if (ok) {
+                track("export_image", {
+                    kind,
+                    includeStroke: exportIncludeStroke,
+                    includeImage: exportIncludeImage,
+                    gridSize,
                 })
             }
         } finally {
