@@ -16,6 +16,7 @@ import {
     SvgExportSOButton,
 } from "./SvgIcons.tsx"
 
+
 function SaveIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
     const size = typeof s.width === "number" ? s.width : 20
