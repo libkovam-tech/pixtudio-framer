@@ -8976,12 +8976,6 @@ function PixelEditorFramer({
         return true
     }
 
-        // нет API → старый download
-        const blob = await produceBlob()
-        if (!blob) return
-        downloadBlob(blob, filename)
-    }
-
     async function imageDataToPngBlob(
         imageData: ImageData | null
     ): Promise<Blob | null> {
@@ -9081,7 +9075,7 @@ function PixelEditorFramer({
         out.height = exportSize
 
         const ctx = out.getContext("2d")
-        if (!ctx) return
+        if (!ctx) return false
 
         ctx.imageSmoothingEnabled = false
         ctx.clearRect(0, 0, exportSize, exportSize)

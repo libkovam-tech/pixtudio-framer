@@ -4,10 +4,12 @@ export type AnalyticsEventName =
 
 type AnalyticsPayload = Record<string, unknown>
 
+const ANALYTICS_ENDPOINT = "/api/analytics"
+
 export function track(event: AnalyticsEventName, payload: AnalyticsPayload = {}) {
     if (typeof window === "undefined") return
 
-    fetch("/analytics", {
+    fetch(ANALYTICS_ENDPOINT, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
