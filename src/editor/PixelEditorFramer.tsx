@@ -12,8 +12,24 @@ import SmartReferenceEditor, {
     type ReferenceSnapshotEnvelope,
 } from "./SmartReferenceEditor.tsx"
 
+import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
+
 import {
-    InlineSvgWrap,
+    createRootHistoryState,
+    rootHistoryAbort,
+    rootHistoryBegin,
+    rootHistoryCanRedo,
+    rootHistoryCanUndo,
+    rootHistoryClear,
+    rootHistoryCommit,
+    rootHistoryFinalize,
+    rootHistoryRedo,
+    rootHistoryUndo,
+    type RootHistoryEntryKind,
+    type RootHistoryState,
+} from "./rootHistory.ts"
+
+import {
     SvgTopButton3,
     SvgTopButton4,
     SvgManualButton,
@@ -62,8 +78,6 @@ const MODAL_OVERLAY_STYLE: React.CSSProperties = {
     zIndex: 999,
 }
 
-const SWATCH_MODAL_W = 360
-
 // --- P1: Canonical "SourceImage" type for CropFlow (original, not 512x512, not ImageData) ---
 
 export type SourceImage = ImageBitmap
@@ -108,6 +122,18 @@ const ENABLE_LOAD_TRACE_LOGS = false
 const ENABLE_ROUTE_LOGS = false
 
 const ENABLE_ROOT_HISTORY_LOGS = false
+
+const ENABLE_CORE_LIFECYCLE_DEBUG_LOGS = false
+
+function coreLifecycleLog(stage: string, meta?: Record<string, unknown>) {
+    if (!ENABLE_CORE_LIFECYCLE_DEBUG_LOGS) return
+    const t = nowMs().toFixed(1)
+    try {
+        console.log(`[CORE t=${t}] ${stage}`, meta ?? "")
+    } catch {
+        console.log(`[CORE t=${t}] ${stage}`)
+    }
+}
 
 function countNonNullCells(grid: PixelValue[][]): number {
     let n = 0
@@ -212,6 +238,7 @@ function drawCoverIntoSquare(
 
     ctx.drawImage(src, dx, dy, drawW, drawH)
 }
+void drawCoverIntoSquare
 
 // ===== COLOR SANITIZATION (MVP, Step 0: infra only, no behavior change) =====
 
@@ -353,6 +380,7 @@ function smoothFade01(x: number, start: number, end: number): number {
     const t = (x - start) / (end - start)
     return 1 - t
 }
+void smoothFade01
 
 function clamp255(x: number) {
     return Math.max(0, Math.min(255, Math.round(x)))
@@ -868,6 +896,7 @@ const NEON_ARCADE_32: string[] = [
 
     "#FF6AD5",
 ]
+void NEON_ARCADE_32
 
 // ------------------- N1 — NEON palette (NO-OP, not used yet) -------------------
 
@@ -1195,6 +1224,7 @@ type PixelValue = SwatchId | null | typeof TRANSPARENT_PIXEL
 type Pixel = {
     swatchId: string | null
 }
+export type { Pixel }
 // ===== PIXEL TYPE (КОНЕЦ) =====
 
 // ===== SWATCH TYPE (НАЧАЛО) =====
@@ -1327,13 +1357,11 @@ const SWATCH_EDIT_MODAL_CONTENT_GAP = 8
 const SWATCH_EDIT_TITLE_FONT = 16
 const SWATCH_EDIT_TITLE_LETTER_SPACING = 0.8
 
-const SWATCH_EDIT_SV_HEIGHT_DESKTOP = 190
 const SWATCH_EDIT_HUE_HEIGHT = 14
 
 const SWATCH_EDIT_BORDER = "2px solid rgba(0,0,0,0.75)"
 
 const SWATCH_EDIT_ROW_GAP = 10
-const SWATCH_EDIT_ROW_MARGIN_TOP = 4
 
 const SWATCH_EDIT_BOTTOM_BLOCK_GAP = 8
 
@@ -1366,13 +1394,18 @@ const SWATCH_EDIT_HUE_CURSOR_OFFSET = 1.5
 
 // Пропорции белой подложки (viewBox 1189.63 x 416.35)
 const ALERT_BACKING_RATIO = 1189.63 / 416.35
+void ALERT_BACKING_RATIO
 
 const ALERT_MODAL_MAX_W = 520
+void ALERT_MODAL_MAX_W
 const ALERT_MODAL_MIN_W = 280
+void ALERT_MODAL_MIN_W
 
 // паддинги текста внутри белой подложки
 const ALERT_PAD_X = 22
+void ALERT_PAD_X
 const ALERT_PAD_Y = 18
+void ALERT_PAD_Y
 
 const ALERT_OVERLAY_STYLE: React.CSSProperties = {
     position: "fixed",
@@ -1783,6 +1816,7 @@ function toGrayscaleGrid(pixels: (string | null)[][]): (string | null)[][] {
 
     return out
 }
+void toGrayscaleGrid
 
 // -------------------- BW PRESET (Step BW2) — threshold constants --------------------
 
@@ -1841,6 +1875,7 @@ function warnIfBwPaletteInvalid(palette: string[]) {
         )
     }
 }
+void warnIfBwPaletteInvalid
 
 // -------------------- BW PRESET (Step BW2) — threshold helper --------------------
 // Принимает grid пикселей как после pixelizeFromImageDominant: (string|null)[][]
@@ -1886,6 +1921,7 @@ function toBlackWhiteGrid(pixels: (string | null)[][]): (string | null)[][] {
 
     return out
 }
+void toBlackWhiteGrid
 
 function rgbToHsvInto01(
     r: number,
@@ -1902,7 +1938,7 @@ function rgbToHsvInto01(
     const d = max - min
 
     let h = 0
-    let s = max === 0 ? 0 : d / max
+    const s = max === 0 ? 0 : d / max
     const v = max
 
     if (d !== 0) {
@@ -1917,6 +1953,7 @@ function rgbToHsvInto01(
     out.s = s
     out.v = v
 }
+void rgbToHsvInto01
 
 function hsvToRgbInto01(
     h: number,
@@ -1970,6 +2007,7 @@ function hsvToRgbInto01(
     out.g = Math.round(gf * 255)
     out.b = Math.round(bf * 255)
 }
+void hsvToRgbInto01
 
 // --- Perf helpers: HSV(deg) into/out (no allocations) ---
 // h: degrees [0..360), s/v: [0..1]
@@ -2149,6 +2187,11 @@ function quantizeToFixedPalette(
     // Готовим RGB-палитру один раз
     const pal = paletteHex.map((hx) => hexToRgb(hx)) // hexToRgb уже есть в файле
 
+    const safePal = pal.filter(
+        (p): p is { r: number; g: number; b: number } => p !== null
+    )
+    if (safePal.length === 0) return pixels.map((row) => [...row])
+
     const height = pixels.length
     const width = height > 0 ? pixels[0].length : 0
 
@@ -2171,8 +2214,8 @@ function quantizeToFixedPalette(
             let best = 0
             let bestDist = Infinity
 
-            for (let i = 0; i < pal.length; i++) {
-                const p = pal[i]
+            for (let i = 0; i < safePal.length; i++) {
+                const p = safePal[i]
                 const dr = r - p.r
                 const dg = g - p.g
                 const db = b - p.b
@@ -2183,7 +2226,11 @@ function quantizeToFixedPalette(
                 }
             }
 
-            const p = pal[best]
+            const p = safePal[best]
+            if (!p) {
+                outRow[x] = null
+                continue
+            }
             outRow[x] = `rgb(${p.r}, ${p.g}, ${p.b})`
         }
     }
@@ -2222,7 +2269,7 @@ function quantizePixels(pixels: (string | null)[][], targetColors: number) {
     if (uniqueColors.length <= k)
         return { pixels, palette: uniqueColors.map((c) => c.color) }
 
-    let centroids = uniqueColors
+    const centroids = uniqueColors
         .slice(0, k)
         .map((c) => ({ r: c.r, g: c.g, b: c.b }))
     const ITER = 6
@@ -2571,7 +2618,7 @@ function CameraModal({
                     v.srcObject = stream
                     await v.play()
                 }
-            } catch (e: any) {
+            } catch {
                 setError(
                     "Could not open the camera. Check browser permissions and HTTPS."
                 )
@@ -3054,11 +3101,6 @@ type OverlayMode = null | "import" | "export"
 
 type BusyKind = "stream" | "txn" | null
 
-type TxnAction = {
-    kind: string
-    payload?: any
-}
-
 type PendingFlags = {
     repixelize: boolean
     gridCommit: boolean
@@ -3127,15 +3169,13 @@ const START_LOGO_W = 260
 // 2) Undo / Redo пользователя обязаны идти через root history,
 //    а не через локальную editor-history.
 //
-// 3) Внутренняя editor-history (pastRef / futureRef) временно остаётся,
-//    но только как legacy/fallback механизм на период миграции.
 //
 // 4) Обычные editor actions в финальной модели тоже должны стать
 //    root transactions.
 //
 // На текущем шаге (S1/S2) мы ещё не мигрируем все editor actions,
 // но уже фиксируем root history как user-facing source of truth.
-type HistoryEntryKind = "editor-action" | "smart-object-apply" | "unknown"
+type HistoryEntryKind = RootHistoryEntryKind
 
 type EditorCommittedState = {
     gridSize: number
@@ -3145,6 +3185,7 @@ type EditorCommittedState = {
     overlayPixels: PixelValue[][]
     showImage: boolean
     hasOriginalImageData: boolean
+    referenceSnapshot?: ImageData | null
     autoSwatches: Swatch[]
     userSwatches: Swatch[]
     selectedSwatch: SwatchId | "transparent"
@@ -3161,10 +3202,6 @@ type EditorCommittedStateBridge = {
     captureCommittedState: () => EditorCommittedState
     applyCommittedState: (state: EditorCommittedState) => void
 
-    // S2:
-    // resetHistory относится только к legacy editor-history.
-    // Это НЕ root history reset.
-    resetHistory: () => void
 }
 
 type EditorCommittedStateSettledPayload = {
@@ -3192,44 +3229,106 @@ type EditorActionTransaction = {
     before: EditorCommittedState
 }
 
-type HistoryEntry = {
-    // S1:
-    // HistoryEntry = атомарная запись root history.
-    // Она описывает переход между двумя согласованными snapshot-состояниями:
-    //
-    // before:
-    //   editorBefore + smartBefore
-    //
-    // after:
-    //   editorAfter + smartAfter
-    //
-    // kind описывает тип пользовательского действия.
-    //
-    // Важно:
-    // именно этот root-level entry является канонической единицей user-history.
-    // Локальная editor-history не должна считаться пользовательской историей.
-    kind: HistoryEntryKind
-    editorBefore: EditorCommittedState | null
-    editorAfter: EditorCommittedState | null
-    smartBefore: SmartObjectCommittedState | null
-    smartAfter: SmartObjectCommittedState | null
-}
-
-type PendingHistoryTransaction = {
-    // S1:
-    // pending transaction живёт только в root history coordinator.
-    // Это заготовка будущего HistoryEntry, который после commitTransaction(...)
-    // становится канонической user-history записью.
-    kind: HistoryEntryKind
-    editorBefore: EditorCommittedState | null
-    smartBefore: SmartObjectCommittedState | null
-    smartAfter: SmartObjectCommittedState | null
-}
-
 type BeginHistoryTransactionInput = {
     kind: HistoryEntryKind
     editorBefore: EditorCommittedState | null
     smartBefore: SmartObjectCommittedState | null
+}
+
+function areEditorCommittedStatesEqual(
+    a: EditorCommittedState | null,
+    b: EditorCommittedState | null
+): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    if (a.gridSize !== b.gridSize) return false
+    if (a.paletteCount !== b.paletteCount) return false
+    if ((a as any).brushSize !== (b as any).brushSize) return false
+    if (a.showImage !== b.showImage) return false
+    if (a.selectedSwatch !== b.selectedSwatch) return false
+    if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
+
+    const aOv = a.autoOverrides || {}
+    const bOv = b.autoOverrides || {}
+
+    const aKeys = Object.keys(aOv).sort()
+    const bKeys = Object.keys(bOv).sort()
+    if (aKeys.length !== bKeys.length) return false
+
+    for (let i = 0; i < aKeys.length; i++) {
+        if (aKeys[i] !== bKeys[i]) return false
+        const k = aKeys[i]
+        const av = aOv[k]
+        const bv = bOv[k]
+        if (((av?.hex ?? null) || null) !== ((bv?.hex ?? null) || null))
+            return false
+        if (!!av?.isTransparent !== !!bv?.isTransparent) return false
+    }
+
+    if (a.autoSwatches.length !== b.autoSwatches.length) return false
+    for (let i = 0; i < a.autoSwatches.length; i++) {
+        const sa = a.autoSwatches[i]
+        const sb = b.autoSwatches[i]
+        if (!sb) return false
+        if (sa.id !== sb.id) return false
+        if (sa.color !== sb.color) return false
+        if (sa.isTransparent !== sb.isTransparent) return false
+        if (sa.isUser !== sb.isUser) return false
+    }
+
+    if (a.userSwatches.length !== b.userSwatches.length) return false
+    for (let i = 0; i < a.userSwatches.length; i++) {
+        const sa = a.userSwatches[i]
+        const sb = b.userSwatches[i]
+        if (!sb) return false
+        if (sa.id !== sb.id) return false
+        if (sa.color !== sb.color) return false
+        if (sa.isTransparent !== sb.isTransparent) return false
+        if (sa.isUser !== sb.isUser) return false
+    }
+
+    if (a.imagePixels.length !== b.imagePixels.length) return false
+    for (let r = 0; r < a.imagePixels.length; r++) {
+        const ra = a.imagePixels[r] || []
+        const rb = b.imagePixels[r] || []
+        if (ra.length !== rb.length) return false
+        for (let c = 0; c < ra.length; c++) {
+            if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
+        }
+    }
+
+    if (a.overlayPixels.length !== b.overlayPixels.length) return false
+    for (let r = 0; r < a.overlayPixels.length; r++) {
+        const ra = a.overlayPixels[r] || []
+        const rb = b.overlayPixels[r] || []
+        if (ra.length !== rb.length) return false
+        for (let c = 0; c < ra.length; c++) {
+            if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
+        }
+    }
+
+    return true
+}
+
+function areSmartObjectCommittedStatesEqual(
+    a: SmartObjectCommittedState | null,
+    b: SmartObjectCommittedState | null
+): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    if (a.revision !== b.revision) return false
+
+    const aa = a.adjustments
+    const ba = b.adjustments
+    return (
+        aa.exposure === ba.exposure &&
+        aa.whiteBalance === ba.whiteBalance &&
+        aa.contrast === ba.contrast &&
+        aa.saturation === ba.saturation &&
+        aa.shadows === ba.shadows &&
+        aa.midtones === ba.midtones &&
+        aa.highlights === ba.highlights
+    )
 }
 
 function PixelEditorFramer({
@@ -3243,6 +3342,7 @@ function PixelEditorFramer({
     onRequestCropFromFile,
     onRequestPickImage,
     onRequestBlankImport,
+    onRequestOpenProject,
     pendingProjectFile,
     onPendingProjectFileConsumed,
     onShowImportError,
@@ -3250,7 +3350,6 @@ function PixelEditorFramer({
     onEditorCommittedStateBridgeReady,
     onEditorCommittedStateSettled,
     onBeginUserAction,
-    onFinalizePendingUserAction,
     onCommitUserAction,
     onAbortUserAction,
     onCoordinatedUndo,
@@ -3273,12 +3372,13 @@ function PixelEditorFramer({
     onRestoreSmartObjectFromLoad?: (payload: {
         base: ImageData | null
         adjustments: SmartReferenceAdjustments
-    }) => void
+    }) => boolean
     startWithImageVisible: boolean
     onRequestCamera: () => void
     onRequestCropFromFile: (p: { file: File }) => void
     onRequestPickImage?: () => void
     onRequestBlankImport?: () => void
+    onRequestOpenProject?: () => void
 
     // ✅ NEW: project-open bridge from ROOT
     pendingProjectFile?: File | null
@@ -3307,11 +3407,9 @@ function PixelEditorFramer({
     onAbortUserAction?: () => void
 
     // H5:
-    // coordinated undo/redo приходит из Root History Engine.
     // S2:
     // user-facing Undo/Redo приходят из Root History Engine.
     // Если они переданы, editor должен считать их главными.
-    // Локальные doUndo/doRedo остаются только как legacy fallback.
     onCoordinatedUndo?: () => void
     onCoordinatedRedo?: () => void
     coordinatedCanUndo?: boolean
@@ -3350,10 +3448,6 @@ function PixelEditorFramer({
 
     // внешний scale от FitToViewport (viewport → content)
     const fitScaleRef = React.useRef<number>(1)
-
-    const brushPreviewPosRef = React.useRef<{ x: number; y: number } | null>(
-        null
-    )
 
     // ------------------- USER ACTION QUEUE (S2) -------------------
 
@@ -3506,13 +3600,6 @@ function PixelEditorFramer({
         if (txnQueueRef.current.length > 0) return false
 
         const p = pendingRef.current
-        const hasAny = !!(
-            p.repixelize ||
-            p.gridCommit ||
-            p.overlayRequant ||
-            p.gridPolicyBlankCheck
-        )
-
         const doRepixelize = p.repixelize
         const doGridCommit = p.gridCommit
         const doOverlayRequant = p.overlayRequant
@@ -3585,16 +3672,16 @@ function PixelEditorFramer({
 
     type ImportStatus = "idle" | "decoding" | "ready" | "applying"
 
-    const [importStatus, setImportStatus] = React.useState<ImportStatus>("idle")
+    const [, setImportStatus] = React.useState<ImportStatus>("idle")
 
     // legacy diagnostics only (UI must NOT branch on this anymore)
-    const [importError, setImportError] = React.useState<string | null>(null)
+    const [, setImportError] = React.useState<string | null>(null)
 
     // ---------------------
     // Unified import error (single modal, owned by ROOT)
     // PixelEditorFramer управляет своим importStatus, а ROOT — только показом модалки.
     // ---------------------
-    const showImportError = onShowImportError ?? ((_: string) => {}) // fail-safe NO-OP
+    const showImportError = onShowImportError ?? (() => undefined) // fail-safe NO-OP
 
     const failImport = React.useCallback(
         (message: string) => {
@@ -3614,6 +3701,7 @@ function PixelEditorFramer({
         },
         [showImportError]
     )
+    void failImportInFlow
 
     // --------------------- BLANK PROJECT (S3) ---------------------
     // Одна точка правды: синхронный сброс проекта в "пустой".
@@ -3650,10 +3738,6 @@ function PixelEditorFramer({
         setImportError(null)
 
         // 3) Undo/Redo — чистый новый проект
-        pastRef.current = []
-        futureRef.current = []
-        syncHistoryFlags()
-
         // 4) NEW PROJECT = новая сессия:
         // очищаем эталон слоя штрихов и ключи пайплайна, чтобы старое не “приехало” после repixelize.
         setPaintRefImageData(null)
@@ -3696,6 +3780,13 @@ function PixelEditorFramer({
         const snapshot = buildProjectSnapshotV2()
         const json = JSON.stringify(snapshot)
 
+        coreLifecycleLog("save:initiated", {
+            gridSize: snapshot.gridSize,
+            palette: snapshot.palette.swatches.length,
+            hasRef: !!snapshot.ref,
+            hasSmartObjectState: !!snapshot.smartObjectState,
+        })
+
         if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
             console.log(
                 "[SAVE][CHK] len=",
@@ -3715,9 +3806,9 @@ function PixelEditorFramer({
     }, [buildProjectSnapshotV2])
 
     const onLoadProject = React.useCallback(() => {
-        // UI1: открываем системный пикер файла
-        loadFileInputRef.current?.click()
-    }, [])
+        coreLifecycleLog("load:picker-opened")
+        onRequestOpenProject?.()
+    }, [onRequestOpenProject])
 
     type LoadPayload = {
         snapshotVersion: 2
@@ -3732,28 +3823,29 @@ function PixelEditorFramer({
     async function buildLoadLetterFromPixtudioFile(
         file: File
     ): Promise<LoadLetter> {
+        coreLifecycleLog("load:initiated", { fileName: file.name })
+
         try {
             // ==========================
             // LOAD CAPSULE: read + parse
             // ==========================
             const jsonText = await file.text()
 
-            let parsed: any
-            try {
-                parsed = JSON.parse(jsonText)
-            } catch {
+            const parsed = parseProjectSnapshotV2Json(jsonText)
+            if (!parsed.ok) {
+                coreLifecycleLog("load:rejected", {
+                    fileName: file.name,
+                    code: parsed.error.code,
+                    message: parsed.error.message,
+                })
                 return { ok: false }
             }
 
             // ==========================
             // LOAD CAPSULE: validate + canonicalize + build payload (V2 only)
             // ==========================
-            if (!parsed || parsed.version !== 2) {
-                return { ok: false }
-            }
-
-            const validatedV2 = validateProjectSnapshotV2OrThrow(parsed)
-            const canonical = canonicalizeSnapshotV2(validatedV2)
+            const validatedV2 = validateProjectSnapshotV2OrThrow(parsed.canonical)
+            const canonical = parsed.canonical
             const canonicalChecksum = checksumJsonString(
                 JSON.stringify(canonical)
             )
@@ -3776,8 +3868,20 @@ function PixelEditorFramer({
                 fileName: file.name,
             }
 
+            coreLifecycleLog("load:accepted", {
+                fileName: file.name,
+                gridSize: validatedV2.gridSize,
+                palette: validatedV2.palette.swatches.length,
+                hasRef: !!validatedV2.ref,
+                checksum: canonicalChecksum,
+            })
+
             return { ok: true, payload }
         } catch {
+            coreLifecycleLog("load:rejected", {
+                fileName: file.name,
+                code: "E_READ",
+            })
             return { ok: false }
         }
     }
@@ -3789,6 +3893,7 @@ function PixelEditorFramer({
     function applyLoadLetterInEditor(letter: LoadLetter) {
         // Editor — единственное место, где решаем: применить или показать ошибку
         if (!letter.ok) {
+            coreLifecycleLog("load:apply-rejected")
             // ✅ ЕДИНАЯ модалка "Неправильный импорт" (как и для неверного изображения)
             onShowImportError?.("Import failed. Please try again.")
 
@@ -3798,6 +3903,9 @@ function PixelEditorFramer({
             return
         }
 
+        coreLifecycleLog("load:apply-accepted", {
+            checksum: letter.payload.canonicalChecksum,
+        })
         restoreProjectFromLoadPayload(letter.payload)
     }
 
@@ -3828,26 +3936,6 @@ function PixelEditorFramer({
         buildLoadLetterFromPixtudioFile,
         applyLoadLetterInEditor,
     ])
-
-    const handlePickedProjectFile = React.useCallback(
-        async (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0]
-            if (!file) return
-
-            // важно: чтобы повторный выбор того же файла срабатывал
-            event.target.value = ""
-
-            enqueueTxn("importLoad", async () => {
-                try {
-                    const letter = await buildLoadLetterFromPixtudioFile(file)
-                    applyLoadLetterInEditor(letter)
-                } catch {
-                    applyLoadLetterInEditor({ ok: false })
-                }
-            })
-        },
-        []
-    )
 
     type ValidatedSnapshotV2 = ProjectSnapshotV2
 
@@ -4524,8 +4612,8 @@ function PixelEditorFramer({
         // то, что будем коммитить в L2 через applyProjectState(...)
         project: ProjectState
 
-        // отдельная часть “реального проекта”: эталонный растр ref
-        originalImageData: ImageData | null
+        // Saved reference base belongs to Smart Object after restore.
+        smartObjectBaseForRestore: ImageData | null
 
         //paletteOrder: Array<{ id: string; isUser: boolean }>
 
@@ -4594,7 +4682,7 @@ function PixelEditorFramer({
         const g = gridSize
 
         const smartReferenceBaseForSave =
-            onCaptureSmartReferenceBaseForSave?.() ?? originalImageData
+            onCaptureSmartReferenceBaseForSave?.() ?? null
 
         const smartCommittedStateForSave =
             onCaptureSmartObjectCommittedStateForSave?.() ?? null
@@ -4803,7 +4891,7 @@ function PixelEditorFramer({
         return Math.min(max, Math.max(min, n))
     }
 
-    function base64ToBytes(b64: string): Uint8ClampedArray {
+    function base64ToBytes(b64: string): Uint8ClampedArray<ArrayBuffer> {
         // L0 уже проверил формат и длину decoded bytes, здесь можно декодировать смело
         const bin = atob(b64)
         const out = new Uint8ClampedArray(bin.length)
@@ -4844,15 +4932,16 @@ function PixelEditorFramer({
         const nextAutoSwatches = allSwatches.filter((s) => !s.isUser)
         const nextUserSwatches = allSwatches.filter((s) => s.isUser)
 
-        const pcFromFile =
+        void (
             typeof (validated as any).paletteCount === "number"
                 ? (validated as any).paletteCount
                 : computePaletteCountFromSwatches(
                       nextAutoSwatches,
                       nextUserSwatches
                   )
+        )
 
-        const pcActual = computePaletteCountFromSwatches(
+        void computePaletteCountFromSwatches(
             nextAutoSwatches,
             nextUserSwatches
         )
@@ -4942,7 +5031,7 @@ function PixelEditorFramer({
 
         return {
             project,
-            originalImageData: original,
+            smartObjectBaseForRestore: original,
             paletteOrderIds: paletteOrderIds,
         }
     }
@@ -5031,7 +5120,6 @@ function PixelEditorFramer({
         const userH = hashSwatchesForQC(params.userSwatches)
         const key = `g=${params.gridSize}|p=${params.paletteCount}|a=${autoH}|u=${userH}|ref=${paintSnapshotNonceRef.current}`
 
-        const prev = p25LastKeyRef.current
         if (params.phase === "BEGIN") {
             p25LastKeyRef.current = key
         }
@@ -5694,7 +5782,9 @@ function PixelEditorFramer({
             if (blank) {
                 setGridSuppressed(false, reason)
             }
-        } catch {}
+        } catch {
+            // Ignore blank-check failures; callers keep the current grid state.
+        }
     }
 
     // --------------------
@@ -5781,7 +5871,6 @@ function PixelEditorFramer({
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
     const offscreenRef = React.useRef<HTMLCanvasElement | null>(null)
     //const fileInputRef = React.useRef<HTMLInputElement | null>(null)
-    const cameraInputRef = React.useRef<HTMLInputElement | null>(null)
     const [isDrawing, setIsDrawing] = React.useState(false)
     const DEFAULT_BRUSH_SIZE = 3
 
@@ -5809,12 +5898,19 @@ function PixelEditorFramer({
         return () => ro.disconnect()
     }, [])
 
-    const loadFileInputRef = React.useRef<HTMLInputElement | null>(null)
-
     // H3:
     // локальный runtime-state editor теперь совпадает
     // с module-scope контрактом EditorCommittedState.
     type ProjectState = EditorCommittedState
+
+    type PendingLoadProjectCommit = {
+        project: ProjectState
+        canonicalChecksum?: string
+        fileName?: string
+    }
+
+    const pendingLoadProjectCommitRef =
+        React.useRef<PendingLoadProjectCommit | null>(null)
 
     type SliderTransactionRef = {
         before: ProjectState | null
@@ -5889,10 +5985,7 @@ function PixelEditorFramer({
         return out
     }
 
-    const MAX_HISTORY = 50
-
     // S2 LEGACY:
-    // pastRef / futureRef временно остаются внутри редактора,
     // но больше не считаются канонической пользовательской историей.
     //
     // Их роль на текущем этапе:
@@ -5900,18 +5993,8 @@ function PixelEditorFramer({
     // - совместимость со старым editor-path
     //
     // user-facing Undo/Redo должны опираться на root history engine.
-    const pastRef = React.useRef<ProjectState[]>([])
-    const futureRef = React.useRef<ProjectState[]>([])
     const pendingBlankCheckReasonRef = React.useRef<string | null>(null)
     const isRestoringHistoryRef = React.useRef(false)
-
-    const [canUndo, setCanUndo] = React.useState(false)
-    const [canRedo, setCanRedo] = React.useState(false)
-
-    function syncHistoryFlags() {
-        setCanUndo(pastRef.current.length > 0)
-        setCanRedo(futureRef.current.length > 0)
-    }
 
     function clonePixelsGrid(src: PixelValue[][]): PixelValue[][] {
         return src.map((row) => row.slice())
@@ -5946,6 +6029,7 @@ function PixelEditorFramer({
             userSwatches: cloneSwatches(userSwatches),
             selectedSwatch,
             hasOriginalImageData: hasImportContext,
+            referenceSnapshot: originalImageData,
 
             autoOverrides: { ...autoOverrides },
         } as ProjectState
@@ -5966,6 +6050,7 @@ function PixelEditorFramer({
         userSwatches,
         selectedSwatch,
         hasImportContext,
+        originalImageData,
         autoOverrides,
     ])
 
@@ -6024,6 +6109,151 @@ function PixelEditorFramer({
         // Важно: флаги истории не меняем здесь — их меняют undo/redo/pushCommit
     }
 
+    function prepareLoadedProjectForCommit(project: ProjectState): ProjectState {
+        const stripTransparentSwatches = (list: Swatch[]) =>
+            (list || []).filter(
+                (s) => s && !s.isTransparent && s.id !== "transparent"
+            )
+
+        const fixedProject: ProjectState = {
+            ...project,
+            autoSwatches: stripTransparentSwatches(project.autoSwatches),
+            userSwatches: stripTransparentSwatches(project.userSwatches),
+            paletteCount: clampInt(project.paletteCount, PALETTE_MIN, PALETTE_MAX),
+        }
+
+        fixedProject.autoSwatches = applyAutoOverrides(
+            fixedProject.autoSwatches,
+            fixedProject.autoOverrides || {}
+        )
+
+        return fixedProject
+    }
+
+    function clearEditorStateForLoadRestore(nextGridSize: number) {
+        const gs = safeGridSizeOrDefault(nextGridSize)
+
+        setGridSize(gs)
+        setImagePixels(createEmptyPixels(gs))
+        setOverlayPixels(createEmptyPixels(gs))
+        setOriginalImageData(null)
+        setShowImage(false)
+        setHasImportContext(false)
+        setPaintRefImageData(null)
+
+        overlayDirtyRef.current = false
+        paintSnapshotNonceRef.current = 0
+        p25LastKeyRef.current = null
+        p3LastProcessedKeyRef.current = null
+        p3InFlightKeyRef.current = null
+
+        const visibleCanvas = canvasRef.current
+        if (visibleCanvas) {
+            visibleCanvas.width = CANVAS_SIZE
+            visibleCanvas.height = CANVAS_SIZE
+
+            const visibleCtx = visibleCanvas.getContext("2d")
+            if (visibleCtx) {
+                visibleCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+                drawCheckerboard(visibleCtx, CANVAS_SIZE, gs)
+            }
+        }
+    }
+
+    function commitPendingLoadProjectStateAfterReferenceSnapshot() {
+        const pending = pendingLoadProjectCommitRef.current
+        if (!pending) return false
+
+        pendingLoadProjectCommitRef.current = null
+
+        try {
+            const fixedProject = pending.project
+
+            traceLoad("commit: applyProjectState called", {
+                gridSize: fixedProject.gridSize,
+                paletteCount: fixedProject.paletteCount,
+                auto: fixedProject.autoSwatches.length,
+                user: fixedProject.userSwatches.length,
+            })
+
+            postLoadCheckNonceRef.current = 1
+
+            applyProjectState(fixedProject)
+
+            coreLifecycleLog("restore:project-state-applied", {
+                gridSize: fixedProject.gridSize,
+                paletteCount: fixedProject.paletteCount,
+            })
+
+            syncPaintRefToOverlay({
+                overlay: fixedProject.overlayPixels,
+                auto: fixedProject.autoSwatches,
+                user: fixedProject.userSwatches,
+                autoOverrides: fixedProject.autoOverrides || {},
+                reason: "load",
+            })
+
+            routeLog(
+                "L2 commit applied ProjectState after Smart Object snapshot",
+                {
+                    g: fixedProject.gridSize,
+                    imageNonNull: countNonNullCells(fixedProject.imagePixels),
+                    overlayNonNull: countNonNullCells(
+                        fixedProject.overlayPixels
+                    ),
+                }
+            )
+
+            enforceGridRuleAfterRestore(
+                {
+                    imagePixels: fixedProject.imagePixels,
+                    overlayPixels: fixedProject.overlayPixels,
+                    autoSwatches: fixedProject.autoSwatches,
+                    userSwatches: fixedProject.userSwatches,
+                    hasOriginalImageData: fixedProject.hasOriginalImageData,
+                },
+                "load-commit"
+            )
+            traceLoad("commit: enforceGridRuleAfterRestore done")
+
+            const expected = loadedCanonicalChecksumRef.current
+            traceLoad("commit: scheduled CHK_AFTER_COMMIT", { expected })
+
+            if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
+                traceLoad(
+                    "commit: requested CHK_AFTER_COMMIT (via useEffect)",
+                    {
+                        expected: loadedCanonicalChecksumRef.current,
+                    }
+                )
+                setPostLoadCheckNonce((v) => v + 1)
+            }
+
+            traceLoad("commit: refs cleared")
+
+            requestAnimationFrame(() => {
+                isRestoringFromSaveRef.current = false
+                setRestoreVisualNonce((x) => x + 1)
+                setRestoreVisualNonce((x) => x + 1)
+
+                traceLoad("commit: restoring=false (rAF)")
+                coreLifecycleLog("restore:committed", {
+                    checksum: pending.canonicalChecksum,
+                })
+            })
+
+            return true
+        } catch (e) {
+            traceLoad("commit: failed", e)
+            coreLifecycleLog("restore:rejected", { reason: "commit-failed" })
+            pendingLoadProjectCommitRef.current = null
+            failImport("Import failed. Please try again.")
+            isRestoringFromSaveRef.current = false
+            setRestoreVisualNonce((x) => x + 1)
+            return false
+        }
+    }
+
     // H3:
     // editor умеет:
     // 1) capture current committed-state
@@ -6045,11 +6275,6 @@ function PixelEditorFramer({
             captureCommittedState: () => committedStateCaptureRef.current(),
             applyCommittedState: (state) =>
                 committedStateApplyRef.current(state),
-            resetHistory: () => {
-                pastRef.current = []
-                futureRef.current = []
-                syncHistoryFlags()
-            },
         })
         return () => {
             onEditorCommittedStateBridgeReady(null)
@@ -6059,6 +6284,11 @@ function PixelEditorFramer({
     function restoreProjectFromLoadPayload(payload: LoadPayload) {
         const next = payload.nextState as any
 
+        coreLifecycleLog("restore:started", {
+            checksum: payload.canonicalChecksum,
+            fileName: payload.fileName,
+        })
+
         traceLoad("commit: start", {
             hasNext: !!next,
             expected:
@@ -6067,192 +6297,72 @@ function PixelEditorFramer({
 
         if (!next) {
             traceLoad("commit: no nextState -> fail")
+            coreLifecycleLog("restore:rejected", { reason: "missing-next-state" })
             failImport("Import failed. Please try again.")
             return
         }
 
         try {
-            // ==========================
-            // EDITOR-RESTORE: new life (reset histories)
-            // ==========================
-            pastRef.current = []
-            futureRef.current = []
-            syncHistoryFlags()
-            traceLoad("commit: history reset")
-
-            // keep diagnostics (optional)
             if (payload.canonicalChecksum) {
                 loadedCanonicalChecksumRef.current = payload.canonicalChecksum
             }
 
-            // ==========================
-            // EDITOR-RESTORE: commit/apply + UI cleanup
-            // (1:1 из бывшего commitLoadedProjectOrFail)
-            // ==========================
-
-            isRestoringFromSaveRef.current = true
-            traceLoad("commit: restoring=true")
-
-            // UX: сразу очищаем ВИДИМЫЙ canvas, чтобы старый кадр
-            // не висел на экране во время restore-gate.
-            const visibleCanvas = canvasRef.current
-            if (visibleCanvas) {
-                visibleCanvas.width = CANVAS_SIZE
-                visibleCanvas.height = CANVAS_SIZE
-
-                const visibleCtx = visibleCanvas.getContext("2d")
-                if (visibleCtx) {
-                    visibleCtx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-                    drawCheckerboard(
-                        visibleCtx,
-                        CANVAS_SIZE,
-                        Math.max(1, next.project.gridSize || gridSize)
-                    )
-                }
-            }
-
-            // 1) применяем ProjectState (ядро проекта)
-            // --------------------------
-            // FIX: palette invariants on restore
-            // - no transparent swatch in auto/user
-            // - paletteCount: keep target from state (clamped)
-            // --------------------------
-            const stripTransparentSwatches = (list: Swatch[]) =>
-                (list || []).filter(
-                    (s) => s && !s.isTransparent && s.id !== "transparent"
-                )
-
-            const fixedAuto = stripTransparentSwatches(
-                next.project.autoSwatches
-            )
-            const fixedUser = stripTransparentSwatches(
-                next.project.userSwatches
-            )
-
-            const fixedProject: ProjectState = {
-                ...next.project,
-                autoSwatches: fixedAuto,
-                userSwatches: fixedUser,
-                paletteCount: clampInt(
-                    next.project.paletteCount,
-                    PALETTE_MIN,
-                    PALETTE_MAX
-                ),
-            }
-
-            // ✅ Load contract: восстанавливаем палитру И сразу применяем autoOverrides.
-            // Никакого repixelize из ref для "появления" overrides не нужно.
-            const fixedAutoEffective = applyAutoOverrides(
-                fixedProject.autoSwatches,
-                fixedProject.autoOverrides || {}
-            )
-            fixedProject.autoSwatches = fixedAutoEffective
-
-            traceLoad("commit: applyProjectState called", {
-                gridSize: fixedProject.gridSize,
-                paletteCount: fixedProject.paletteCount,
-                auto: fixedProject.autoSwatches.length,
-                user: fixedProject.userSwatches.length,
-            })
-
-            // Первый post-load проход repixelizeEffect должен быть заблокирован
-            // всегда, а не только при включённых checksum/debug-логах.
-            postLoadCheckNonceRef.current = 1
-
-            applyProjectState(fixedProject)
-
-            // ✅ PATCH C: синхронизируем эталон штрихов с загруженным overlay,
-            // чтобы штрихи были видны СРАЗУ после load и не "воскресали" от GRID SIZE.
-            syncPaintRefToOverlay({
-                overlay: fixedProject.overlayPixels,
-                auto: fixedProject.autoSwatches,
-                user: fixedProject.userSwatches,
-                autoOverrides: fixedProject.autoOverrides || {},
-                reason: "load",
-            })
-
-            routeLog(
-                "L2 commit applied ProjectState (image/overlay updated), canvasPixels NOT updated here",
-                {
-                    g: fixedProject.gridSize,
-                    imageNonNull: countNonNullCells(fixedProject.imagePixels),
-                    overlayNonNull: countNonNullCells(
-                        fixedProject.overlayPixels
-                    ),
-                }
-            )
-
-            // 2) восстановить Smart Object через root gateway
             if (!onRestoreSmartObjectFromLoad) {
                 throw new Error(
                     "[LOAD] onRestoreSmartObjectFromLoad is missing"
                 )
             }
 
-            onRestoreSmartObjectFromLoad({
-                base: next.originalImageData,
+            isRestoringFromSaveRef.current = true
+            traceLoad("commit: restoring=true")
+
+            const fixedProject = prepareLoadedProjectForCommit(next.project)
+            pendingLoadProjectCommitRef.current = {
+                project: fixedProject,
+                canonicalChecksum: payload.canonicalChecksum,
+                fileName: payload.fileName,
+            }
+
+            clearEditorStateForLoadRestore(fixedProject.gridSize)
+            traceLoad("commit: editor state cleared")
+
+            const smartObjectBaseForRestore = next.smartObjectBaseForRestore
+            next.smartObjectBaseForRestore = null
+
+            const didRestoreSmartObject = onRestoreSmartObjectFromLoad({
+                base: smartObjectBaseForRestore,
                 adjustments: payload.loadedSmartAdjustments,
             })
 
+            if (!didRestoreSmartObject) {
+                throw new Error(
+                    "[LOAD] Smart Object bridge rejected load restore"
+                )
+            }
+
+            coreLifecycleLog("restore:smart-object-seeded", {
+                hasRefBase: smartObjectBaseForRestore != null,
+            })
+
             routeLog("L2 commit restore Smart Object via root gateway", {
-                hasRefBase: next.originalImageData != null,
-                refBaseSize: next.originalImageData
-                    ? `${next.originalImageData.width}x${next.originalImageData.height}`
+                hasRefBase: smartObjectBaseForRestore != null,
+                refBaseSize: smartObjectBaseForRestore
+                    ? `${smartObjectBaseForRestore.width}x${smartObjectBaseForRestore.height}`
                     : null,
             })
 
             traceLoad("commit: restored Smart Object via root gateway", {
-                hasRefBase: next.originalImageData != null,
-                refBaseSize: next.originalImageData
-                    ? `${next.originalImageData.width}x${next.originalImageData.height}`
+                hasRefBase: smartObjectBaseForRestore != null,
+                refBaseSize: smartObjectBaseForRestore
+                    ? `${smartObjectBaseForRestore.width}x${smartObjectBaseForRestore.height}`
                     : null,
             })
+            return
 
-            // 4) сетка-политика после restore
-            enforceGridRuleAfterRestore(
-                {
-                    imagePixels: fixedProject.imagePixels,
-                    overlayPixels: fixedProject.overlayPixels,
-                    autoSwatches: fixedProject.autoSwatches,
-                    userSwatches: fixedProject.userSwatches,
-                    hasOriginalImageData: fixedProject.hasOriginalImageData,
-                },
-                "load-commit"
-            )
-            traceLoad("commit: enforceGridRuleAfterRestore done")
-
-            // 5) checksum-проверка ПОСЛЕ рендера (через useEffect)
-            const expected = loadedCanonicalChecksumRef.current
-            traceLoad("commit: scheduled CHK_AFTER_COMMIT", { expected })
-
-            if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
-                traceLoad(
-                    "commit: requested CHK_AFTER_COMMIT (via useEffect)",
-                    {
-                        expected: loadedCanonicalChecksumRef.current,
-                    }
-                )
-                setPostLoadCheckNonce((v) => v + 1)
-            }
-
-            // 6) очистить pending refs (после планирования проверки)
-            //nextLoadStateRef.current = null
-            //lastValidatedSnapshotRef.current = null
-            //lastValidatedSnapshotV2Ref.current = null
-            traceLoad("commit: refs cleared")
-
-            // 7) ВАЖНО: снять restoring=true ПОСЛЕ коммита, но не в этом же тике.
-            // Иначе repixelizeEffect может успеть схватить изменения и начать мутировать проект.
-            requestAnimationFrame(() => {
-                isRestoringFromSaveRef.current = false
-                setRestoreVisualNonce((x) => x + 1)
-                // ✅ PATCH C: форсим перерисовку витрины после load (особенно важно на мобилках/батчинге)
-                setRestoreVisualNonce((x) => x + 1)
-
-                traceLoad("commit: restoring=false (rAF)")
-            })
         } catch (e) {
             traceLoad("commit: failed", e)
+            coreLifecycleLog("restore:rejected", { reason: "commit-failed" })
+            pendingLoadProjectCommitRef.current = null
 
             //console.error("[LOAD][L2] commit failed", e)
             //nextLoadStateRef.current = null
@@ -6304,73 +6414,7 @@ function PixelEditorFramer({
     }, [postLoadCheckNonce])
 
     function isSameProjectState(a: ProjectState, b: ProjectState): boolean {
-        if (a.gridSize !== b.gridSize) return false
-        if (a.paletteCount !== b.paletteCount) return false
-        if ((a as any).brushSize !== (b as any).brushSize) return false
-        if (a.showImage !== b.showImage) return false
-        if (a.selectedSwatch !== b.selectedSwatch) return false
-        if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
-
-        const aOv = a.autoOverrides || {}
-        const bOv = b.autoOverrides || {}
-
-        const aKeys = Object.keys(aOv).sort()
-        const bKeys = Object.keys(bOv).sort()
-        if (aKeys.length !== bKeys.length) return false
-
-        for (let i = 0; i < aKeys.length; i++) {
-            if (aKeys[i] !== bKeys[i]) return false
-            const k = aKeys[i]
-            const av = aOv[k]
-            const bv = bOv[k]
-            if ((av?.hex ?? null) !== (bv?.hex ?? null)) return false
-            if ((av?.isTransparent ?? null) !== (bv?.isTransparent ?? null))
-                return false
-        }
-
-        if (a.autoSwatches.length !== b.autoSwatches.length) return false
-        for (let i = 0; i < a.autoSwatches.length; i++) {
-            const sa = a.autoSwatches[i]
-            const sb = b.autoSwatches[i]
-            if (!sb) return false
-            if (sa.id !== sb.id) return false
-            if (sa.color !== sb.color) return false
-            if (sa.isTransparent !== sb.isTransparent) return false
-            if (sa.isUser !== sb.isUser) return false
-        }
-
-        if (a.userSwatches.length !== b.userSwatches.length) return false
-        for (let i = 0; i < a.userSwatches.length; i++) {
-            const sa = a.userSwatches[i]
-            const sb = b.userSwatches[i]
-            if (!sb) return false
-            if (sa.id !== sb.id) return false
-            if (sa.color !== sb.color) return false
-            if (sa.isTransparent !== sb.isTransparent) return false
-            if (sa.isUser !== sb.isUser) return false
-        }
-
-        if (a.imagePixels.length !== b.imagePixels.length) return false
-        for (let r = 0; r < a.imagePixels.length; r++) {
-            const ra = a.imagePixels[r] || []
-            const rb = b.imagePixels[r] || []
-            if (ra.length !== rb.length) return false
-            for (let c = 0; c < ra.length; c++) {
-                if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
-            }
-        }
-
-        if (a.overlayPixels.length !== b.overlayPixels.length) return false
-        for (let r = 0; r < a.overlayPixels.length; r++) {
-            const ra = a.overlayPixels[r] || []
-            const rb = b.overlayPixels[r] || []
-            if (ra.length !== rb.length) return false
-            for (let c = 0; c < ra.length; c++) {
-                if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
-            }
-        }
-
-        return true
+        return areEditorCommittedStatesEqual(a, b)
     }
 
     function isSliderKeyboardDragKey(key: string): boolean {
@@ -6427,7 +6471,6 @@ function PixelEditorFramer({
     function pushCommit(
         before: ProjectState,
         options?: {
-            publishToRoot?: boolean
             afterState?: ProjectState
         }
     ) {
@@ -6435,90 +6478,27 @@ function PixelEditorFramer({
 
         // ✅ STEP 7: защита от пустых коммитов
         if (isSameProjectState(before, now)) {
+            abortEditorActionTransaction()
             return
         }
 
         // S2 LEGACY:
         // локальная editor-history пока ещё живёт внутри редактора
         // как технический fallback.
-        pastRef.current.push(before)
-
         // ✅ лимит истории
-        if (pastRef.current.length > MAX_HISTORY) {
-            pastRef.current.shift()
-        }
-
         // ✅ любое новое действие убивает redo
-        futureRef.current = []
-        syncHistoryFlags()
         pendingBlankCheckReasonRef.current = "commit-allwhite"
 
         // Step 0:
         // pushCommit больше не пишет root history напрямую.
         // Он только закрывает локальный editor transaction,
         // а root history получает commit через единый user-action protocol.
-        const publishToRoot = options?.publishToRoot ?? true
-        if (publishToRoot) {
-            commitEditorActionTransaction(now)
-        }
+        commitEditorActionTransaction(now)
     }
 
     // S2 LEGACY:
-    // doUndo / doRedo сохраняются как внутренний editor fallback,
     // но не должны считаться главным пользовательским undo/redo path.
     // Пользовательские кнопки уже должны ходить через root engine.
-
-    function doUndo() {
-        if (pastRef.current.length === 0) return
-
-        const before = pastRef.current.pop() as ProjectState
-        const now = makeProjectState()
-
-        futureRef.current.push(now)
-        applyProjectState(before)
-
-        enforceGridRuleAfterRestore(
-            {
-                imagePixels: before.imagePixels,
-                overlayPixels: before.overlayPixels,
-                autoSwatches: before.autoSwatches,
-                userSwatches: before.userSwatches,
-                hasOriginalImageData: before.hasOriginalImageData,
-            },
-            "undo"
-        )
-
-        syncHistoryFlags()
-    }
-
-    function doRedo() {
-        if (futureRef.current.length === 0) return
-
-        const next = futureRef.current.pop() as ProjectState
-        const now = makeProjectState()
-
-        pastRef.current.push(now)
-
-        // limit
-        if (pastRef.current.length > MAX_HISTORY) {
-            pastRef.current.shift()
-        }
-
-        applyProjectState(next)
-
-        enforceGridRuleAfterRestore(
-            {
-                imagePixels: next.imagePixels,
-                overlayPixels: next.overlayPixels,
-                autoSwatches: next.autoSwatches,
-                userSwatches: next.userSwatches,
-                hasOriginalImageData: next.hasOriginalImageData,
-            },
-            "redo"
-        )
-
-        syncHistoryFlags()
-    }
 
     // ------------------- GRID SIZE COMMIT (UNIFIED) -------------------
 
@@ -6611,6 +6591,7 @@ function PixelEditorFramer({
 
         abortEditorActionTransaction()
     }
+    void abortGridSliderTransactionIfNeeded
 
     // ------------------- PALETTE SIZE COMMIT (UNIFIED) -------------------
 
@@ -6696,6 +6677,7 @@ function PixelEditorFramer({
 
         abortEditorActionTransaction()
     }
+    void abortPaletteSliderTransactionIfNeeded
 
     // ------------------- BRUSH SIZE COMMIT (UNIFIED) -------------------
 
@@ -6756,6 +6738,7 @@ function PixelEditorFramer({
 
         abortEditorActionTransaction()
     }
+    void abortBrushSliderTransactionIfNeeded
 
     // ------------------- STROKE UNDO (STEP 6) -------------------
 
@@ -6786,8 +6769,6 @@ function PixelEditorFramer({
     }>({ x: 0, y: 0, inside: false, w: 0, h: 0 })
 
     const brushPreviewRef = React.useRef<HTMLDivElement | null>(null)
-
-    const [, forceBrushPreviewTick] = React.useReducer((x) => x + 1, 0)
 
     function handlePointerDown(e: any) {
         if (overlayMode) return
@@ -6821,7 +6802,9 @@ function PixelEditorFramer({
 
             try {
                 ;(e.currentTarget as any)?.setPointerCapture?.(e.pointerId)
-            } catch {}
+            } catch {
+                // Ignore browsers that do not support pointer capture here.
+            }
 
             return
         }
@@ -6880,7 +6863,9 @@ function PixelEditorFramer({
         // чтобы при отпускании вне canvas onPointerUp всё равно сработал
         try {
             ;(e.currentTarget as any)?.setPointerCapture?.(e.pointerId)
-        } catch {}
+        } catch {
+            // Ignore browsers that do not support pointer capture here.
+        }
     }
 
     // --- Step 9 helper: pick swatch id by content pixel (overlay has priority) ---
@@ -7112,10 +7097,8 @@ function PixelEditorFramer({
     }
 
     const [isColorModalOpen, setIsColorModalOpen] = React.useState(false)
-    const SWATCH_ICON = 44
     const [editingSwatchId, setEditingSwatchId] =
         React.useState<SwatchId | null>(null)
-    const swatchEditBeforeRef = React.useRef<ProjectState | null>(null)
     const [pendingColor, setPendingColor] = React.useState("#FF0000")
     const [pendingTransparent, setPendingTransparent] = React.useState(false)
 
@@ -7166,7 +7149,9 @@ function PixelEditorFramer({
 
         if (/^#[0-9A-F]{6}$/.test(norm)) {
             // HEX2: HEX -> HSV (двигаем ползунок hue и точку SV)
-            const { r, g, b } = hexToRgb(norm)
+            const rgb = hexToRgb(norm)
+            if (!rgb) return
+            const { r, g, b } = rgb
             const hsv = rgbToHsv(r, g, b)
 
             setPendingColor(norm)
@@ -7203,8 +7188,6 @@ function PixelEditorFramer({
 
     const rows = overlayPixels.length
     const cols = rows > 0 ? overlayPixels[0].length : 0
-    const pixelSize = rows > 0 ? CANVAS_SIZE / rows : CANVAS_SIZE
-
     const bg = "#e9d8a6"
     const textColor = "#1b1b1b"
     const canvasMax = 640
@@ -7231,6 +7214,8 @@ function PixelEditorFramer({
         background: "transparent",
         border: "none", // если хочешь убрать и рамку
     })
+
+    void iconButton
 
     const iconOnlyButton = (clickable = false): React.CSSProperties => {
         const s = "clamp(28px, 3vw, 38px)"
@@ -7479,10 +7464,6 @@ function PixelEditorFramer({
 
             liveGridPreviewOwnerRef.current = false
 
-            pastRef.current = []
-            futureRef.current = []
-            syncHistoryFlags()
-
             setAutoOverrides({})
             setUserSwatches([])
             setSelectedSwatch("auto-0")
@@ -7556,6 +7537,8 @@ function PixelEditorFramer({
                 setShowImage(false)
                 setHasImportContext(false)
             }
+
+            commitPendingLoadProjectStateAfterReferenceSnapshot()
             return
         }
 
@@ -7734,13 +7717,7 @@ function PixelEditorFramer({
                 )
 
                 // ✅ IMPORT UNDO: импорт должен стать одним коммитом в историю.
-                const beforeImport = pendingImportBeforeRef.current
-                if (beforeImport) {
-                    pendingImportBeforeRef.current = null
-                    requestAnimationFrame(() => {
-                        pushCommit(beforeImport, { publishToRoot: false })
-                    })
-                }
+                pendingImportBeforeRef.current = null
 
                 // E1A: DEFAULT-ONLY (editor не знает о пресетах)
                 const pixelsForQuant = basePixels
@@ -8179,8 +8156,8 @@ function PixelEditorFramer({
             const next = prev.map((row) => row.slice())
 
             // ROUTE A2: first actual write (log once per stroke)
-            let sampleR = Math.max(0, Math.min(gridSize - 1, row0))
-            let sampleC = Math.max(0, Math.min(gridSize - 1, col0))
+            const sampleR = Math.max(0, Math.min(gridSize - 1, row0))
+            const sampleC = Math.max(0, Math.min(gridSize - 1, col0))
             const beforeSample = prev?.[sampleR]?.[sampleC] ?? null
 
             let changed = false
@@ -8264,6 +8241,7 @@ function PixelEditorFramer({
         if (row < 0 || row >= rows || col < 0 || col >= cols) return null
         return { row, col }
     }
+    void getCellFromEvent
 
     function paintBrush(
         centerRow: number,
@@ -8289,6 +8267,7 @@ function PixelEditorFramer({
             return next
         })
     }
+    void paintBrush
 
     function commitBrushPreviewDOM() {
         brushPreviewRafRef.current = 0
@@ -8424,85 +8403,6 @@ function PixelEditorFramer({
         }
     }
 
-    function buildPromotedStrokeCommitState(params: {
-        before: ProjectState
-        afterOverlayRaw: PixelValue[][]
-        autoSwatches: Swatch[]
-        userSwatches: Swatch[]
-        autoOverrides: AutoSwatchOverridesMap
-        selectedSwatch: SwatchId | "transparent"
-    }): {
-        remappedOverlay: PixelValue[][]
-        nextUserSwatches: Swatch[]
-        nextSelectedSwatch: SwatchId | "transparent"
-    } | null {
-        const strokeSwatchId = params.before.selectedSwatch
-
-        if (
-            typeof strokeSwatchId !== "string" ||
-            !strokeSwatchId.startsWith("auto-") ||
-            !params.autoOverrides?.[strokeSwatchId]
-        ) {
-            return null
-        }
-
-        const effectiveAuto = applyAutoOverrides(
-            params.autoSwatches,
-            params.autoOverrides
-        )
-
-        const sourceSwatch =
-            effectiveAuto.find((s) => s.id === strokeSwatchId) ??
-            params.autoSwatches.find((s) => s.id === strokeSwatchId) ??
-            null
-
-        if (!sourceSwatch) return null
-
-        const newUserSwatchId = `user-${Date.now().toString(36)}-${Math.random()
-            .toString(36)
-            .slice(2, 8)}`
-
-        const promotedUserSwatch: Swatch = {
-            id: newUserSwatchId,
-            color: sourceSwatch.color,
-            isTransparent: sourceSwatch.isTransparent,
-            isUser: true,
-        }
-
-        const beforeOverlay = params.before.overlayPixels
-        let changed = false
-
-        const remappedOverlay = params.afterOverlayRaw.map((row, r) => {
-            const beforeRow = beforeOverlay[r] || []
-            let rowChanged = false
-
-            const nextRow = row.map((cell, c) => {
-                const beforeCell = beforeRow[c] ?? null
-
-                if (beforeCell !== cell && cell === strokeSwatchId) {
-                    rowChanged = true
-                    changed = true
-                    return newUserSwatchId as PixelValue
-                }
-
-                return cell
-            })
-
-            return rowChanged ? nextRow : row
-        })
-
-        if (!changed) return null
-
-        return {
-            remappedOverlay,
-            nextUserSwatches: [...params.userSwatches, promotedUserSwatch],
-            nextSelectedSwatch:
-                params.selectedSwatch === strokeSwatchId
-                    ? newUserSwatchId
-                    : params.selectedSwatch,
-        }
-    }
-
     function stopDrawing(e: any, reason: string = "pointerup") {
         if (e && typeof e.preventDefault === "function") {
             e.preventDefault()
@@ -8531,37 +8431,7 @@ function PixelEditorFramer({
                 const before = strokeBeforeRef.current
                 const afterOverlayRaw =
                     strokeAfterOverlayRef.current ?? overlayPixels
-
-                const promoted = buildPromotedStrokeCommitState({
-                    before,
-                    afterOverlayRaw,
-                    autoSwatches,
-                    userSwatches,
-                    autoOverrides,
-                    selectedSwatch,
-                })
-
-                let afterState: ProjectState
-
-                if (promoted) {
-                    setOverlayPixels(promoted.remappedOverlay)
-                    setUserSwatches(promoted.nextUserSwatches)
-
-                    if (promoted.nextSelectedSwatch !== selectedSwatch) {
-                        setSelectedSwatch(promoted.nextSelectedSwatch)
-                    }
-
-                    afterState = makeProjectStateWithOverlay(
-                        promoted.remappedOverlay
-                    )
-
-                    afterState.userSwatches = cloneSwatches(
-                        promoted.nextUserSwatches
-                    )
-                    afterState.selectedSwatch = promoted.nextSelectedSwatch
-                } else {
-                    afterState = makeProjectStateWithOverlay(afterOverlayRaw)
-                }
+                const afterState = makeProjectStateWithOverlay(afterOverlayRaw)
 
                 paintRefSnapshot = {
                     overlay: afterState.overlayPixels,
@@ -8607,7 +8477,7 @@ function PixelEditorFramer({
         }
     }
 
-    function handleCanvasPointerLeave(_e: any) {
+    function handleCanvasPointerLeave() {
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
     }
@@ -8632,6 +8502,7 @@ function PixelEditorFramer({
             setOriginalImageData(null)
         }
     }
+    void handleClear
 
     function handleImageChange(event: any) {
         const input = event?.target as HTMLInputElement | null
@@ -8650,20 +8521,11 @@ function PixelEditorFramer({
 
         enqueueTxn("importLoad", () => onRequestCropFromFile({ file }))
     }
+    void handleImageChange
 
     function openFileDialog() {
         // единая точка: ROOT держит <input type="file" .../> и общий обработчик ошибок импорта
         onRequestPickImage?.()
-    }
-
-    function toggleImageVisibility() {
-        beginEditorActionTransaction("editor-action")
-        const before = makeProjectState()
-        setShowImage((prev) => !prev)
-
-        requestAnimationFrame(() => {
-            pushCommit(before)
-        })
     }
 
     // ------------------- SWATCH EDIT -------------------
@@ -8672,13 +8534,10 @@ function PixelEditorFramer({
         const sw = swatchById.get(swatchId)
         if (!sw) return
 
-        const before = latestProjectStateRef.current ?? makeProjectState()
-
-        beginEditorActionTransaction("editor-action", before)
-        swatchEditBeforeRef.current = before
-
         const hex = cssColorToHex(sw.color).toUpperCase()
-        const { r, g, b } = hexToRgb(hex)
+        const rgb = hexToRgb(hex)
+        if (!rgb) return
+        const { r, g, b } = rgb
         const hsv = rgbToHsv(r, g, b)
 
         setEditingSwatchId(swatchId)
@@ -8836,16 +8695,11 @@ function PixelEditorFramer({
 
     function handleModalApply() {
         if (!editingSwatchId) {
-            abortEditorActionTransaction()
-            swatchEditBeforeRef.current = null
             setIsColorModalOpen(false)
             return
         }
 
-        const before =
-            swatchEditBeforeRef.current ??
-            latestProjectStateRef.current ??
-            makeProjectState()
+        const before = latestProjectStateRef.current ?? makeProjectState()
 
         // 1) вычисляем “истинный” цвет для применения:
         //    - если прозрачный: цвет неважен, но оставим pendingColor
@@ -8860,6 +8714,22 @@ function PixelEditorFramer({
         }
 
         // 2) готовим next swatches (локально, синхронно)
+        const currentSwatch = swatchById.get(editingSwatchId)
+        if (currentSwatch) {
+            const currentTransparent = !!currentSwatch.isTransparent
+            const nextTransparent = !!pendingTransparent
+            const currentHex = cssColorToHex(currentSwatch.color).toUpperCase()
+            const sameVisualValue =
+                currentTransparent === nextTransparent &&
+                (nextTransparent || currentHex === colorUpper)
+
+            if (sameVisualValue) {
+                setIsColorModalOpen(false)
+                setEditingSwatchId(null)
+                return
+            }
+        }
+
         const { nextAuto, nextUser } = buildNextSwatchesForEdit(
             editingSwatchId,
             colorUpper,
@@ -8867,18 +8737,33 @@ function PixelEditorFramer({
         )
 
         // 3) next overrides (тоже локально, синхронно)
-        let nextAutoOverrides: AutoSwatchOverridesMap = {
+        const nextAutoOverrides: AutoSwatchOverridesMap = {
             ...(autoOverrides || {}),
         }
         if (
             typeof editingSwatchId === "string" &&
             editingSwatchId.startsWith("auto-")
         ) {
+            const existingOverride = autoOverrides?.[editingSwatchId]
+            const sourceAuto = autoSwatches.find((s) => s.id === editingSwatchId)
             const hasHex = /^#[0-9A-F]{6}$/.test(colorUpper)
-            const entry: any = {}
-            if (!pendingTransparent && hasHex) entry.hex = colorUpper
-            entry.isTransparent = !!pendingTransparent
-            nextAutoOverrides[editingSwatchId] = entry
+            const nextIsTransparent = !!pendingTransparent
+            const nextHex = colorUpper.toUpperCase()
+            const sourceHex = (sourceAuto?.color || "").toUpperCase()
+
+            if (
+                !existingOverride &&
+                sourceAuto &&
+                sourceAuto.isTransparent === nextIsTransparent &&
+                (!hasHex || sourceHex === nextHex)
+            ) {
+                delete nextAutoOverrides[editingSwatchId]
+            } else {
+                const entry: any = {}
+                if (!nextIsTransparent && hasHex) entry.hex = nextHex
+                entry.isTransparent = nextIsTransparent
+                nextAutoOverrides[editingSwatchId] = entry
+            }
         }
 
         // 4) схлопываем дубликаты и ремапим пиксели + selectedSwatch
@@ -8892,13 +8777,6 @@ function PixelEditorFramer({
         })
 
         // 5) применяем состояние
-        setAutoSwatches(collapsed.autoSwatches)
-        setUserSwatches(collapsed.userSwatches)
-        setImagePixels(collapsed.imagePixels)
-        setOverlayPixels(collapsed.overlayPixels)
-        setAutoOverrides(collapsed.autoOverrides)
-        setSelectedSwatch(collapsed.selectedSwatch as any)
-
         const afterState: ProjectState = {
             ...(latestProjectStateRef.current ?? makeProjectState()),
             imagePixels: clonePixelsGrid(collapsed.imagePixels),
@@ -8908,6 +8786,21 @@ function PixelEditorFramer({
             selectedSwatch: collapsed.selectedSwatch as any,
             autoOverrides: { ...collapsed.autoOverrides },
         }
+
+        if (isSameProjectState(before, afterState)) {
+            setIsColorModalOpen(false)
+            setEditingSwatchId(null)
+            return
+        }
+
+        beginEditorActionTransaction("editor-action", before)
+
+        setAutoSwatches(collapsed.autoSwatches)
+        setUserSwatches(collapsed.userSwatches)
+        setImagePixels(collapsed.imagePixels)
+        setOverlayPixels(collapsed.overlayPixels)
+        setAutoOverrides(collapsed.autoOverrides)
+        setSelectedSwatch(collapsed.selectedSwatch as any)
 
         postCommitGridHook(
             {
@@ -8923,14 +8816,11 @@ function PixelEditorFramer({
             afterState,
         })
 
-        swatchEditBeforeRef.current = null
         setIsColorModalOpen(false)
         setEditingSwatchId(null)
     }
 
     function handleModalCancel() {
-        abortEditorActionTransaction()
-        swatchEditBeforeRef.current = null
         setIsColorModalOpen(false)
         setEditingSwatchId(null)
     }
@@ -8939,6 +8829,7 @@ function PixelEditorFramer({
 
     function addUserSwatch() {
         const before = latestProjectStateRef.current ?? makeProjectState()
+        beginEditorActionTransaction("editor-action", before)
 
         const id = `user-${Date.now().toString(36)}-${Math.random()
             .toString(36)
@@ -9057,7 +8948,7 @@ function PixelEditorFramer({
                     await writable.write(blob)
                     await writable.close()
                     return
-                } catch (e: any) {
+                } catch {
                     // permission/прочее → fallback download ниже
                 }
             }
@@ -9092,6 +8983,7 @@ function PixelEditorFramer({
             canvas.toBlob((blob) => resolve(blob), "image/png")
         })
     }
+    void imageDataToPngBlob
 
     async function saveBlob(blob: Blob, filename: string) {
         // SSR safety
@@ -9151,6 +9043,7 @@ function PixelEditorFramer({
         // Fallback — старый download
         downloadBlob(blob, filename)
     }
+    void saveBlob
 
     async function exportPNG(p?: {
         includeStroke: boolean
@@ -9625,33 +9518,16 @@ function PixelEditorFramer({
                     </div>
 
                     {/* Block 1: Undo / Redo */}
-                    {/* S2:
-    Если Root дал coordinated undo/redo, именно они являются
-    user-facing историей. doUndo/doRedo остаются только fallback-path. */}
                     <div style={{ display: "contents" }}>
                         <button
                             type="button"
-                            onClick={onCoordinatedUndo ?? doUndo}
-                            disabled={
-                                onCoordinatedUndo
-                                    ? !coordinatedCanUndo
-                                    : !canUndo
-                            }
+                            onClick={onCoordinatedUndo}
+                            disabled={!coordinatedCanUndo}
                             aria-label="Undo"
                             className="pxUiAnim"
                             style={{
-                                ...iconOnlyButton(
-                                    onCoordinatedUndo
-                                        ? !!coordinatedCanUndo
-                                        : canUndo
-                                ),
-                                opacity: onCoordinatedUndo
-                                    ? coordinatedCanUndo
-                                        ? 1
-                                        : 0.35
-                                    : canUndo
-                                      ? 1
-                                      : 0.35,
+                                ...iconOnlyButton(!!coordinatedCanUndo),
+                                opacity: coordinatedCanUndo ? 1 : 0.35,
                             }}
                         >
                             <UndoIcon />
@@ -9659,27 +9535,13 @@ function PixelEditorFramer({
 
                         <button
                             type="button"
-                            onClick={onCoordinatedRedo ?? doRedo}
-                            disabled={
-                                onCoordinatedRedo
-                                    ? !coordinatedCanRedo
-                                    : !canRedo
-                            }
+                            onClick={onCoordinatedRedo}
+                            disabled={!coordinatedCanRedo}
                             aria-label="Redo"
                             className="pxUiAnim"
                             style={{
-                                ...iconOnlyButton(
-                                    onCoordinatedRedo
-                                        ? !!coordinatedCanRedo
-                                        : canRedo
-                                ),
-                                opacity: onCoordinatedRedo
-                                    ? coordinatedCanRedo
-                                        ? 1
-                                        : 0.35
-                                    : canRedo
-                                      ? 1
-                                      : 0.35,
+                                ...iconOnlyButton(!!coordinatedCanRedo),
+                                opacity: coordinatedCanRedo ? 1 : 0.35,
                             }}
                         >
                             <RedoIcon />
@@ -9824,15 +9686,6 @@ function PixelEditorFramer({
                     </div>
                 </div>
             </div>
-
-            {/* UI1: hidden file input for project load (NO-OP) */}
-            <input
-                ref={loadFileInputRef}
-                type="file"
-                accept=".pixtudio,application/json"
-                onChange={handlePickedProjectFile}
-                style={{ display: "none" }}
-            />
 
             {/* Canvas */}
             <div
@@ -11144,7 +10997,7 @@ function PixelEditorFramer({
                                             letterSpacing:
                                                 SWATCH_EDIT_TITLE_LETTER_SPACING,
                                             textAlign: "center",
-                                            color: "#001219",
+                                            color: "#0C1720",
                                             lineHeight: 1.1,
                                             flex: "0 0 auto",
                                         }}
@@ -11604,30 +11457,13 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     // S2: отдельный SmartReferenceEditor существует как внешний модуль, но сюда ещё не подключён.
 
-    const [bakedReferenceFromImport, setBakedReferenceFromImport] =
-        React.useState<ImageData | null>(null)
-
     const [gatewayCommittedReference, setGatewayCommittedReference] =
         React.useState<ImageData | null>(null)
 
     const [gatewayCommittedReferenceKind, setGatewayCommittedReferenceKind] =
         React.useState<"import" | "load" | "smart-object-apply" | null>(null)
 
-    const [smartReferenceBase, setSmartReferenceBase] =
-        React.useState<ImageData | null>(null)
-
-    // S3:
-    // root only routes seeds into SmartReferenceEditor.
-    // Ownership of smart-object state belongs to the module itself.
-    const [smartReferenceSeedAdjustments, setSmartReferenceSeedAdjustments] =
-        React.useState(ZERO_SMART_REFERENCE_ADJUSTMENTS)
-
-    const [smartReferenceLoadPublishNonce, setSmartReferenceLoadPublishNonce] =
-        React.useState(0)
-
-    const [setImportPresetId] = React.useState<
-        "DEFAULT" | "NEON" | "GRAYSCALE" | "BW"
-    >("DEFAULT")
+    const [smartObjectHasBase, setSmartObjectHasBase] = React.useState(false)
 
     const [cameraOpen, setCameraOpen] = React.useState(false)
 
@@ -11642,10 +11478,9 @@ export default function PIXTUDIO_Mobile_MVP() {
     //
     // pendingHistoryTransactionRef:
     //   временный before-state между beginTransaction и commit/abort
-    const committedHistoryRef = React.useRef<HistoryEntry[]>([])
-    const redoHistoryRef = React.useRef<HistoryEntry[]>([])
-    const pendingHistoryTransactionRef =
-        React.useRef<PendingHistoryTransaction | null>(null)
+    const rootHistoryRef = React.useRef<
+        RootHistoryState<EditorCommittedState, SmartObjectCommittedState>
+    >(createRootHistoryState<EditorCommittedState, SmartObjectCommittedState>())
 
     const [rootCanUndo, setRootCanUndo] = React.useState(false)
     const [rootCanRedo, setRootCanRedo] = React.useState(false)
@@ -11661,8 +11496,8 @@ export default function PIXTUDIO_Mobile_MVP() {
         React.useRef<SmartObjectCommittedStateBridge | null>(null)
 
     const syncRootHistoryFlags = React.useCallback(() => {
-        setRootCanUndo(committedHistoryRef.current.length > 0)
-        setRootCanRedo(redoHistoryRef.current.length > 0)
+        setRootCanUndo(rootHistoryCanUndo(rootHistoryRef.current))
+        setRootCanRedo(rootHistoryCanRedo(rootHistoryRef.current))
     }, [])
 
     const commitGatewaySnapshotToEditor = React.useCallback(
@@ -11673,6 +11508,11 @@ export default function PIXTUDIO_Mobile_MVP() {
             // Любой вход эталона в editor идёт через эту точку,
             // но editor обязан знать ПРИЧИНУ входа:
             // обычный import или SmartObject Apply.
+            coreLifecycleLog("gateway:commit", {
+                kind,
+                hasSnapshot: !!snapshot,
+            })
+
             setGatewayCommittedReference(snapshot)
             setGatewayCommittedReferenceKind(kind)
 
@@ -11680,10 +11520,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 // Step 7:
                 // import/load/open-draw = new life boundary.
                 // No previous user action may survive this point.
-                committedHistoryRef.current = []
-                redoHistoryRef.current = []
-                pendingHistoryTransactionRef.current = null
-                editorCommittedStateBridgeRef.current?.resetHistory?.()
+                rootHistoryClear(rootHistoryRef.current)
                 syncRootHistoryFlags()
             }
         },
@@ -11727,26 +11564,32 @@ export default function PIXTUDIO_Mobile_MVP() {
             base: ImageData | null
             adjustments: SmartReferenceAdjustments
         }) => {
-            const safeAdjustments: SmartReferenceAdjustments = {
-                ...ZERO_SMART_REFERENCE_ADJUSTMENTS,
-                ...(payload.adjustments ?? ZERO_SMART_REFERENCE_ADJUSTMENTS),
-            }
+            const bridge = smartObjectCommittedStateBridgeRef.current
+            if (!bridge) return false
 
-            setBakedReferenceFromImport(payload.base)
-            setSmartReferenceSeedAdjustments(safeAdjustments)
-            setSmartReferenceBase(payload.base)
-
-            // LOAD snapshot больше не строится в root.
-            // Root только seed'ит raw Smart state и просит SmartReferenceEditor
-            // опубликовать канонический load-snapshot.
-            setSmartReferenceLoadPublishNonce((x) => x + 1)
+            bridge.restoreFromLoad(payload)
+            setSmartObjectHasBase(payload.base != null)
+            return true
         },
         []
     )
 
     const handleCaptureSmartReferenceBaseForSave = React.useCallback(() => {
-        return smartReferenceBase
-    }, [smartReferenceBase])
+        return (
+            smartObjectCommittedStateBridgeRef.current?.captureBakedBaseForSave() ??
+            null
+        )
+    }, [])
+
+    const handleSmartObjectCommittedStateBridgeReady = React.useCallback(
+        (bridge: SmartObjectCommittedStateBridge | null) => {
+            smartObjectCommittedStateBridgeRef.current = bridge
+            if (bridge) {
+                setSmartObjectHasBase(bridge.hasBakedBase())
+            }
+        },
+        []
+    )
 
     const handleCaptureSmartObjectCommittedStateForSave =
         React.useCallback(() => {
@@ -11766,54 +11609,27 @@ export default function PIXTUDIO_Mobile_MVP() {
     //   editor + smart-object.
     //
     // - внутренняя editor-history пока ещё может существовать,
-    //   но только как legacy/fallback механизм редактора,
     //   а не как главная пользовательская история.
-    const resetHistory = React.useCallback(() => {
-        // S1/S2:
-        // resetHistory = reset КАНОНИЧЕСКОЙ root history
-        // + сброс legacy editor-history, чтобы старый undo-path
-        // не переживал новый import и не конфликтовал с root history.
-        committedHistoryRef.current = []
-        redoHistoryRef.current = []
-        pendingHistoryTransactionRef.current = null
-
-        editorCommittedStateBridgeRef.current?.resetHistory()
-        syncRootHistoryFlags()
-    }, [syncRootHistoryFlags])
 
     const beginTransaction = React.useCallback(
         (input: BeginHistoryTransactionInput) => {
-            pendingHistoryTransactionRef.current = {
-                kind: input.kind,
-                editorBefore: input.editorBefore,
-                smartBefore: input.smartBefore,
-                smartAfter: null,
-            }
+            rootHistoryBegin(rootHistoryRef.current, input)
             syncRootHistoryFlags()
         },
         [syncRootHistoryFlags]
     )
 
     const abortTransaction = React.useCallback(() => {
-        pendingHistoryTransactionRef.current = null
+        rootHistoryAbort(rootHistoryRef.current)
         syncRootHistoryFlags()
     }, [syncRootHistoryFlags])
 
     const commitTransaction = React.useCallback(
         (editorAfter: EditorCommittedState | null) => {
-            const pending = pendingHistoryTransactionRef.current
-            if (!pending) return
-
-            committedHistoryRef.current.push({
-                kind: pending.kind,
-                editorBefore: pending.editorBefore,
-                editorAfter,
-                smartBefore: pending.smartBefore,
-                smartAfter: pending.smartAfter,
+            rootHistoryCommit(rootHistoryRef.current, editorAfter, {
+                isEditorEqual: areEditorCommittedStatesEqual,
+                isSmartEqual: areSmartObjectCommittedStatesEqual,
             })
-
-            redoHistoryRef.current = []
-            pendingHistoryTransactionRef.current = null
             syncRootHistoryFlags()
         },
         [syncRootHistoryFlags]
@@ -11835,10 +11651,10 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const finalizePendingUserAction = React.useCallback(
         (input?: UserActionFinalizeInput) => {
-            if (!pendingHistoryTransactionRef.current) return
-
-            pendingHistoryTransactionRef.current.smartAfter =
+            rootHistoryFinalize(
+                rootHistoryRef.current,
                 input?.smartAfter ?? captureSmartObjectCommittedState()
+            )
         },
         [captureSmartObjectCommittedState]
     )
@@ -11861,10 +11677,9 @@ export default function PIXTUDIO_Mobile_MVP() {
         // S2:
         // Это канонический пользовательский Undo.
         // Он обязан восстанавливать ОБА домена из root history.
-        const entry = committedHistoryRef.current.pop()
+        const entry = rootHistoryUndo(rootHistoryRef.current)
         if (!entry) return
 
-        redoHistoryRef.current.push(entry)
         restoreEditorCommittedState(entry.editorBefore)
         restoreSmartObjectCommittedState(entry.smartBefore)
         syncRootHistoryFlags()
@@ -11878,10 +11693,9 @@ export default function PIXTUDIO_Mobile_MVP() {
         // S2:
         // Это канонический пользовательский Redo.
         // Он обязан восстанавливать ОБА домена из root history.
-        const entry = redoHistoryRef.current.pop()
+        const entry = rootHistoryRedo(rootHistoryRef.current)
         if (!entry) return
 
-        committedHistoryRef.current.push(entry)
         restoreEditorCommittedState(entry.editorAfter)
         restoreSmartObjectCommittedState(entry.smartAfter)
         syncRootHistoryFlags()
@@ -11893,11 +11707,12 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const debugHistoryInfo = React.useCallback(() => {
         return {
-            committed: committedHistoryRef.current.length,
-            redo: redoHistoryRef.current.length,
-            hasPending: pendingHistoryTransactionRef.current != null,
+            committed: rootHistoryRef.current.committed.length,
+            redo: rootHistoryRef.current.redo.length,
+            hasPending: rootHistoryRef.current.pending != null,
         }
     }, [])
+    void debugHistoryInfo
 
     const closeSmartReferenceEditor = React.useCallback(() => {
         // Step 6:
@@ -11934,6 +11749,14 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const handlePublishedReferenceEnvelope = React.useCallback(
         (envelope: ReferenceSnapshotEnvelope) => {
+            coreLifecycleLog("smart-reference:published", {
+                kind: envelope.kind,
+                revision: envelope.revision,
+                hasSnapshot: !!envelope.snapshot,
+            })
+
+            setSmartObjectHasBase(envelope.snapshot != null)
+
             // Step 6:
             // Smart Object Apply is a strict modal action:
             // 1) finalize smartAfter
@@ -11976,8 +11799,8 @@ export default function PIXTUDIO_Mobile_MVP() {
             if (ENABLE_ROOT_HISTORY_LOGS) {
                 console.log(
                     "STEP6 committed history entry:",
-                    committedHistoryRef.current[
-                        committedHistoryRef.current.length - 1
+                    rootHistoryRef.current.committed[
+                        rootHistoryRef.current.committed.length - 1
                     ]
                 )
             }
@@ -12088,7 +11911,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                     await writable.write(blob)
                     await writable.close()
                     return
-                } catch (e: any) {}
+                } catch {
+                    // Fall back to browser download when picker write fails.
+                }
             }
 
             downloadBlobFromRoot(blob, filename)
@@ -12139,8 +11964,18 @@ export default function PIXTUDIO_Mobile_MVP() {
     const cameraInputRef = React.useRef<HTMLInputElement | null>(null)
 
     const openProjectPicker = React.useCallback(() => {
-        loadFileInputRef.current?.click()
-    }, [])
+        pendingProjectOpenFromStartRef.current = screen === "start"
+        const el = loadFileInputRef.current
+        if (!el) return
+
+        try {
+            el.value = ""
+        } catch {
+            // Some browsers expose a read-only value; click still opens the picker.
+        }
+
+        el.click()
+    }, [screen])
 
     // ======================
     // GLOBAL: unified import-error modal (single source of truth)
@@ -12149,8 +11984,6 @@ export default function PIXTUDIO_Mobile_MVP() {
     const [importErrorModal, setImportErrorModal] = React.useState<{
         message: string
     } | null>(null)
-
-    const isImportErrorModalOpen = !!importErrorModal
 
     const showImportErrorModal = React.useCallback((message: string) => {
         setImportErrorModal({ message })
@@ -12389,12 +12222,14 @@ export default function PIXTUDIO_Mobile_MVP() {
             "gallery" // было "file" — лучше держать в рамках union-типа
         )
 
-        // S1 gateway cut:
-        // import pipeline -> baked reference -> gateway slot -> editor reference
-        setBakedReferenceFromImport(preprocessed)
-        setSmartReferenceBase(preprocessed)
-        setSmartReferenceSeedAdjustments(ZERO_SMART_REFERENCE_ADJUSTMENTS)
-        commitGatewaySnapshotToEditor(preprocessed, "import")
+        const bridge = smartObjectCommittedStateBridgeRef.current
+        if (!bridge) {
+            failImport("Import failed. Please try again.")
+            return preprocessed
+        }
+
+        bridge.importBakedBase(preprocessed)
+        setSmartObjectHasBase(true)
         setScreen("editor")
         return preprocessed
     }
@@ -12507,7 +12342,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     const [importStatus, setImportStatus] = React.useState<ImportStatus>("idle")
 
     // legacy diagnostics only (UI must NOT branch on this anymore)
-    const [importError, setImportError] = React.useState<string | null>(null)
+    const [, setImportError] = React.useState<string | null>(null)
 
     // --------------------
     // IMPORT ERROR: single source of truth = ROOT modal
@@ -12570,9 +12405,6 @@ export default function PIXTUDIO_Mobile_MVP() {
     const [pendingCropResult, setPendingCropResult] =
         React.useState<CropFlowResult | null>(null)
 
-    const [pendingImportArtifact, setPendingImportArtifact] =
-        React.useState<ImportArtifact | null>(null)
-
     // RF2: транзакционный апплаер импорта — единственное место, где проект реально меняется
 
     function validateImportImageDataOrThrow(img: ImageData, label: string) {
@@ -12621,10 +12453,14 @@ export default function PIXTUDIO_Mobile_MVP() {
     // Альтернативный импортный путь тоже обязан входить в editor
     // только через gateway-slot, без прямого setEditorImageData(...).
     function handleImportArtifact(a: ImportArtifact) {
-        setBakedReferenceFromImport(a.bakedRef512)
-        setSmartReferenceBase(a.bakedRef512)
-        setSmartReferenceSeedAdjustments(ZERO_SMART_REFERENCE_ADJUSTMENTS)
-        commitGatewaySnapshotToEditor(a.bakedRef512, "import")
+        const bridge = smartObjectCommittedStateBridgeRef.current
+        if (!bridge) {
+            failImport("Import failed. Please try again.")
+            return
+        }
+
+        bridge.importBakedBase(a.bakedRef512)
+        setSmartObjectHasBase(true)
         setScreen("editor")
     }
 
@@ -12678,7 +12514,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     // E1B: параллельный useEffect под новый контракт ImportArtifact (пока не используется)
 
     React.useEffect(() => {
-        const a = pendingImportArtifact
+        const a = null as ImportArtifact | null
 
         if (!a) return
 
@@ -12703,9 +12539,9 @@ export default function PIXTUDIO_Mobile_MVP() {
             // В E1B можно НЕ трогать старый UX ошибок (путь ещё не активен),
             // но хотя бы чистим pending, чтобы не зависать.
         } finally {
-            setPendingImportArtifact(null)
+            void a
         }
-    }, [pendingImportArtifact])
+    }, [])
 
     React.useEffect(() => {
         const r = pendingCropResult
@@ -12722,7 +12558,15 @@ export default function PIXTUDIO_Mobile_MVP() {
             const artifact: ImportArtifact = { bakedRef512 }
 
             // дальше — как раньше: транзакционный apply артефакта
-            setPendingImportArtifact(artifact)
+            validateImportImageDataOrThrow(
+                artifact.bakedRef512,
+                "artifact.bakedRef512"
+            )
+            handleImportArtifact(artifact)
+            setCropPending(null)
+            setSelectedPresetId(null)
+            setImportStatus("idle")
+            setImportError(null)
         } catch (e: any) {
             console.error("[IMPORT][P5] cropResult->artifact failed", e)
             failImportInFlow("Failed to bake import artifact.")
@@ -12955,11 +12799,13 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const ctx = dst.getContext("2d")
         if (!ctx) return
+        const previewCtx = ctx
+        const previewSrc = src
 
         const W = dst.width
         const H = dst.height
 
-        ctx.clearRect(0, 0, W, H)
+        previewCtx.clearRect(0, 0, W, H)
 
         // viewport — квадрат внутри preview
         const insetFrac = isMobileUI
@@ -12989,47 +12835,49 @@ export default function PIXTUDIO_Mobile_MVP() {
         const cy = vcy + cropUiOffset.y
 
         function drawTransformed(alpha: number) {
-            ctx.save()
-            ctx.globalAlpha = alpha
-            ctx.translate(cx, cy)
-            ctx.rotate(cropUiRotation)
-            ctx.drawImage(src, -drawW / 2, -drawH / 2, drawW, drawH)
-            ctx.restore()
+            previewCtx.save()
+            previewCtx.globalAlpha = alpha
+            previewCtx.translate(cx, cy)
+            previewCtx.rotate(cropUiRotation)
+            previewCtx.drawImage(
+                previewSrc,
+                -drawW / 2,
+                -drawH / 2,
+                drawW,
+                drawH
+            )
+            previewCtx.restore()
         }
 
         // 1) "уши": рисуем ту же картинку, но с opacity ~30% (без клипа)
         drawTransformed(IMPORT_PREVIEW_EARS_OPACITY)
 
         // 2) viewport: поверх — та же картинка, но только внутри квадратного окна (100% opacity)
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(vx, vy, vSize, vSize)
-        ctx.clip()
+        previewCtx.save()
+        previewCtx.beginPath()
+        previewCtx.rect(vx, vy, vSize, vSize)
+        previewCtx.clip()
         drawTransformed(1)
-        ctx.restore()
+        previewCtx.restore()
 
         // 3) рамка viewport, чтобы было понятно "вот это будет холст"
-        ctx.save()
-        ctx.strokeStyle = "rgba(255,255,255,0.95)"
-        ctx.lineWidth = Math.max(2, Math.round(W * 0.006))
-        const half = ctx.lineWidth / 2
-        ctx.strokeRect(
+        previewCtx.save()
+        previewCtx.strokeStyle = "rgba(255,255,255,0.95)"
+        previewCtx.lineWidth = Math.max(2, Math.round(W * 0.006))
+        const half = previewCtx.lineWidth / 2
+        previewCtx.strokeRect(
             vx + half,
             vy + half,
-            vSize - ctx.lineWidth,
-            vSize - ctx.lineWidth
+            vSize - previewCtx.lineWidth,
+            vSize - previewCtx.lineWidth
         )
-        ctx.restore()
+        previewCtx.restore()
     }
 
     const cropPreviewBoxRef = React.useRef<HTMLDivElement | null>(null)
     const [cropPreviewCssPx, setCropPreviewCssPx] = React.useState(0)
 
     const [isCropDragging, setIsCropDragging] = React.useState(false)
-
-    function setCropCursorDragging(active: boolean) {
-        setIsCropDragging(active)
-    }
 
     const cropPreviewCanvasPx = React.useMemo(() => {
         const dpr =
@@ -13065,7 +12913,9 @@ export default function PIXTUDIO_Mobile_MVP() {
         return () => {
             try {
                 ro.disconnect()
-            } catch {}
+            } catch {
+                // ResizeObserver disconnect is best-effort during cleanup.
+            }
             window.removeEventListener("resize", measure)
         }
     }, [cropPending])
@@ -13084,7 +12934,9 @@ export default function PIXTUDIO_Mobile_MVP() {
             // Когда кроп закрывается — возвращаем дефолт
             try {
                 el.style.cursor = ""
-            } catch {}
+            } catch {
+                // Ignore style cleanup failures on detached elements.
+            }
         }
     }, [cropPending, isCropDragging])
 
@@ -13143,6 +12995,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     function closeCropScreen() {
         resetImportUi("close")
     }
+    void closeCropScreen
 
     function resetImportUi(reason: string) {
         if (ENABLE_PREP_LOGS) {
@@ -13192,7 +13045,9 @@ export default function PIXTUDIO_Mobile_MVP() {
             const cleanup = () => {
                 try {
                     URL.revokeObjectURL(url)
-                } catch {}
+                } catch {
+                    // Object URL may already be released by the browser.
+                }
             }
 
             img.onload = () => {
@@ -13344,6 +13199,12 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const prepared = applyGeometry()
 
+        if (!prepared) {
+            console.error("[IMPORT][confirmCrop] applyGeometry returned null")
+            failImportInFlow("Failed to apply crop geometry.")
+            return
+        }
+
         if (ENABLE_PREP_LOGS) {
             console.log("[CROP][prepared]", {
                 w: prepared.width,
@@ -13355,12 +13216,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                     return z
                 })(),
             })
-        }
-
-        if (!prepared) {
-            console.error("[IMPORT][confirmCrop] applyGeometry returned null")
-            failImportInFlow("Failed to apply crop geometry.")
-            return
         }
 
         const preset: PresetId = selectedPresetId ?? "DEFAULT"
@@ -13392,6 +13247,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             // но в большинстве кейсов попадём в ready ветку выше
         }
     }
+    void retryImport
 
     function handleCropWheel(e: React.WheelEvent) {
         // важно: чтобы wheel не скроллил страницу под оверлеем
@@ -13417,25 +13273,30 @@ export default function PIXTUDIO_Mobile_MVP() {
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
         return { x: e.clientX - rect.left, y: e.clientY - rect.top }
     }
+    void getLocalPoint
 
     function getCenterForAngle(e: any) {
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
         return { x: rect.width / 2, y: rect.height / 2 }
     }
+    void getCenterForAngle
 
     function angleBetween(ax: number, ay: number, bx: number, by: number) {
         return Math.atan2(by - ay, bx - ax)
     }
+    void angleBetween
 
     function dist(ax: number, ay: number, bx: number, by: number) {
         const dx = bx - ax
         const dy = by - ay
         return Math.sqrt(dx * dx + dy * dy)
     }
+    void dist
 
     function clamp(n: number, a: number, b: number) {
         return Math.max(a, Math.min(b, n))
     }
+    void clamp
 
     function getCropCenterClient() {
         const canvas = cropPreviewCanvasRef.current
@@ -13625,10 +13486,8 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     function openDraw() {
         // S1: даже blank/open-editor идёт через тот же gateway-slot.
-        setBakedReferenceFromImport(null)
-        setSmartReferenceBase(null)
-        setSmartReferenceSeedAdjustments(ZERO_SMART_REFERENCE_ADJUSTMENTS)
-        commitGatewaySnapshotToEditor(null, "import")
+        smartObjectCommittedStateBridgeRef.current?.clearBase("import")
+        setSmartObjectHasBase(false)
         setScreen("editor")
     }
 
@@ -13683,16 +13542,20 @@ export default function PIXTUDIO_Mobile_MVP() {
         openCropFlow(sourceImage)
         setCameraOpen(false)
     }
+    void onCaptured
 
     const handlePickedProjectFile = React.useCallback(
         async (event: React.ChangeEvent<HTMLInputElement>) => {
             const file = event.target.files?.[0]
-            if (!file) return
+            if (!file) {
+                setScreen(
+                    pendingProjectOpenFromStartRef.current ? "start" : "editor"
+                )
+                return
+            }
 
             // важно: чтобы повторный выбор того же файла срабатывал
             event.target.value = ""
-
-            pendingProjectOpenFromStartRef.current = screen === "start"
 
             // 1) кладём файл в pending
             setPendingProjectFile(file)
@@ -13700,7 +13563,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             // 2) переключаемся в Editor (дальше Editor сам “съест” pending и восстановит)
             setScreen("editor")
         },
-        [screen, setScreen]
+        [setScreen]
     )
 
     const content =
@@ -13738,9 +13601,10 @@ export default function PIXTUDIO_Mobile_MVP() {
                     }}
                     onRequestPickImage={openImagePicker}
                     onRequestBlankImport={openDraw}
+                    onRequestOpenProject={openProjectPicker}
                     onShowImportError={failImport}
                     onOpenSmartReferenceTest={
-                        smartReferenceBase
+                        smartObjectHasBase
                             ? openSmartReferenceFromEditorTest
                             : undefined
                     }
@@ -13769,34 +13633,32 @@ export default function PIXTUDIO_Mobile_MVP() {
                     }
                 />
 
-                <div
-                    style={{
-                        position: "fixed",
-                        inset: 0,
-                        zIndex: 20000,
-                        pointerEvents:
-                            screen === "smart-reference" ? "auto" : "none",
-                    }}
-                >
-                    <SmartReferenceEditor
-                        bakedBase={smartReferenceBase}
-                        seedCommittedAdjustments={smartReferenceSeedAdjustments}
-                        loadPublishNonce={smartReferenceLoadPublishNonce}
-                        isOpen={screen === "smart-reference"}
-                        onCancel={closeSmartReferenceEditor}
-                        onSmartObjectCommittedStateBridgeReady={(bridge) => {
-                            smartObjectCommittedStateBridgeRef.current = bridge
-                        }}
-                        onPublishEnvelope={handlePublishedReferenceEnvelope}
-                        onExport={handleSmartReferenceExport}
-                    />
-                </div>
             </>
         )
 
     return (
         <>
             {content}
+
+            <div
+                style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 20000,
+                    pointerEvents:
+                        screen === "smart-reference" ? "auto" : "none",
+                }}
+            >
+                <SmartReferenceEditor
+                    isOpen={screen === "smart-reference"}
+                    onCancel={closeSmartReferenceEditor}
+                    onSmartObjectCommittedStateBridgeReady={
+                        handleSmartObjectCommittedStateBridgeReady
+                    }
+                    onPublishEnvelope={handlePublishedReferenceEnvelope}
+                    onExport={handleSmartReferenceExport}
+                />
+            </div>
 
             {/* ROOT shared hidden inputs:
                 должны быть смонтированы независимо от текущего экрана,
@@ -13943,7 +13805,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                             await navigator.share(shareData)
                                             return
                                         }
-                                    } catch (error) {
+                                    } catch {
                                         // user cancel / unsupported / other runtime issue
                                     }
 
@@ -13958,7 +13820,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                                             alert("Link copied")
                                             return
                                         }
-                                    } catch (error) {}
+                                    } catch {
+                                        // Fall through to the prompt fallback.
+                                    }
 
                                     window.prompt("Copy this link:", shareUrl)
                                 }}

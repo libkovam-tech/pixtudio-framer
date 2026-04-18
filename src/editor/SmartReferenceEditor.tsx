@@ -30,6 +30,14 @@ export type SmartObjectCommittedState = {
 export type SmartObjectCommittedStateBridge = {
     captureCommittedState: () => SmartObjectCommittedState
     applyCommittedState: (state: SmartObjectCommittedState) => void
+    importBakedBase: (base: ImageData) => void
+    restoreFromLoad: (payload: {
+        base: ImageData | null
+        adjustments: SmartReferenceAdjustments
+    }) => void
+    clearBase: (kind: "import" | "load") => void
+    captureBakedBaseForSave: () => ImageData | null
+    hasBakedBase: () => boolean
 }
 
 export type SmartObjectWhitePoint = readonly [number, number, number]
@@ -471,9 +479,12 @@ const BRADFORD_M_INV: Mat3 = [
 ]
 
 const D65_WHITE_XYZ: readonly [number, number, number] = [0.95047, 1.0, 1.08883]
+void D65_WHITE_XYZ
 
 const RGB_TO_LMS_BRADFORD = multiplyMat3(BRADFORD_M, SRGB_TO_XYZ_D65)
+void RGB_TO_LMS_BRADFORD
 const LMS_BRADFORD_TO_RGB = multiplyMat3(XYZ_TO_SRGB_D65, BRADFORD_M_INV)
+void LMS_BRADFORD_TO_RGB
 
 function sliderWhiteBalanceToSignedUnit(raw: number): number {
     if (!Number.isFinite(raw)) return 0
@@ -562,8 +573,10 @@ function lerpMat3(a: Mat3, b: Mat3, t: number): Mat3 {
         lerp(a[8], b[8], t),
     ]
 }
+void lerpMat3
 
 const IDENTITY_MAT3: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+void IDENTITY_MAT3
 
 function srgbChannelToLinear01(v255: number): number {
     const v = v255 / 255
@@ -904,6 +917,7 @@ function rgbChannelSpreadAroundLuma(r: number, g: number, b: number): number {
         (3 * luma)
     )
 }
+void rgbChannelSpreadAroundLuma
 
 function remapSpreadTowardsLuma(
     value: number,
@@ -912,6 +926,7 @@ function remapSpreadTowardsLuma(
 ): number {
     return luma + (value - luma) * ratio
 }
+void remapSpreadTowardsLuma
 
 function normalizeWhitePointLinearRgb(
     r: number,
@@ -1120,6 +1135,7 @@ function linearRgbWhitePointToChromaticityNormalizedXyz(
 
     return whitePointXyToXyz(x, y)
 }
+void linearRgbWhitePointToChromaticityNormalizedXyz
 
 function xyToApproxKelvin(x: number, y: number): number {
     const n = (x - 0.332) / (0.1858 - y)
@@ -1356,7 +1372,7 @@ export function buildReferenceSnapshot(
 }
 
 type SmartReferenceEditorProps = {
-    bakedBase: ImageData | null
+    bakedBase?: ImageData | null
     seedCommittedAdjustments?: SmartReferenceAdjustments
     loadPublishNonce?: number
     isOpen?: boolean
@@ -1801,7 +1817,7 @@ function FitToViewport({
 }
 
 export function SmartReferenceEditor({
-    bakedBase,
+    bakedBase = null,
     seedCommittedAdjustments = ZERO_SMART_REFERENCE_ADJUSTMENTS,
     loadPublishNonce = 0,
     isOpen = true,
@@ -1840,14 +1856,15 @@ export function SmartReferenceEditor({
     /// превращает pending transaction в committed HistoryEntry.
     // =====================
     const [smartObjectBase, setSmartObjectBase] =
-        React.useState<ImageData | null>(bakedBase)
+        React.useState<ImageData | null>(null)
+    const smartObjectBaseRef = React.useRef<ImageData | null>(null)
 
     // WB domain state хранит session-stable source estimate и metadata.
     // В visible WB transform сейчас участвует sourceWhitePoint.
     // sourceKelvin / whiteBalanceConfidence / targetKelvin остаются metadata/debug domain state.
     const [whiteBalanceDomainState, setWhiteBalanceDomainState] =
         React.useState<SmartObjectWhiteBalanceDomainState>(() =>
-            initializeWhiteBalanceDomainStateFromBakedBase(bakedBase)
+            initializeWhiteBalanceDomainStateFromBakedBase(null)
         )
 
     // H4:
@@ -1863,10 +1880,6 @@ export function SmartReferenceEditor({
         adjustments: { ...ZERO_SMART_REFERENCE_ADJUSTMENTS },
         revision: 0,
     })
-
-    const [smartObjectVersion] = React.useState<number>(
-        SMART_REFERENCE_VERSION_1
-    )
 
     const previewCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
     const toneTrackRef = React.useRef<HTMLDivElement | null>(null)
@@ -1895,6 +1908,7 @@ export function SmartReferenceEditor({
     React.useEffect(() => {
         // Новый bakedBase = новая локальная Smart Object session.
         // На import/load root может подать seed committed adjustments.
+        smartObjectBaseRef.current = bakedBase
         setSmartObjectBase(bakedBase)
 
         const nextWhiteBalanceDomainState =
@@ -1935,6 +1949,71 @@ export function SmartReferenceEditor({
     // buildReferenceSnapshot already works,
     // and local preview is driven by smartAdjustments.
 
+    const publishSnapshotForBase = React.useCallback(
+        (
+            base: ImageData | null,
+            adjustments: SmartReferenceAdjustments,
+            kind: "import" | "load"
+        ) => {
+            if (!onPublishEnvelope) return
+
+            if (!base) {
+                onPublishEnvelope({
+                    snapshot: null,
+                    revision: 0,
+                    kind,
+                })
+                return
+            }
+
+            const nextWhiteBalanceDomainState =
+                initializeWhiteBalanceDomainStateFromBakedBase(base)
+            const snapshot = buildReferenceSnapshot(
+                base,
+                adjustments,
+                nextWhiteBalanceDomainState
+            )
+
+            onPublishEnvelope({
+                snapshot,
+                revision: 0,
+                kind,
+            })
+        },
+        [onPublishEnvelope]
+    )
+
+    const resetSmartObjectSession = React.useCallback(
+        (
+            base: ImageData | null,
+            adjustments: SmartReferenceAdjustments,
+            kind: "import" | "load"
+        ) => {
+            const safeAdjustments: SmartReferenceAdjustments = {
+                ...ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                ...(adjustments ?? ZERO_SMART_REFERENCE_ADJUSTMENTS),
+            }
+
+            smartObjectBaseRef.current = base
+            setSmartObjectBase(base)
+
+            const nextWhiteBalanceDomainState =
+                initializeWhiteBalanceDomainStateFromBakedBase(base)
+            setWhiteBalanceDomainState(nextWhiteBalanceDomainState)
+
+            setSmartAdjustments({ ...safeAdjustments })
+
+            committedStateRef.current = {
+                adjustments: { ...safeAdjustments },
+                revision: 0,
+            }
+            setPublishedRevision(0)
+
+            publishSnapshotForBase(base, safeAdjustments, kind)
+        },
+        [publishSnapshotForBase]
+    )
+
     React.useEffect(() => {
         if (!onSmartObjectCommittedStateBridgeReady) return
 
@@ -1967,12 +2046,35 @@ export function SmartReferenceEditor({
                 // UI при restore тоже должен синхронизироваться с committed-state.
                 setSmartAdjustments({ ...safeState.adjustments })
             },
+            importBakedBase: (base) => {
+                resetSmartObjectSession(
+                    base,
+                    ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                    "import"
+                )
+            },
+            restoreFromLoad: (payload) => {
+                resetSmartObjectSession(
+                    payload.base,
+                    payload.adjustments ?? ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                    "load"
+                )
+            },
+            clearBase: (kind) => {
+                resetSmartObjectSession(
+                    null,
+                    ZERO_SMART_REFERENCE_ADJUSTMENTS,
+                    kind
+                )
+            },
+            captureBakedBaseForSave: () => smartObjectBaseRef.current,
+            hasBakedBase: () => smartObjectBaseRef.current != null,
         })
 
         return () => {
             onSmartObjectCommittedStateBridgeReady(null)
         }
-    }, [onSmartObjectCommittedStateBridgeReady])
+    }, [onSmartObjectCommittedStateBridgeReady, resetSmartObjectSession])
 
     React.useEffect(() => {
         if (!onPublishEnvelope) return
