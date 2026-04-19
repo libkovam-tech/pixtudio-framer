@@ -19,3 +19,8 @@ ON analytics_events(event_name);
 
 CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at
 ON analytics_events(created_at);
+
+CREATE TABLE IF NOT EXISTS analytics_report_rate_limits (
+    rate_key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+);

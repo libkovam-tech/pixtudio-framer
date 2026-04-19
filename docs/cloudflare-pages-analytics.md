@@ -96,3 +96,75 @@ After deployment:
 3. In Cloudflare, check that the Pages Function has no binding errors.
 4. Query the D1 table `analytics_events` and confirm rows are being inserted.
 5. Open Cloudflare Web Analytics and confirm page view data appears.
+
+## Email analytics reports
+
+The app supports an email report flow:
+
+1. Tap the logo on the editor start screen.
+2. Enter the private code.
+3. The browser calls `/api/admin/send-analytics-report`.
+4. The Pages Function forwards the request to the `ANALYTICS_REPORTER` service binding.
+5. The `pixtudio-analytics-reporter` Worker validates the code, enforces a 5-minute successful-send rate limit, reads D1, and sends the email report.
+
+The browser never receives the report data. The email contains only:
+
+- action
+- date
+- country
+
+Sensitive fields such as IP, user agent, URL, Ray ID, and colo are not included.
+
+### Generate the report code hash
+
+Generate a strong permanent password with Google Password Manager, then run:
+
+```bash
+node scripts/hash-report-secret.mjs
+```
+
+Paste the generated password when prompted. The script prints a SHA-256 hash.
+Store only that hash in Cloudflare as the Worker secret:
+
+```bash
+npx wrangler secret put ANALYTICS_REPORT_SECRET_HASH -c wrangler.analytics-reporter.toml
+```
+
+### Deploy the reporter Worker
+
+Copy the example config:
+
+```bash
+copy wrangler.analytics-reporter.example.toml wrangler.analytics-reporter.toml
+```
+
+Edit `wrangler.analytics-reporter.toml`:
+
+- replace `REPLACE_WITH_D1_DATABASE_ID`
+- replace `REPLACE_WITH_YOUR_EMAIL`
+- keep `ANALYTICS_REPORT_SENDER` as `analytics@pixtudio.app`
+
+Deploy:
+
+```bash
+npx wrangler deploy -c wrangler.analytics-reporter.toml
+```
+
+### Cloudflare bindings
+
+For the reporter Worker:
+
+- D1 binding: `ANALYTICS_DB`
+- Send Email binding: `REPORT_EMAIL`
+- secret: `ANALYTICS_REPORT_SECRET_HASH`
+- var: `ANALYTICS_REPORT_SENDER=analytics@pixtudio.app`
+- var: `ANALYTICS_REPORT_RECIPIENT=your email`
+
+For the Pages project:
+
+- Service binding name: `ANALYTICS_REPORTER`
+- Service: `pixtudio-analytics-reporter`
+
+The monthly report is handled by the Worker cron in `wrangler.analytics-reporter.toml`.
+Cloudflare cron schedules use UTC. The example runs on the first day of each
+month at 06:00 UTC and sends the previous calendar month.

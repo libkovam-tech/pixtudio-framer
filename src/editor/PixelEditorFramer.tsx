@@ -2831,7 +2831,10 @@ function StartScreen({
     const TAGLINE_TEXT = "Pixelize the world around you"
 
     const taglineRef = React.useRef<HTMLDivElement | null>(null)
+    const reportCodeInputRef = React.useRef<HTMLInputElement | null>(null)
     const [taglineFontPx, setTaglineFontPx] = React.useState(20)
+    const [isReportCodeOpen, setIsReportCodeOpen] = React.useState(false)
+    const [reportCode, setReportCode] = React.useState("")
 
     useIsomorphicLayoutEffect(() => {
         const el = taglineRef.current
@@ -2889,6 +2892,43 @@ function StartScreen({
         }
     }, [TAGLINE_TEXT, START_LOGO_W])
 
+    React.useEffect(() => {
+        if (!isReportCodeOpen) return
+
+        const raf = window.requestAnimationFrame(() => {
+            reportCodeInputRef.current?.focus()
+        })
+
+        return () => window.cancelAnimationFrame(raf)
+    }, [isReportCodeOpen])
+
+    const openReportCodeModal = React.useCallback(() => {
+        setReportCode("")
+        setIsReportCodeOpen(true)
+    }, [])
+
+    const closeReportCodeModal = React.useCallback(() => {
+        setReportCode("")
+        setIsReportCodeOpen(false)
+    }, [])
+
+    const submitReportCode = React.useCallback(() => {
+        const code = reportCode
+
+        closeReportCodeModal()
+
+        fetch("/api/admin/send-analytics-report", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ code }),
+            keepalive: true,
+        }).catch(() => {
+            // Intentionally silent.
+        })
+    }, [closeReportCodeModal, reportCode])
+
     const wrapStyle: React.CSSProperties = {
         height: "100vh",
         minHeight: "100vh",
@@ -2909,6 +2949,18 @@ function StartScreen({
         flexDirection: "column",
         alignItems: "center",
         marginTop: 10,
+    }
+
+    const logoButtonStyle: React.CSSProperties = {
+        width: "100%",
+        height: 52,
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        margin: 0,
+        display: "block",
+        cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
     }
 
     const taglineStyle: React.CSSProperties = {
@@ -2989,6 +3041,141 @@ function StartScreen({
         imageRendering: "pixelated",
     }
 
+    const reportCodeModal = isReportCodeOpen
+        ? ReactDOM.createPortal(
+              <div
+                  style={ALERT_OVERLAY_STYLE}
+                  onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                  }}
+              >
+                  <form
+                      onSubmit={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          submitReportCode()
+                      }}
+                      style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          pointerEvents: "auto",
+                      }}
+                      onClick={(e) => {
+                          e.stopPropagation()
+                      }}
+                  >
+                      <div
+                          style={{
+                              position: "relative",
+                              width: "min(300px, calc(100vw - 48px))",
+                              height: "105px",
+                          }}
+                      >
+                          <div style={{ position: "absolute", inset: 0 }}>
+                              <SvgAlertBacking
+                                  style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      display: "block",
+                                  }}
+                                  ariaLabel="Code modal backing"
+                              />
+                          </div>
+
+                          <div
+                              style={{
+                                  position: "relative",
+                                  width: "100%",
+                                  height: "100%",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 10,
+                                  padding: "20px 32px",
+                                  boxSizing: "border-box",
+                              }}
+                          >
+                              <div
+                                  style={{
+                                      fontSize: 18,
+                                      fontWeight: 900,
+                                      letterSpacing: 0,
+                                      textAlign: "center",
+                                      color: "black",
+                                  }}
+                              >
+                                  Введите код
+                              </div>
+
+                              <input
+                                  ref={reportCodeInputRef}
+                                  type="password"
+                                  name="pixtudio-analytics-code"
+                                  autoComplete="current-password"
+                                  value={reportCode}
+                                  onChange={(e) =>
+                                      setReportCode(e.currentTarget.value)
+                                  }
+                                  style={{
+                                      width: "100%",
+                                      height: 28,
+                                      border: "2px solid rgba(0,0,0,0.75)",
+                                      borderRadius: 0,
+                                      background: "#ffffff",
+                                      color: "#000000",
+                                      fontSize: 16,
+                                      lineHeight: "24px",
+                                      letterSpacing: 0,
+                                      outline: "none",
+                                      padding: "0 8px",
+                                      boxSizing: "border-box",
+                                      fontFamily:
+                                          "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+                                  }}
+                              />
+                          </div>
+                      </div>
+
+                      <div
+                          style={{
+                              display: "flex",
+                              justifyContent: "center",
+                              pointerEvents: "auto",
+                              flex: "0 0 auto",
+                          }}
+                      >
+                          <button
+                              type="button"
+                              onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  closeReportCodeModal()
+                              }}
+                              style={okCancelButtonStyle}
+                              aria-label="Cancel"
+                              className="pxUiAnim"
+                          >
+                              <SvgCancelButton style={okCancelSvgStyle} />
+                          </button>
+
+                          <button
+                              type="submit"
+                              style={okCancelButtonStyle}
+                              aria-label="OK"
+                              className="pxUiAnim"
+                          >
+                              <SvgOkButton style={okCancelSvgStyle} />
+                          </button>
+                      </div>
+                  </form>
+              </div>,
+              document.body
+          )
+        : null
+
     return (
         <FitToViewport background={bg}>
             <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
@@ -3006,9 +3193,14 @@ function StartScreen({
                 }}
             >
                 <div style={logoBox}>
-                    <div style={{ width: "100%", height: 52 }}>
+                    <button
+                        type="button"
+                        onClick={openReportCodeModal}
+                        style={logoButtonStyle}
+                        aria-label="PIXTUDIO"
+                    >
                         <SvgLogo style={{ imageRendering: "pixelated" }} />
-                    </div>
+                    </button>
                     <div ref={taglineRef} style={taglineStyle}>
                         {TAGLINE_TEXT}
                     </div>
@@ -3093,6 +3285,7 @@ function StartScreen({
 
                 <div style={{ flex: 1 }} />
             </div>
+            {reportCodeModal}
         </FitToViewport>
     )
 }
