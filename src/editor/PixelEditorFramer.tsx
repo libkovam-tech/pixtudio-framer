@@ -2827,12 +2827,18 @@ function StartScreen({
 }) {
     const bg = "#e9d8a6"
 
-    //const LOGO_W = 260
     const TAGLINE_TEXT = "Pixelize the world around you"
+    const START_LOGO_VISUAL_W = 154
+    const START_LOGO_VISUAL_H = 38
+    const START_BUTTONS_W = 260
+    const START_LOGO_MOBILE_VISUAL_H = Math.round(
+        (START_BUTTONS_W * START_LOGO_VISUAL_H) / START_LOGO_VISUAL_W
+    )
 
-    const taglineRef = React.useRef<HTMLDivElement | null>(null)
+    const taglineRef = React.useRef<HTMLSpanElement | null>(null)
     const reportCodeInputRef = React.useRef<HTMLInputElement | null>(null)
-    const [taglineFontPx, setTaglineFontPx] = React.useState(20)
+    const [taglineFontPx, setTaglineFontPx] = React.useState(12)
+    const [taglineScaleX, setTaglineScaleX] = React.useState(1)
     const [isReportCodeOpen, setIsReportCodeOpen] = React.useState(false)
     const [reportCode, setReportCode] = React.useState("")
 
@@ -2844,18 +2850,25 @@ function StartScreen({
 
         const measureAndFit = () => {
             const node = taglineRef.current
-            if (!node) return
+            const box = node?.parentElement
+            if (!node || !box) return
 
-            const cw = node.clientWidth || 0
+            const cw = box.clientWidth || 0
             if (cw <= 0) return
 
-            const MAX = 20
-            const MIN = 12
+            const isWideLogo = cw >= START_BUTTONS_W - 1
+            const MAX = isWideLogo ? 18 : 12
+            const MIN = isWideLogo ? 12 : 9
 
             node.style.fontSize = MAX + "px"
 
-            if (node.scrollWidth <= node.clientWidth) {
+            if (node.scrollWidth <= cw) {
                 setTaglineFontPx((prev) => (prev === MAX ? prev : MAX))
+                const naturalWidth = node.scrollWidth || cw
+                const nextScale = cw / naturalWidth
+                setTaglineScaleX((prev) =>
+                    Math.abs(prev - nextScale) < 0.001 ? prev : nextScale
+                )
                 return
             }
 
@@ -2866,7 +2879,7 @@ function StartScreen({
             while (lo <= hi) {
                 const mid = Math.floor((lo + hi) / 2)
                 node.style.fontSize = mid + "px"
-                if (node.scrollWidth <= node.clientWidth) {
+                if (node.scrollWidth <= cw) {
                     best = mid
                     lo = mid + 1
                 } else {
@@ -2874,7 +2887,14 @@ function StartScreen({
                 }
             }
 
+            node.style.fontSize = best + "px"
+            const naturalWidth = node.scrollWidth || cw
+            const nextScale = cw / naturalWidth
+
             setTaglineFontPx((prev) => (prev === best ? prev : best))
+            setTaglineScaleX((prev) =>
+                Math.abs(prev - nextScale) < 0.001 ? prev : nextScale
+            )
         }
 
         raf = window.requestAnimationFrame(measureAndFit)
@@ -2890,7 +2910,7 @@ function StartScreen({
             window.removeEventListener("resize", onResize)
             if (raf) window.cancelAnimationFrame(raf)
         }
-    }, [TAGLINE_TEXT, START_LOGO_W])
+    }, [TAGLINE_TEXT, START_BUTTONS_W])
 
     React.useEffect(() => {
         if (!isReportCodeOpen) return
@@ -2943,8 +2963,180 @@ function StartScreen({
             "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
     }
 
+    const startScreenCss = `${PIX_UI_BUTTON_ANIM_CSS}
+.pxStartLogoBox {
+    width: ${START_LOGO_VISUAL_W}px;
+}
+
+.pxStartLogoButton {
+    height: ${START_LOGO_VISUAL_H}px;
+}
+
+.pxStartTagline {
+    margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+    .pxStartLogoBox {
+        width: ${START_BUTTONS_W}px;
+    }
+
+    .pxStartLogoButton {
+        height: ${START_LOGO_MOBILE_VISUAL_H}px;
+    }
+}
+
+@property --px-start-wave-y {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+}
+
+@property --px-start-wave-shadow-y {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+}
+
+@keyframes pxStartButtonWaveOne {
+    0%,
+    16.667%,
+    33.333%,
+    50%,
+    66.667%,
+    83.333%,
+    100% {
+        --px-start-wave-y: 0px;
+        --px-start-wave-shadow-y: 0px;
+    }
+
+    8.333%,
+    41.667%,
+    75% {
+        --px-start-wave-y: -7px;
+        --px-start-wave-shadow-y: 7px;
+    }
+}
+
+@keyframes pxStartButtonWaveTwo {
+    0%,
+    8.333%,
+    25%,
+    41.667%,
+    58.333%,
+    83.333%,
+    100% {
+        --px-start-wave-y: 0px;
+        --px-start-wave-shadow-y: 0px;
+    }
+
+    16.667%,
+    50%,
+    91.667% {
+        --px-start-wave-y: -7px;
+        --px-start-wave-shadow-y: 7px;
+    }
+}
+
+@keyframes pxStartButtonWaveThree {
+    0%,
+    33.333%,
+    66.667%,
+    100% {
+        --px-start-wave-y: -7px;
+        --px-start-wave-shadow-y: 7px;
+    }
+
+    8.333%,
+    25%,
+    41.667%,
+    58.333%,
+    75%,
+    91.667% {
+        --px-start-wave-y: 0px;
+        --px-start-wave-shadow-y: 0px;
+    }
+}
+
+@keyframes pxStartButtonWaveFour {
+    0%,
+    16.667%,
+    33.333%,
+    50%,
+    66.667%,
+    75%,
+    91.667%,
+    100% {
+        --px-start-wave-y: 0px;
+        --px-start-wave-shadow-y: 0px;
+    }
+
+    25%,
+    58.333%,
+    83.333% {
+        --px-start-wave-y: -7px;
+        --px-start-wave-shadow-y: 7px;
+    }
+}
+
+.pxStartActionButton {
+    --px-start-hover-y: 0px;
+    --px-start-hover-scale: 1;
+    --px-start-hover-shadow-y: 0px;
+    animation-duration: 7.2s;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+}
+
+.pxStartActions > .pxStartActionButton,
+.pxStartActions > .pxStartActionButton:hover:not(:disabled),
+.pxStartActions > .pxStartActionButton:active:not(:disabled) {
+    transform:
+        translateY(calc(var(--px-start-wave-y) + var(--px-start-hover-y)))
+        scale(var(--px-start-hover-scale));
+    filter: drop-shadow(
+        0 calc(var(--px-start-wave-shadow-y) + var(--px-start-hover-shadow-y)) 0
+        rgba(0, 0, 0, 0.85)
+    );
+}
+
+.pxStartActions > .pxStartActionButton:hover:not(:disabled) {
+    --px-start-hover-y: -4px;
+    --px-start-hover-scale: 1.05;
+    --px-start-hover-shadow-y: 5px;
+}
+
+.pxStartActions > .pxStartActionButton:active:not(:disabled) {
+    --px-start-hover-y: 1px;
+    --px-start-hover-scale: 0.97;
+    --px-start-hover-shadow-y: 1px;
+}
+
+.pxStartActions > .pxStartActionButton:nth-child(1) {
+    animation-name: pxStartButtonWaveOne;
+}
+
+.pxStartActions > .pxStartActionButton:nth-child(2) {
+    animation-name: pxStartButtonWaveTwo;
+}
+
+.pxStartActions > .pxStartActionButton:nth-child(3) {
+    animation-name: pxStartButtonWaveThree;
+}
+
+.pxStartActions > .pxStartActionButton:nth-child(4) {
+    animation-name: pxStartButtonWaveFour;
+}
+
+@media (hover: none) {
+    .pxStartActions > .pxStartActionButton:hover:not(:disabled) {
+        --px-start-hover-y: 0px;
+        --px-start-hover-scale: 1;
+        --px-start-hover-shadow-y: 0px;
+    }
+}`
+
     const logoBox: React.CSSProperties = {
-        width: 260,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -2953,7 +3145,6 @@ function StartScreen({
 
     const logoButtonStyle: React.CSSProperties = {
         width: "100%",
-        height: 52,
         border: "none",
         background: "transparent",
         padding: 0,
@@ -2966,32 +3157,37 @@ function StartScreen({
     const taglineStyle: React.CSSProperties = {
         width: "100%",
         boxSizing: "border-box",
+        height: `${Math.ceil(taglineFontPx * 1.1)}px`,
+        overflow: "visible",
+        lineHeight: 1.1,
+    }
+
+    const taglineTextStyle: React.CSSProperties = {
+        display: "inline-block",
         fontSize: taglineFontPx,
-        lineHeight: 1.2,
+        lineHeight: 1.1,
         whiteSpace: "nowrap",
         color: "#1b1b1b",
-        textAlign: "justify",
         fontWeight: 400,
+        letterSpacing: 0,
+        transform: `scaleX(${taglineScaleX})`,
+        transformOrigin: "left center",
     }
 
     const logoButtonsSpacerStyle: React.CSSProperties = {
-        height: "clamp(24px, 12vh, 64px)", // ~10–15% viewport, но с безопасными границами
+        height: "clamp(88px, 14vh, 118px)",
         flex: "0 0 auto",
     }
 
     const buttonsWrap: React.CSSProperties = {
-        // квадрат строго по ширине логотипа
-        width: START_LOGO_W,
-        height: START_LOGO_W,
+        width: START_BUTTONS_W,
+        height: START_BUTTONS_W,
 
         display: "grid",
         gridTemplateColumns: "repeat(2, 1fr)",
         gridTemplateRows: "repeat(2, 1fr)",
-
-        // фиксированный gap (оставил твой текущий)
         gap: 26,
 
-        // важно: ячейки растягиваются, а не центрируются
         justifyItems: "stretch",
         alignItems: "stretch",
 
@@ -3178,7 +3374,7 @@ function StartScreen({
 
     return (
         <FitToViewport background={bg}>
-            <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
+            <style>{startScreenCss}</style>
 
             <div
                 style={{
@@ -3192,27 +3388,30 @@ function StartScreen({
                     boxSizing: "border-box",
                 }}
             >
-                <div style={logoBox}>
+                <div className="pxStartLogoBox" style={logoBox}>
                     <button
                         type="button"
                         onClick={openReportCodeModal}
+                        className="pxStartLogoButton"
                         style={logoButtonStyle}
                         aria-label="PIXTUDIO"
                     >
                         <SvgLogo style={{ imageRendering: "pixelated" }} />
                     </button>
-                    <div ref={taglineRef} style={taglineStyle}>
-                        {TAGLINE_TEXT}
+                    <div className="pxStartTagline" style={taglineStyle}>
+                        <span ref={taglineRef} style={taglineTextStyle}>
+                            {TAGLINE_TEXT}
+                        </span>
                     </div>
                 </div>
 
                 <div aria-hidden="true" style={logoButtonsSpacerStyle} />
 
-                <div style={buttonsWrap}>
+                <div className="pxStartActions" style={buttonsWrap}>
                     <button
                         type="button"
                         onClick={onPickImage}
-                        className="pxUiAnim"
+                        className="pxUiAnim pxStartActionButton"
                         style={circleButton}
                         aria-label="Image"
                     >
@@ -3229,7 +3428,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onOpenCamera}
-                        className="pxUiAnim"
+                        className="pxUiAnim pxStartActionButton"
                         style={circleButton}
                         aria-label="Camera"
                     >
@@ -3246,7 +3445,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onOpenDraw}
-                        className="pxUiAnim"
+                        className="pxUiAnim pxStartActionButton"
                         style={circleButton}
                         aria-label="Draw"
                     >
@@ -3263,7 +3462,7 @@ function StartScreen({
                     <button
                         type="button"
                         onClick={onOpenProject}
-                        className="pxUiAnim"
+                        className="pxUiAnim pxStartActionButton"
                         style={circleButton}
                         aria-label="Open Project"
                     >
