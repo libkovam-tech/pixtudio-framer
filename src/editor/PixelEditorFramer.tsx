@@ -2959,7 +2959,7 @@ function StartScreen({
         padding: 0,
         margin: 0,
         display: "block",
-        //cursor: "pointer",
+        cursor: "pointer",
         WebkitTapHighlightColor: "transparent",
     }
 
