@@ -143,6 +143,7 @@ Edit `wrangler.analytics-reporter.toml`:
 - replace `REPLACE_WITH_D1_DATABASE_ID`
 - replace `REPLACE_WITH_YOUR_EMAIL`
 - keep `ANALYTICS_REPORT_SENDER` as `analytics@pixtudio.app`
+- keep `allowed_sender_addresses` as `["analytics@pixtudio.app"]`
 
 Deploy:
 
@@ -156,6 +157,7 @@ For the reporter Worker:
 
 - D1 binding: `ANALYTICS_DB`
 - Send Email binding: `REPORT_EMAIL`
+- allowed sender address: `analytics@pixtudio.app`
 - secret: `ANALYTICS_REPORT_SECRET_HASH`
 - var: `ANALYTICS_REPORT_SENDER=analytics@pixtudio.app`
 - var: `ANALYTICS_REPORT_RECIPIENT=your email`

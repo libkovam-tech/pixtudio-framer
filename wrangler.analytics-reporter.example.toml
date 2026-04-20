@@ -1,6 +1,8 @@
 name = "pixtudio-analytics-reporter"
 main = "workers/pixtudio-analytics-reporter.ts"
 compatibility_date = "2026-04-19"
+workers_dev = false
+preview_urls = false
 
 # Cloudflare Cron uses UTC.
 # This runs on the first day of every month at 06:00 UTC.
@@ -14,7 +16,7 @@ database_id = "REPLACE_WITH_D1_DATABASE_ID"
 
 [[send_email]]
 name = "REPORT_EMAIL"
-destination_address = "REPLACE_WITH_YOUR_EMAIL"
+allowed_sender_addresses = ["analytics@pixtudio.app"]
 
 [vars]
 ANALYTICS_REPORT_SENDER = "analytics@pixtudio.app"

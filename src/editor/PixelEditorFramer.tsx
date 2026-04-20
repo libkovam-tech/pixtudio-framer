@@ -2959,7 +2959,7 @@ function StartScreen({
         padding: 0,
         margin: 0,
         display: "block",
-        cursor: "pointer",
+        cursor: "default",
         WebkitTapHighlightColor: "transparent",
     }
 
@@ -10042,6 +10042,7 @@ function PixelEditorFramer({
                                 display: "flex",
                                 alignItems: "flex-start",
                                 gap: 20,
+                                marginBottom: 18,
                             }}
                         >
                             <div
