@@ -54,6 +54,7 @@ import {
     RedoIcon,
     ZoomOutIcon,
     ZoomInIcon,
+    AddNewSwatch,
     PipetteIcon,
     HandIconOn,
     HandIconOff,
@@ -1272,13 +1273,13 @@ function getCheckerBackgroundCss(): string {
 const checkerBackground = getCheckerBackgroundCss()
 
 const footerIconStyle: React.CSSProperties = {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 8,
     border: "none",
     background: "transparent",
     cursor: "pointer",
-    fontSize: 20,
+    fontSize: 18,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -2831,6 +2832,7 @@ function StartScreen({
     const START_LOGO_VISUAL_W = 154
     const START_LOGO_VISUAL_H = 38
     const START_BUTTONS_W = 260
+    const ENABLE_LOGO_REPORT_TRIGGER = false
     const START_LOGO_MOBILE_VISUAL_H = Math.round(
         (START_BUTTONS_W * START_LOGO_VISUAL_H) / START_LOGO_VISUAL_W
     )
@@ -2976,16 +2978,6 @@ function StartScreen({
     margin-top: 8px;
 }
 
-@media (max-width: 640px) {
-    .pxStartLogoBox {
-        width: ${START_BUTTONS_W}px;
-    }
-
-    .pxStartLogoButton {
-        height: ${START_LOGO_MOBILE_VISUAL_H}px;
-    }
-}
-
 @property --px-start-wave-y {
     syntax: "<length>";
     inherits: false;
@@ -2998,94 +2990,14 @@ function StartScreen({
     initial-value: 0px;
 }
 
-@keyframes pxStartButtonWaveOne {
-    0%,
-    16.667%,
-    33.333%,
-    50%,
-    66.667%,
-    83.333%,
-    100% {
-        --px-start-wave-y: 0px;
-        --px-start-wave-shadow-y: 0px;
+@media (max-width: 640px) {
+    .pxStartLogoBox {
+        width: ${START_BUTTONS_W}px;
     }
 
-    8.333%,
-    41.667%,
-    75% {
-        --px-start-wave-y: -7px;
-        --px-start-wave-shadow-y: 7px;
+    .pxStartLogoButton {
+        height: ${START_LOGO_MOBILE_VISUAL_H}px;
     }
-}
-
-@keyframes pxStartButtonWaveTwo {
-    0%,
-    8.333%,
-    25%,
-    41.667%,
-    58.333%,
-    83.333%,
-    100% {
-        --px-start-wave-y: 0px;
-        --px-start-wave-shadow-y: 0px;
-    }
-
-    16.667%,
-    50%,
-    91.667% {
-        --px-start-wave-y: -7px;
-        --px-start-wave-shadow-y: 7px;
-    }
-}
-
-@keyframes pxStartButtonWaveThree {
-    0%,
-    33.333%,
-    66.667%,
-    100% {
-        --px-start-wave-y: -7px;
-        --px-start-wave-shadow-y: 7px;
-    }
-
-    8.333%,
-    25%,
-    41.667%,
-    58.333%,
-    75%,
-    91.667% {
-        --px-start-wave-y: 0px;
-        --px-start-wave-shadow-y: 0px;
-    }
-}
-
-@keyframes pxStartButtonWaveFour {
-    0%,
-    16.667%,
-    33.333%,
-    50%,
-    66.667%,
-    75%,
-    91.667%,
-    100% {
-        --px-start-wave-y: 0px;
-        --px-start-wave-shadow-y: 0px;
-    }
-
-    25%,
-    58.333%,
-    83.333% {
-        --px-start-wave-y: -7px;
-        --px-start-wave-shadow-y: 7px;
-    }
-}
-
-.pxStartActionButton {
-    --px-start-hover-y: 0px;
-    --px-start-hover-scale: 1;
-    --px-start-hover-shadow-y: 0px;
-    animation-duration: 7.2s;
-    animation-timing-function: ease-in-out;
-    animation-iteration-count: infinite;
 }
 
 .pxStartActions > .pxStartActionButton,
@@ -3112,20 +3024,12 @@ function StartScreen({
     --px-start-hover-shadow-y: 1px;
 }
 
-.pxStartActions > .pxStartActionButton:nth-child(1) {
-    animation-name: pxStartButtonWaveOne;
-}
-
-.pxStartActions > .pxStartActionButton:nth-child(2) {
-    animation-name: pxStartButtonWaveTwo;
-}
-
-.pxStartActions > .pxStartActionButton:nth-child(3) {
-    animation-name: pxStartButtonWaveThree;
-}
-
-.pxStartActions > .pxStartActionButton:nth-child(4) {
-    animation-name: pxStartButtonWaveFour;
+.pxStartActionButton {
+    --px-start-wave-y: 0px;
+    --px-start-wave-shadow-y: 0px;
+    --px-start-hover-y: 0px;
+    --px-start-hover-scale: 1;
+    --px-start-hover-shadow-y: 0px;
 }
 
 @media (hover: none) {
@@ -3133,6 +3037,51 @@ function StartScreen({
         --px-start-hover-y: 0px;
         --px-start-hover-scale: 1;
         --px-start-hover-shadow-y: 0px;
+    }
+
+    .pxStartActions > .pxStartActionButton:active:not(:disabled) {
+        --px-start-hover-y: 0px;
+        --px-start-hover-scale: 1;
+        --px-start-hover-shadow-y: 0px;
+    }
+}
+
+@media (max-width: 640px) {
+    @keyframes pxStartButtonWavePulse {
+        0%,
+        66.667%,
+        100% {
+            --px-start-wave-y: 0px;
+            --px-start-wave-shadow-y: 0px;
+        }
+
+        33.333% {
+            --px-start-wave-y: -7px;
+            --px-start-wave-shadow-y: 7px;
+        }
+    }
+
+    .pxStartActionButton {
+        animation-name: pxStartButtonWavePulse;
+        animation-duration: 3.6s;
+        animation-timing-function: linear;
+        animation-iteration-count: infinite;
+    }
+
+    .pxStartActions > .pxStartActionButton:nth-child(1) {
+        animation-delay: 0s;
+    }
+
+    .pxStartActions > .pxStartActionButton:nth-child(2) {
+        animation-delay: -2.7s;
+    }
+
+    .pxStartActions > .pxStartActionButton:nth-child(4) {
+        animation-delay: -1.8s;
+    }
+
+    .pxStartActions > .pxStartActionButton:nth-child(3) {
+        animation-delay: -0.9s;
     }
 }`
 
@@ -3391,10 +3340,15 @@ function StartScreen({
                 <div className="pxStartLogoBox" style={logoBox}>
                     <button
                         type="button"
-                        onClick={openReportCodeModal}
+                        onClick={
+                            ENABLE_LOGO_REPORT_TRIGGER
+                                ? openReportCodeModal
+                                : undefined
+                        }
                         className="pxStartLogoButton"
                         style={logoButtonStyle}
                         aria-label="PIXTUDIO"
+                        disabled={!ENABLE_LOGO_REPORT_TRIGGER}
                     >
                         <SvgLogo style={{ imageRendering: "pixelated" }} />
                     </button>
@@ -10792,20 +10746,17 @@ function PixelEditorFramer({
                                     style={{
                                         width: SWATCH_PX,
                                         height: SWATCH_PX,
-                                        borderRadius: 999,
-                                        background: "#2ecc71",
-                                        display: "grid",
-                                        placeItems: "center",
-                                        color: "#fff",
-                                        fontWeight: 900,
-                                        fontSize: 15,
-                                        lineHeight: 0.1,
-                                        border: "2px solid rgba(0,0,0,0.15)",
+                                        padding: 0,
+                                        border: "none",
+                                        background: "transparent",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
                                         userSelect: "none",
                                         cursor: "pointer",
                                     }}
                                 >
-                                    +
+                                    <AddNewSwatch size={SWATCH_PX} />
                                 </button>
 
                                 {/* 4) user swatches */}
@@ -14142,7 +14093,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                         <div
                             style={{
                                 display: "flex",
-                                //gap: 5,
+                                gap: 4,
                                 alignItems: "center",
                                 pointerEvents: "auto",
                             }}
@@ -14180,8 +14131,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                             >
                                 <svg
                                     viewBox="0 0 103.2 103.2"
-                                    width="22"
-                                    height="22"
+                                    width="33"
+                                    height="33"
                                     xmlns="http://www.w3.org/2000/svg"
                                 >
                                     <polygon
@@ -14249,8 +14200,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                                 <svg
                                     version="1.1"
                                     viewBox="0 0 103.2 103.2"
-                                    width="22"
-                                    height="22"
+                                    width="33"
+                                    height="33"
                                     xmlns="http://www.w3.org/2000/svg"
                                 >
                                     <g>

@@ -3,7 +3,7 @@ import * as React from "react"
 import {
     SvgTopButton3,
     SvgTopButton4,
-    SvgOkButton,
+    SvgManualButton,
     SaveIcon,
     LoadIcon,
     UndoIcon,
@@ -16,6 +16,67 @@ import {
     SvgExportSOButton,
 } from "./SvgIcons.tsx"
 
+const FONT_FAMILY =
+    "Roboto, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif"
+
+const BG = "#FAF6E9"
+const PANEL_BG = "rgba(255,255,255,0.94)"
+const BORDER = "1.5px solid rgba(0,0,0,0.72)"
+const TEXT = "rgba(0,0,0,0.88)"
+const MUTED = "rgba(0,0,0,0.74)"
+const RADIUS = 12
+const PANEL_RADIUS_STYLE: React.CSSProperties = {
+    borderRadius: RADIUS,
+}
+
+const PIX_UI_BUTTON_ANIM_CSS = `
+.pxUiAnim {
+    transition:
+        transform 120ms ease,
+        filter 120ms ease;
+    transform-origin: center;
+    will-change: transform, filter;
+}
+
+.pxUiAnim:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.05);
+    filter: drop-shadow(0 4px 0px rgba(0, 0, 0, 0.22));
+}
+
+.pxUiAnim:active:not(:disabled) {
+    transform: translateY(1px) scale(0.97);
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+}
+
+.pxUiAnim:disabled {
+    filter: none;
+}
+
+@media (hover: none) {
+    .pxUiAnim:hover:not(:disabled) {
+        transform: none;
+        filter: none;
+    }
+}
+
+.manualScrollHidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.manualScrollHidden::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+`
+
+const ICON_INLINE: React.CSSProperties = {
+    width: 22,
+    height: 22,
+    display: "inline-block",
+    verticalAlign: "middle",
+}
 
 function SaveIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
@@ -77,234 +138,679 @@ function ZoomOutIconInline({ style }: { style?: React.CSSProperties }) {
     )
 }
 
-function PipetteIconInline({
-    style,
-    active,
-}: {
-    style?: React.CSSProperties
-    active?: boolean
-}) {
+function PipetteIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
     const size = typeof s.width === "number" ? s.width : 20
     return (
         <span style={s}>
-            <PipetteIcon size={size} active={!!active} />
+            <PipetteIcon size={size} />
         </span>
     )
 }
 
-function HandIconOffInline({
-    style,
-}: {
-    style?: React.CSSProperties
-}) {
+function HandIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
-    const size = typeof s.width === "number" ? s.width : 20
-    return <span style={s}>{<HandIconOff size={size} />}</span>
+    const size = typeof s.width === "number" ? s.width : 24
+    return (
+        <span style={s}>
+            <HandIconOff size={size} />
+        </span>
+    )
 }
 
-// =====================================================
-// OK / CANCEL BUTTON STYLE (shared across the editor)
-// =====================================================
-
-const okCancelButtonStyle: React.CSSProperties = {
-    width: 50,
-    height: 50,
-
-    border: "none",
-    background: "transparent",
-    padding: 0,
-
-    marginTop: 0,
-    marginLeft: 0,
-    marginRight: 0,
-
-    cursor: "pointer",
-    touchAction: "manipulation",
-
-    display: "block",
+function ManualIconInline({ style }: { style?: React.CSSProperties }) {
+    return <SvgManualButton style={{ ...ICON_INLINE, ...style }} />
 }
 
-const okCancelSvgStyle: React.CSSProperties = {
-    width: "100%",
-    height: "100%",
-    display: "block",
+type ManualSection = {
+    id: string
+    title: string
+    navLabel: string
+    icon?: React.ReactNode
+    content: React.ReactNode
 }
 
-const PIX_UI_BUTTON_ANIM_CSS = `
-.pxUiAnim {
-    transition:
-        transform 120ms ease,
-        filter 120ms ease;
-    transform-origin: center;
-    will-change: transform, filter;
+function SectionCopy({
+    children,
+    muted = false,
+}: {
+    children: React.ReactNode
+    muted?: boolean
+}) {
+    return (
+        <p
+            style={{
+                margin: 0,
+                color: muted ? MUTED : TEXT,
+                fontFamily: FONT_FAMILY,
+                fontSize: 15,
+                lineHeight: 1.45,
+                fontWeight: 400,
+            }}
+        >
+            {children}
+        </p>
+    )
 }
 
-.pxUiAnim:hover:not(:disabled) {
-    transform: translateY(-2px) scale(1.05);
-    filter: drop-shadow(0 4px 0px rgba(0, 0, 0, 0.22));
+function BulletList({
+    items,
+}: {
+    items: React.ReactNode[]
+}) {
+    return (
+        <ul
+            style={{
+                margin: 0,
+                paddingLeft: 24,
+                display: "grid",
+                gap: 6,
+                color: TEXT,
+                fontFamily: FONT_FAMILY,
+                fontSize: 15,
+                lineHeight: 1.42,
+            }}
+        >
+            {items.map((item, idx) => (
+                <li key={idx}>{item}</li>
+            ))}
+        </ul>
+    )
 }
 
-.pxUiAnim:active:not(:disabled) {
-    transform: translateY(1px) scale(0.97);
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+function OrderedList({
+    items,
+}: {
+    items: React.ReactNode[]
+}) {
+    return (
+        <ol
+            style={{
+                margin: 0,
+                paddingLeft: 24,
+                display: "grid",
+                gap: 6,
+                color: TEXT,
+                fontFamily: FONT_FAMILY,
+                fontSize: 15,
+                lineHeight: 1.42,
+            }}
+        >
+            {items.map((item, idx) => (
+                <li key={idx}>{item}</li>
+            ))}
+        </ol>
+    )
 }
 
-.pxUiAnim:disabled {
-    filter: none;
+function SectionStack({ children }: { children: React.ReactNode }) {
+    return (
+        <div
+            style={{
+                display: "grid",
+                gap: 14,
+            }}
+        >
+            {children}
+        </div>
+    )
 }
-
-@media (hover: none) {
-    .pxUiAnim:hover:not(:disabled) {
-        transform: none;
-        filter: none;
-    }
-}
-`
-
-// ------------------- Typography constants -------------------
-
-const ICON_INLINE: React.CSSProperties = {
-    width: 22,
-    height: 22,
-    //flexShrink: 0,
-    display: "inline-block",
-    verticalAlign: "middle",
-    //marginRight: 8,
-}
-
-const ICON_SLOT: React.CSSProperties = {
-    width: 28,
-    minWidth: 28,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-}
-
-const INLINE_TEXT_SLOT: React.CSSProperties = {
-    flex: 1,
-    minWidth: 0,
-}
-
-const FONT_FAMILY =
-    "Roboto, system-ui, -apple-system, Segoe UI, Arial, sans-serif"
-
-const BASE_TEXT_COLOR = "rgba(0,0,0,0.88)"
-const MUTED_TEXT_COLOR = "rgba(0,0,0,0.72)"
-
-const H1: React.CSSProperties = {
-    fontFamily: FONT_FAMILY,
-    fontSize: 28,
-    lineHeight: 1.1,
-    fontWeight: 900,
-    letterSpacing: 0.2,
-    color: BASE_TEXT_COLOR,
-    margin: "0 0 14px 0",
-}
-
-const H2: React.CSSProperties = {
-    fontFamily: FONT_FAMILY,
-    fontSize: 20,
-    lineHeight: 1.2,
-    fontWeight: 900,
-    letterSpacing: 0.2,
-    color: BASE_TEXT_COLOR,
-    margin: "22px 0 10px 0",
-}
-
-const H3: React.CSSProperties = {
-    fontFamily: FONT_FAMILY,
-    fontSize: 16,
-    lineHeight: 1.2,
-    fontWeight: 800,
-    letterSpacing: 0.2,
-    color: BASE_TEXT_COLOR,
-    margin: "14px 0 8px 0",
-}
-
-const P: React.CSSProperties = {
-    fontFamily: FONT_FAMILY,
-    fontSize: 14,
-    lineHeight: 1.45,
-    fontWeight: 400,
-    color: BASE_TEXT_COLOR,
-    margin: "0 0 10px 0",
-}
-
-const NOTE: React.CSSProperties = {
-    ...P,
-    color: MUTED_TEXT_COLOR,
-}
-
-const UL: React.CSSProperties = {
-    margin: "0 0 12px 0",
-    paddingLeft: 18,
-}
-
-const UL_ICON: React.CSSProperties = {
-    margin: "0 0 12px 0",
-    paddingLeft: 0,
-}
-
-const LI: React.CSSProperties = {
-    ...P,
-    margin: "0 0 6px 0",
-    paddingLeft: 0,
-}
-
-const LI1: React.CSSProperties = {
-    listStyle: "none",
-    ...P,
-    margin: "0 0 6px 0",
-
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    minWidth: 0,
-}
-
-const HR: React.CSSProperties = {
-    border: "none",
-    height: 1,
-    background: "rgba(0,0,0,0.12)",
-    margin: "18px 0",
-}
-
-const SECTION: React.CSSProperties = {
-    maxWidth: 720,
-    width: "100%",
-    margin: "0 auto",
-}
-
-const H3_WITH_ICON: React.CSSProperties = {
-    ...H3,
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-}
-
-// ------------------- Layout constants -------------------
-
-// Требование: текст начинается через 50px от верха экрана
-const TOP_GAP_PX = 50
-
-// Кнопка: fixed bottom:24, size 96, scale 0.7 => ~67px фактическая высота.
-// Требование: текст заканчивается за 50px над кнопкой.
-const BUTTON_BOTTOM_PX = 24
-const BUTTON_BOX_PX = 96
-const BUTTON_SCALE = 0.7
-const TEXT_ABOVE_BUTTON_GAP_PX = 50
-
-const SCROLL_BOTTOM_PX = Math.round(
-    BUTTON_BOTTOM_PX + BUTTON_BOX_PX * BUTTON_SCALE + TEXT_ABOVE_BUTTON_GAP_PX
-)
-
-// Внутренние поля текста
-const CONTENT_PAD_X = 22
-const CONTENT_PAD_Y = 18
 
 export function ManualScreen({ onClose }: { onClose: () => void }) {
+    const [viewportWidth, setViewportWidth] = React.useState(() =>
+        typeof window === "undefined" ? 1440 : window.innerWidth
+    )
+    const [viewportHeight, setViewportHeight] = React.useState(() =>
+        typeof window === "undefined" ? 900 : window.innerHeight
+    )
+    const [activeId, setActiveId] = React.useState("about")
+    const [navScale, setNavScale] = React.useState(1)
+    const [navBox, setNavBox] = React.useState({ width: 0, height: 0 })
+    const cardScrollRef = React.useRef<HTMLDivElement | null>(null)
+    const navInnerRef = React.useRef<HTMLDivElement | null>(null)
+    const sectionRefs = React.useRef<Record<string, HTMLElement | null>>({})
+
+    const isNarrow = viewportWidth < 980
+
+    React.useEffect(() => {
+        const onResize = () => {
+            setViewportWidth(window.innerWidth)
+            setViewportHeight(window.innerHeight)
+        }
+        window.addEventListener("resize", onResize)
+        return () => window.removeEventListener("resize", onResize)
+    }, [])
+
+    const sections = React.useMemo<ManualSection[]>(
+        () => [
+            {
+                id: "about",
+                title: "What is PIXTUDIO",
+                navLabel: "About",
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            PIXTUDIO is an editor that transforms ordinary
+                            images into pixel art.
+                        </SectionCopy>
+                        <SectionCopy>
+                            You can:
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "upload a photo,",
+                                "select an image from your gallery,",
+                                "take a picture with your camera,",
+                                "or start with a blank canvas.",
+                            ]}
+                        />
+                        <SectionCopy>
+                            Once an image appears on the canvas, it is
+                            automatically simplified and converted into a pixel
+                            grid. The colors of those pixels form the project
+                            palette.
+                        </SectionCopy>
+                        <SectionCopy muted>
+                            <b style={{ color: TEXT }}>Important:</b> every
+                            pixel on the canvas is always linked to a color in
+                            the palette. Changing a palette color updates all
+                            pixels associated with it.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "getting-started",
+                title: "Getting Started",
+                navLabel: "Getting Started",
+                content: (
+                    <SectionStack>
+                        <SectionCopy>To create an image:</SectionCopy>
+                        <OrderedList
+                            items={[
+                                <>
+                                    Click <b>Import</b> in the top menu or use
+                                    the image / camera icon.
+                                </>,
+                                "Choose an image source or create a blank canvas.",
+                                "If needed, adjust scale and rotation on the preparation screen and select a preset.",
+                                "After the image appears on the canvas, adjust grid size and palette size.",
+                                "Edit colors or draw using the brush tool.",
+                            ]}
+                        />
+                        <SectionCopy muted>
+                            Changing the grid size or the number of palette
+                            colors rebuilds the image.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "main-screen",
+                title: "Main Screen",
+                navLabel: "Main Screen",
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            The main screen consists of four parts:
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "Top toolbar",
+                                "Canvas",
+                                "Canvas settings panel",
+                                "Palette",
+                            ]}
+                        />
+                        <SectionCopy>
+                            The canvas displays the image and every change made
+                            to it.
+                        </SectionCopy>
+                        <SectionCopy>
+                            When working on a white or transparent canvas, a
+                            helper grid is visible. This grid does not affect
+                            the image and is not exported. It is only a visual
+                            aid.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "canvas-settings",
+                title: "Canvas Settings",
+                navLabel: "Canvas Settings",
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Below the canvas, you will find sliders for:
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "Brush size",
+                                "Grid size (16-128 cells horizontally and vertically)",
+                                "Palette size (10-32 colors)",
+                            ]}
+                        />
+                        <SectionCopy>
+                            Changing the grid or palette size rebuilds the
+                            image.
+                        </SectionCopy>
+                        <SectionCopy>
+                            A smaller grid results in larger pixels and a more
+                            stylized look. Finding the balance between
+                            recognizability and abstraction is part of the
+                            creative process.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "palette",
+                title: "Palette",
+                navLabel: "Palette",
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            The palette is located at the bottom of the screen.
+                        </SectionCopy>
+                        <SectionCopy>
+                            All canvas pixels are linked to palette colors.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Long press or right-click a color swatch to edit it.
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "choose a new color from the spectrum",
+                                "enter a color value in #HEX format",
+                                "make the swatch transparent",
+                            ]}
+                        />
+                        <SectionCopy>
+                            Changing a swatch updates all linked pixels.
+                        </SectionCopy>
+                        <SectionCopy>
+                            You can add custom colors by pressing the green plus
+                            button.
+                        </SectionCopy>
+                        <SectionCopy>
+                            The active color is used for drawing. Using a
+                            transparent color creates a hole in the image.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "save-project",
+                title: "Save Project",
+                navLabel: "Save Project",
+                icon: <SaveIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Saving creates a <code>.pixtudio</code> file
+                            containing all project data: image, palette,
+                            drawing, and editor settings.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Use it when you want to continue working later
+                            without losing the project state.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "load-project",
+                title: "Load Project",
+                navLabel: "Load Project",
+                icon: <LoadIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Loading a project completely replaces the current
+                            editor state with the contents of a saved{" "}
+                            <code>.pixtudio</code> file.
+                        </SectionCopy>
+                        <SectionCopy muted>
+                            The undo history is cleared after loading.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "undo",
+                title: "Undo",
+                navLabel: "Undo",
+                icon: <UndoIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Undo reverts one action in the editor.
+                        </SectionCopy>
+                        <SectionCopy>
+                            It is useful when you need to step back through
+                            brush strokes, palette edits, or image adjustments.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "redo",
+                title: "Redo",
+                navLabel: "Redo",
+                icon: <RedoIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Redo restores one action that was previously
+                            undone.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Use it to move forward again after stepping back
+                            with Undo.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "import",
+                title: "Import",
+                navLabel: "Import",
+                icon: <SvgTopButton3 style={ICON_INLINE} />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>You can:</SectionCopy>
+                        <BulletList
+                            items={[
+                                "upload JPG/PNG files,",
+                                "capture an image using your device camera,",
+                                "create a blank transparent canvas.",
+                            ]}
+                        />
+                        <SectionCopy>
+                            Before the image reaches the canvas, a preparation
+                            screen appears where you can adjust scale, rotate
+                            the image, and choose a preset.
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "Default",
+                                "Neon",
+                                "Grayscale",
+                                "Black & White",
+                            ]}
+                        />
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "export",
+                title: "Export",
+                navLabel: "Export",
+                icon: <SvgTopButton4 style={ICON_INLINE} />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            You can export your work as PNG or SVG.
+                        </SectionCopy>
+                        <SectionCopy>
+                            You can also choose what to export:
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "brush strokes only,",
+                                "the pixelized base image only,",
+                                "or both together.",
+                            ]}
+                        />
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "zoom-out",
+                title: "Zoom Out",
+                navLabel: "Zoom Out",
+                icon: <ZoomOutIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Zoom Out decreases magnification so you can see a
+                            larger portion of the image.
+                        </SectionCopy>
+                        <SectionCopy muted>
+                            Long press or right-click on Zoom Out resets the
+                            zoom level.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "zoom-in",
+                title: "Zoom In",
+                navLabel: "Zoom In",
+                icon: <ZoomInIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Zoom In increases magnification for more precise
+                            work on individual pixels.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "eyedropper",
+                title: "Eyedropper",
+                navLabel: "Eyedropper",
+                icon: <PipetteIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Eyedropper identifies the palette color of a pixel.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Drawing is disabled while this tool is active.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "hand",
+                title: "Hand",
+                navLabel: "Hand",
+                icon: <HandIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Hand tool allows panning when the canvas is zoomed
+                            in.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Drawing is disabled while this tool is active.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "info",
+                title: "Info",
+                navLabel: "Info",
+                icon: <ManualIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            This button opens the built-in user guide you are
+                            reading now.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Use it whenever you need a quick explanation of the
+                            interface, tools, or workflow.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "reference-edit-screen",
+                title: "Reference Edit Screen",
+                navLabel: "Reference Edit Screen",
+                icon: (
+                    <span
+                        style={{
+                            width: 24,
+                            height: 24,
+                            display: "grid",
+                            placeItems: "center",
+                            transform: "translateX(-3px)",
+                        }}
+                    >
+                        <SvgSmartObject
+                            style={{
+                                width: 24,
+                                height: 24,
+                                display: "block",
+                                color: "#C02C66",
+                            }}
+                        />
+                    </span>
+                ),
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            This button opens the reference image editor.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Here you can adjust exposure and contrast, increase
+                            or reduce saturation, shift white balance toward
+                            warmer or cooler tones, and fine-tune shadows,
+                            midtones, and highlights.
+                        </SectionCopy>
+                        <SectionCopy>
+                            All changes are saved, so you can return anytime and
+                            continue from where you left off.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "reference-export",
+                title: "Reference Export",
+                navLabel: "Export",
+                icon: <SvgExportSOButton style={ICON_INLINE} />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            This button saves the current reference image to
+                            your device as a <code>.png</code> file.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+        ],
+        []
+    )
+
+    React.useLayoutEffect(() => {
+        const el = navInnerRef.current
+        if (!el) return
+
+        const recompute = () => {
+            const naturalWidth = Math.ceil(el.scrollWidth)
+            const naturalHeight = Math.ceil(el.scrollHeight)
+            const reservedTop = isNarrow ? 18 : 28
+            const reservedBottom = 108
+            const availableHeight = Math.max(
+                120,
+                viewportHeight - reservedTop - reservedBottom
+            )
+            const nextScale =
+                naturalHeight > 0
+                    ? Math.min(1, availableHeight / naturalHeight)
+                    : 1
+
+            setNavBox((prev) =>
+                prev.width === naturalWidth && prev.height === naturalHeight
+                    ? prev
+                    : { width: naturalWidth, height: naturalHeight }
+            )
+            setNavScale((prev) =>
+                Math.abs(prev - nextScale) < 0.001 ? prev : nextScale
+            )
+        }
+
+        recompute()
+
+        const ro = new ResizeObserver(() => recompute())
+        ro.observe(el)
+
+        return () => ro.disconnect()
+    }, [sections, isNarrow, viewportHeight, viewportWidth])
+
+    React.useEffect(() => {
+        const root = cardScrollRef.current
+        if (!root) return
+
+        const entries = Object.values(sectionRefs.current).filter(
+            (node): node is HTMLElement => !!node
+        )
+        if (entries.length === 0) return
+
+        const observer = new IntersectionObserver(
+            (items) => {
+                const visible = items
+                    .filter((item) => item.isIntersecting)
+                    .sort(
+                        (a, b) => b.intersectionRatio - a.intersectionRatio
+                    )[0]
+
+                const nextId =
+                    visible?.target instanceof HTMLElement
+                        ? visible.target.dataset.manualId
+                        : null
+
+                if (nextId) setActiveId(nextId)
+            },
+            {
+                root,
+                threshold: [0.2, 0.45, 0.7],
+                rootMargin: "-8% 0px -52% 0px",
+            }
+        )
+
+        entries.forEach((node) => observer.observe(node))
+        return () => observer.disconnect()
+    }, [sections])
+
+    const scrollToSection = React.useCallback((id: string) => {
+        const root = cardScrollRef.current
+        const node = sectionRefs.current[id]
+        if (!root || !node) return
+        setActiveId(id)
+        const rootRect = root.getBoundingClientRect()
+        const nodeRect = node.getBoundingClientRect()
+        const nextTop = root.scrollTop + (nodeRect.top - rootRect.top)
+
+        root.scrollTo({
+            top: Math.max(0, nextTop),
+            behavior: "smooth",
+        })
+    }, [])
+
+    const desktopGutter = isNarrow
+        ? 18
+        : Math.max(80, Math.min(500, Math.floor((viewportWidth - 760) / 2)))
+    const contentBottomInset = isNarrow ? 28 : 28
+    const desktopBackLeft = Math.max(40, Math.round(desktopGutter * 0.22))
+    const navViewportHeight =
+        navBox.height > 0 ? Math.round(navBox.height * navScale) : 0
+
+    const navBase: React.CSSProperties = {
+        display: "grid",
+        gap: isNarrow ? 10 : 12,
+        padding: isNarrow ? "14px 18px 14px 12px" : "26px 20px",
+        boxSizing: "border-box",
+        width: "max-content",
+    }
+
     return (
         <>
             <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
@@ -314,397 +820,343 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     position: "fixed",
                     inset: 0,
                     zIndex: 9999,
-                    width: "100%",
-                    height: "100%",
-                    background: "#FAF6E9",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    paddingBottom: 18,
-                    boxSizing: "border-box",
+                    background: BG,
+                    color: TEXT,
+                    overflow: "hidden",
+                    fontFamily: FONT_FAMILY,
                 }}
                 onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                 }}
             >
-                {/* ------------------- SCROLL VIEWPORT (top 50px; bottom = 50px above button) ------------------- */}
+                {!isNarrow ? (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            onClose()
+                        }}
+                        style={{
+                            position: "absolute",
+                            left: desktopBackLeft,
+                            top: 36,
+                            border: "none",
+                            background: "transparent",
+                            padding: 0,
+                            margin: 0,
+                            cursor: "pointer",
+                            color: TEXT,
+                            fontFamily: FONT_FAMILY,
+                            fontSize: 17,
+                            lineHeight: 1.1,
+                            fontWeight: 800,
+                            textDecoration: "underline",
+                            textUnderlineOffset: 2,
+                            textAlign: "left",
+                            zIndex: 1,
+                        }}
+                        aria-label="Back to editor"
+                    >
+                        Back to Editor
+                    </button>
+                ) : null}
+
                 <div
                     style={{
-                        position: "fixed",
-                        left: 0,
-                        right: 0,
-                        top: TOP_GAP_PX,
-                        bottom: SCROLL_BOTTOM_PX,
-
-                        overflowY: "auto",
-                        WebkitOverflowScrolling: "touch",
-
-                        padding: `${CONTENT_PAD_Y}px ${CONTENT_PAD_X}px`,
+                        position: "absolute",
+                        left: desktopGutter,
+                        right: desktopGutter,
+                        top: isNarrow ? 18 : 28,
+                        bottom: contentBottomInset,
+                        display: "grid",
+                        gridTemplateRows: "auto minmax(0, 1fr)",
+                        gap: isNarrow ? 18 : 22,
                         boxSizing: "border-box",
-
-                        // чтобы скролл был “честный”, а не клики по фону
-                        pointerEvents: "auto",
-                    }}
-                    onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                    }}
-                    onPointerDown={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
+                        minWidth: 0,
                     }}
                 >
-                    <div style={SECTION}>
-                        <div style={H1}>PIXTUDIO — User Guide</div>
+                    <div
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: isNarrow
+                                ? "1fr"
+                                : "1fr",
+                            alignItems: isNarrow ? "start" : "end",
+                            gap: isNarrow ? 30 : 36,
+                            minWidth: 0,
+                        }}
+                    >
+                        {isNarrow ? (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    onClose()
+                                }}
+                                style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    padding: 0,
+                                    margin: 0,
+                                    cursor: "pointer",
+                                    color: TEXT,
+                                    fontFamily: FONT_FAMILY,
+                                    fontSize: 16,
+                                    lineHeight: 1.1,
+                                    fontWeight: 800,
+                                    textDecoration: "underline",
+                                    textUnderlineOffset: 2,
+                                    justifySelf: "start",
+                                    textAlign: "left",
+                                }}
+                                aria-label="Back to editor"
+                            >
+                                Back to Editor
+                            </button>
+                        ) : null}
 
-                        <div style={H2}>1. What is PIXTUDIO</div>
-                        <p style={P}>
-                            PIXTUDIO is an editor that transforms ordinary
-                            images into pixel art.
-                        </p>
-                        <p style={P}>You can:</p>
-                        <ul style={UL}>
-                            <li style={LI}>upload a photo,</li>
-                            <li style={LI}>
-                                select an image from your gallery,
-                            </li>
-                            <li style={LI}>take a picture with your camera,</li>
-                            <li style={LI}>or start with a blank canvas.</li>
-                        </ul>
-                        <p style={P}>
-                            Once an image appears on the canvas, it is
-                            automatically simplified and converted into a pixel
-                            grid. The colors of those pixels form the project
-                            palette.
-                        </p>
-                        <p style={NOTE}>
-                            <b>Important:</b> every pixel on the canvas is
-                            always linked to a color in the palette. Changing a
-                            palette color updates all pixels associated with it.
-                        </p>
-
-                        <div style={HR} />
-
-                        <div style={H2}>2. Getting Started</div>
-                        <p style={P}>To create an image:</p>
-                        <ol style={{ ...UL, paddingLeft: 20 }}>
-                            <li style={LI}>
-                                Click <b>Import</b> in the top menu or use the
-                                image / camera icon.
-                            </li>
-                            <li style={LI}>
-                                Choose an image source or create a blank canvas.
-                            </li>
-                            <li style={LI}>
-                                If needed, adjust scale and rotation on the
-                                preparation screen and select a preset.
-                            </li>
-                            <li style={LI}>
-                                After the image appears on the canvas, adjust
-                                grid size and palette size.
-                            </li>
-                            <li style={LI}>
-                                Edit colors or draw using the brush tool.
-                            </li>
-                        </ol>
-                        <p style={NOTE}>
-                            Changing the grid size or the number of palette
-                            colors rebuilds the image.
-                        </p>
-
-                        <div style={HR} />
-
-                        <div style={H2}>3. Main Screen</div>
-                        <p style={P}>The main screen consists of:</p>
-                        <ul style={UL}>
-                            <li style={LI}>Top toolbar</li>
-                            <li style={LI}>Canvas</li>
-                            <li style={LI}>Canvas settings panel</li>
-                            <li style={LI}>Palette</li>
-                        </ul>
-
-                        <div style={H3}>Canvas</div>
-                        <p style={P}>
-                            The canvas displays the image and all changes made
-                            to it.
-                        </p>
-                        <p style={P}>
-                            When working on a white or transparent canvas, a
-                            helper grid is visible. This grid does not affect
-                            the image and is not exported — it is only a visual
-                            aid.
-                        </p>
-
-                        <div style={HR} />
-
-                        <div style={H2}>4. Canvas Settings</div>
-                        <p style={P}>
-                            Below the canvas, you will find sliders for:
-                        </p>
-                        <ul style={UL}>
-                            <li style={LI}>Brush size</li>
-                            <li style={LI}>
-                                Grid size (16–128 cells horizontally and
-                                vertically)
-                            </li>
-                            <li style={LI}>Palette size (10–32 colors)</li>
-                        </ul>
-                        <p style={P}>
-                            Changing the grid or palette size rebuilds the
-                            image.
-                        </p>
-                        <p style={P}>
-                            A smaller grid results in larger pixels and a more
-                            stylized look. Finding the balance between
-                            recognizability and abstraction is part of the
-                            creative process.
-                        </p>
-
-                        <div style={HR} />
-
-                        <div style={H2}>5. Top Toolbar</div>
-
-                        <div style={H3}>Project</div>
-                        <ul style={UL_ICON}>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <SaveIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Saving creates a .pixtudio file containing
-                                    all project data.
-                                </span>
-                            </li>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <LoadIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Loading a project completely replaces the
-                                    current editor state.
-                                </span>
-                            </li>
-                            <li style={LI1}>
-                                The undo history is cleared after loading.
-                            </li>
-                        </ul>
-
-                        <div style={H3}>Undo / Redo</div>
-
-                        <ul style={UL_ICON}>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <UndoIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Undo reverts one action.
-                                </span>
-                            </li>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <RedoIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Redo restores one undone action.
-                                </span>
-                            </li>
-                        </ul>
-
-                        <div style={H3_WITH_ICON}>
-                            <span style={ICON_SLOT}>
-                                <SvgTopButton3 style={ICON_INLINE} />
-                            </span>
-                            <span>Import</span>
+                        <div
+                            style={{
+                                fontSize: isNarrow ? 20 : 34,
+                                lineHeight: 1,
+                                fontWeight: 900,
+                                letterSpacing: 0,
+                                textTransform: "uppercase",
+                                textAlign: "left",
+                                minWidth: 0,
+                            }}
+                        >
+                            PIXTUDIO - User Guide
                         </div>
-                        <p style={P}>You can:</p>
-                        <ul style={UL}>
-                            <li style={LI}>upload JPG/PNG files,</li>
-                            <li style={LI}>
-                                capture an image using your device camera,
-                            </li>
-                            <li style={LI}>
-                                create a blank transparent canvas.
-                            </li>
-                        </ul>
-                        <p style={P}>
-                            Before the image reaches the canvas, a preparation
-                            screen appears where you can:
-                        </p>
-                        <ul style={UL}>
-                            <li style={LI}>adjust scale,</li>
-                            <li style={LI}>rotate the image,</li>
-                            <li style={LI1}>Choose a preset:</li>
-                        </ul>
-                        <ul style={{ ...UL, marginTop: -6 }}>
-                            <li style={LI}>Default</li>
-                            <li style={LI}>Neon</li>
-                            <li style={LI}>Grayscale</li>
-                            <li style={LI}>Black &amp; White</li>
-                        </ul>
+                    </div>
 
-                        <div style={H3_WITH_ICON}>
-                            <span style={ICON_SLOT}>
-                                <SvgTopButton4 style={ICON_INLINE} />
-                            </span>
-                            <span>Export</span>
-                        </div>
-                        <p style={P}>You can export your work as PNG or SVG.</p>
-                        <p style={P}>You can also choose what to export:</p>
-                        <ul style={UL}>
-                            <li style={LI}>brush strokes only,</li>
-                            <li style={LI}>the pixelized base image only,</li>
-                            <li style={LI}>or both together (default).</li>
-                        </ul>
+                    <div
+                        style={{
+                            minWidth: 0,
+                            minHeight: 0,
+                            display: "grid",
+                            gridTemplateColumns: isNarrow
+                                ? "minmax(0, 2fr) minmax(0, 3fr)"
+                                : "max-content minmax(0, 1fr)",
+                            gap: isNarrow ? 14 : 36,
+                            alignItems: "start",
+                            height:
+                                isNarrow || navViewportHeight <= 0
+                                    ? "100%"
+                                    : navViewportHeight,
+                        }}
+                    >
+                        <aside
+                            style={{
+                                position: "sticky",
+                                top: 0,
+                                alignSelf: "start",
+                                background: PANEL_BG,
+                                border: BORDER,
+                                ...PANEL_RADIUS_STYLE,
+                                width: isNarrow
+                                    ? "100%"
+                                    : navBox.width > 0
+                                      ? navBox.width * navScale
+                                      : "auto",
+                                height: isNarrow
+                                    ? "100%"
+                                    : navBox.height > 0
+                                      ? navBox.height * navScale
+                                      : "auto",
+                                overflow: "visible",
+                            }}
+                        >
+                            <div
+                                ref={navInnerRef}
+                                style={{
+                                    ...navBase,
+                                    transform: `scale(${navScale})`,
+                                    transformOrigin: "top left",
+                                }}
+                            >
+                                {isNarrow ? (
+                                    <div
+                                        style={{
+                                            fontSize: 11,
+                                            lineHeight: 1,
+                                            fontWeight: 900,
+                                            textTransform: "uppercase",
+                                            marginBottom: 2,
+                                        }}
+                                    >
+                                        Contents
+                                    </div>
+                                ) : null}
 
-                        <div style={H3}>Zoom</div>
-                        <ul style={UL_ICON}>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <ZoomInIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Zoom In increases magnification.
-                                </span>
-                            </li>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <ZoomOutIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Zoom Out decreases magnification.
-                                </span>
-                            </li>
-                            <li style={LI1}>
-                                Long press / right-click on Zoom Out resets the
-                                zoom level.
-                            </li>
-                        </ul>
+                                {sections.map((section, idx) => {
+                                    const active = section.id === activeId
+                                    const isIconRow = !!section.icon
+                                    const addTopGap = idx === 5 || idx === 16
 
-                        <div style={H3}>Tools</div>
-                        <ul style={UL_ICON}>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <PipetteIconInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Eyedropper identifies the palette color of a
-                                    pixel. Drawing is disabled while it is
-                                    active.
-                                </span>
-                            </li>
-                            <li style={LI1}>
-                                <span style={ICON_SLOT}>
-                                    <HandIconOffInline style={ICON_INLINE} />
-                                </span>
-                                <span style={INLINE_TEXT_SLOT}>
-                                    Hand tool allows panning when zoomed in.
-                                    Drawing is disabled while it is active.
-                                </span>
-                            </li>
-                        </ul>
-                        <p style={NOTE}>
-                            If your brush strokes are not appearing, make sure
-                            the Eyedropper or Hand tool is not active.
-                        </p>
+                                    return (
+                                        <a
+                                            key={section.id}
+                                            href={`#manual-${section.id}`}
+                                            onClick={(e) => {
+                                                e.preventDefault()
+                                                scrollToSection(section.id)
+                                            }}
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: isIconRow ? 10 : 0,
+                                                marginTop: addTopGap ? 8 : 0,
+                                                color: TEXT,
+                                                textDecoration: "underline",
+                                                textUnderlineOffset: 2,
+                                                fontFamily: FONT_FAMILY,
+                                                fontSize: isNarrow ? 10.5 : 14,
+                                                lineHeight: 1.15,
+                                                fontWeight: active ? 800 : 700,
+                                                opacity: active ? 1 : 0.92,
+                                            }}
+                                        >
+                                            {section.icon ? (
+                                                <span
+                                                    style={{
+                                                        width: 30,
+                                                        minWidth: 30,
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        justifyContent:
+                                                            "center",
+                                                    }}
+                                                >
+                                                    {section.icon}
+                                                </span>
+                                            ) : null}
+                                            <span
+                                                style={{
+                                                    display: "block",
+                                                    whiteSpace:
+                                                        isNarrow &&
+                                                        section.id ===
+                                                            "reference-edit-screen"
+                                                            ? "normal"
+                                                            : "nowrap",
+                                                }}
+                                            >
+                                                {isNarrow &&
+                                                section.id ===
+                                                    "reference-edit-screen" ? (
+                                                    <>
+                                                        Reference
+                                                        <br />
+                                                        Edit Screen
+                                                    </>
+                                                ) : (
+                                                    section.navLabel
+                                                )}
+                                            </span>
+                                        </a>
+                                    )
+                                })}
+                            </div>
+                        </aside>
 
-                        <div style={HR} />
-
-                        <div style={H2}>6. Palette</div>
-                        <p style={P}>
-                            The palette is located at the bottom of the screen.
-                        </p>
-                        <p style={P}>
-                            All canvas pixels are linked to palette colors.
-                        </p>
-                        <p style={P}>
-                            Long press / right-click a color swatch to edit it.
-                            You can:
-                        </p>
-                        <ul style={UL}>
-                            <li style={LI}>
-                                choose a new color from the spectrum
-                            </li>
-                            <li style={LI}>
-                                enter a color value in #HEX format
-                            </li>
-                            <li style={LI}>make the swatch transparent</li>
-                        </ul>
-                        <p style={P}>
-                            Changing a swatch updates all linked pixels.
-                        </p>
-                        <p style={P}>
-                            You can add custom colors by pressing the green “+”
-                            button.
-                        </p>
-                        <p style={P}>The active color is used for drawing.</p>
-                        <p style={P}>
-                            Using a transparent color creates a “hole” in the
-                            image.
-                        </p>
-
-                        <div style={HR} />
-
-                        <div style={H2}>7. Reference Edit Screen</div>
-
-                        <div style={H3_WITH_ICON}>
-                            <span style={ICON_SLOT}>
-                                <SvgSmartObject
-                                    style={{
-                                        ...ICON_INLINE,
-                                        color: "#C02C66",
+                        <main
+                            style={{
+                                minHeight: 0,
+                                minWidth: 0,
+                                height:
+                                    isNarrow || navViewportHeight <= 0
+                                        ? "100%"
+                                        : navViewportHeight,
+                            }}
+                        >
+                            <section
+                                className="manualScrollHidden"
+                                style={{
+                                    overflowY: "auto",
+                                    overscrollBehavior: "contain",
+                                    WebkitOverflowScrolling: "touch",
+                                    minHeight: 0,
+                                    height: "100%",
+                                    paddingRight: isNarrow ? 0 : 4,
+                                    paddingBottom: isNarrow ? 16 : 0,
+                                    display: "grid",
+                                    gap: isNarrow ? 14 : 18,
+                                    alignContent: "start",
+                                }}
+                                ref={cardScrollRef}
+                            >
+                                {sections.map((section) => (
+                                    <article
+                                        key={section.id}
+                                        id={`manual-${section.id}`}
+                                        data-manual-id={section.id}
+                                        ref={(node) => {
+                                            sectionRefs.current[section.id] =
+                                                node
+                                        }}
+                                        style={{
+                                            background: PANEL_BG,
+                                            border: BORDER,
+                                            ...PANEL_RADIUS_STYLE,
+                                        padding: isNarrow
+                                            ? "18px 16px"
+                                            : "26px 28px",
+                                        boxSizing: "border-box",
+                                        width: "100%",
                                     }}
-                                />
-                            </span>
-                            <span>Reference Edit Screen</span>
-                        </div>
-                        <p style={P}>
-                            This button opens the reference image editor.
-                        </p>
-                        <p style={P}>
-                            Here you can adjust exposure and contrast, increase
-                            or reduce saturation, shift white balance toward
-                            warmer or cooler tones, and fine-tune shadows,
-                            midtones, and highlights.
-                        </p>
-                        <p style={P}>
-                            All changes are saved — you can return anytime and
-                            continue from where you left off.
-                        </p>
+                                >
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: section.icon ? 10 : 0,
+                                                marginBottom: 18,
+                                                minWidth: 0,
+                                            }}
+                                        >
+                                            {section.icon ? (
+                                                <span
+                                                    style={{
+                                                        width: 30,
+                                                        minWidth: 30,
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        justifyContent:
+                                                            "center",
+                                                    }}
+                                                >
+                                                    {section.icon}
+                                                </span>
+                                            ) : null}
+                                            <div
+                                                style={{
+                                                    fontSize: isNarrow
+                                                        ? 17
+                                                        : 18,
+                                                    lineHeight: 1.1,
+                                                    fontWeight: 900,
+                                                    minWidth: 0,
+                                                }}
+                                            >
+                                                {section.title}
+                                            </div>
+                                        </div>
 
-                        <div style={H3_WITH_ICON}>
-                            <span style={ICON_SLOT}>
-                                <SvgExportSOButton style={ICON_INLINE} />
-                            </span>
-                            <span>Export</span>
-                        </div>
-                        <p style={P}>
-                            This button saves the current image to your device
-                            as a<code>.png</code> file.
-                        </p>
-
-                        {/* небольшой “хвост” для комфортного скролла */}
-                        <div style={{ height: 12 }} />
+                                        {section.content}
+                                    </article>
+                                ))}
+                            </section>
+                        </main>
                     </div>
                 </div>
 
-                {/* ------------------- FIXED OK BUTTON ------------------- */}
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        onClose()
-                    }}
-                    style={okCancelButtonStyle}
-                    className="pxUiAnim"
-                    aria-label="OK"
-                >
-                    <SvgOkButton style={okCancelSvgStyle} />
-                </button>
             </div>
         </>
     )
 }
+
 export default ManualScreen

@@ -1283,6 +1283,21 @@ function areZeroSmartAdjustments(
     )
 }
 
+function areSmartAdjustmentsEqual(
+    a: SmartReferenceAdjustments,
+    b: SmartReferenceAdjustments
+): boolean {
+    return (
+        a.exposure === b.exposure &&
+        a.whiteBalance === b.whiteBalance &&
+        a.contrast === b.contrast &&
+        a.saturation === b.saturation &&
+        a.shadows === b.shadows &&
+        a.midtones === b.midtones &&
+        a.highlights === b.highlights
+    )
+}
+
 export function buildReferenceSnapshot(
     base: ImageData | null,
     adjustments: SmartReferenceAdjustments,
@@ -2265,6 +2280,12 @@ export function SmartReferenceEditor({
             return
         }
 
+        const committedAdjustments = committedStateRef.current.adjustments
+        if (areSmartAdjustmentsEqual(effectiveAdjustments, committedAdjustments)) {
+            onCancel()
+            return
+        }
+
         const committedSnapshot = buildReferenceSnapshot(
             smartObjectBase,
             effectiveAdjustments,
@@ -2294,6 +2315,7 @@ export function SmartReferenceEditor({
             kind: "smart-object-apply",
         })
     }, [
+        onCancel,
         onPublishEnvelope,
         smartObjectBase,
         effectiveAdjustments,
