@@ -11,6 +11,10 @@ import SmartReferenceEditor, {
     type SmartObjectCommittedStateBridge,
     type ReferenceSnapshotEnvelope,
 } from "./SmartReferenceEditor.tsx"
+import QuantizationRecorder, {
+    type QuantizationRecorderFrame,
+    type QuantizationRecorderSeed,
+} from "./QuantizationRecorder.tsx"
 
 import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
 
@@ -59,6 +63,7 @@ import {
     HandIconOn,
     HandIconOff,
     SvgSmartObject,
+    SvgQuantizationRecorderButton,
 } from "./SvgIcons.tsx"
 
 import { track } from "./analytics.ts"
@@ -1425,7 +1430,7 @@ const ALERT_OVERLAY_STYLE: React.CSSProperties = {
     boxSizing: "border-box",
 }
 
-const PALETTE_MIN = 10
+const PALETTE_MIN = 2
 const PALETTE_MAX = 32
 
 //const DIAG_MAIN_TRACK_FILL = "#FF2D2D"
@@ -2368,6 +2373,11 @@ function computeExportSize(gridSize: number) {
     const up = Math.ceil(target / gridSize) * gridSize
     const best = Math.abs(down - target) <= Math.abs(up - target) ? down : up
     return best > 0 ? best : gridSize
+}
+
+function cloneImageDataSnapshot(src: ImageData | null): ImageData | null {
+    if (!src) return null
+    return new ImageData(new Uint8ClampedArray(src.data), src.width, src.height)
 }
 
 // ------------------- HELPERS -------------------
@@ -4759,7 +4769,7 @@ function PixelEditorFramer({
         }
 
         // gridSize bounds (те же, что в V1)
-        assertIntInRange(raw.gridSize, 4, 128, "E_GRID", "gridSize")
+        assertIntInRange(raw.gridSize, 2, 128, "E_GRID", "gridSize")
         const g = raw.gridSize
         const cellsN = g * g
 
@@ -5967,6 +5977,8 @@ function PixelEditorFramer({
     const [hasImportContext, setHasImportContext] = React.useState<boolean>(
         initialImageData != null
     )
+    const [quantizationRecorderSeed, setQuantizationRecorderSeed] =
+        React.useState<QuantizationRecorderSeed | null>(null)
 
     // =====================
     // GRID POLICY (A0: infra only, NO-OP)
@@ -6382,6 +6394,203 @@ function PixelEditorFramer({
             autoOverrides: { ...autoOverrides },
         } as ProjectState
     }
+
+    function renderRecorderExportFrameImageData(params: {
+        imagePixels: PixelValue[][]
+        overlayPixels: PixelValue[][]
+        autoSwatches: Swatch[]
+        userSwatches: Swatch[]
+        gridSize: number
+    }): ImageData {
+        const exportSize = computeExportSize(params.gridSize)
+        const px = exportSize / params.gridSize
+        const out = document.createElement("canvas")
+        out.width = exportSize
+        out.height = exportSize
+
+        const ctx = out.getContext("2d")
+        if (!ctx) return new ImageData(exportSize, exportSize)
+
+        const localSwatchById = new Map<string, Swatch>()
+        for (const sw of params.autoSwatches) localSwatchById.set(sw.id, sw)
+        for (const sw of params.userSwatches) localSwatchById.set(sw.id, sw)
+
+        const localResolveToColor = (v: PixelValue): string | null => {
+            if (v == null) return null
+            if (v === TRANSPARENT_PIXEL) return null
+            const sw = localSwatchById.get(v)
+            if (!sw || sw.isTransparent) return null
+            return sw.color || null
+        }
+
+        const localIsTransparentValue = (v: PixelValue): boolean => {
+            if (v == null) return false
+            if (v === TRANSPARENT_PIXEL) return true
+            const sw = localSwatchById.get(v)
+            return !!sw?.isTransparent
+        }
+
+        ctx.imageSmoothingEnabled = false
+        ctx.clearRect(0, 0, exportSize, exportSize)
+
+        for (let r = 0; r < params.gridSize; r++) {
+            const iRow = params.imagePixels[r]
+            const oRow = params.overlayPixels[r]
+            for (let c = 0; c < params.gridSize; c++) {
+                let v: PixelValue = (oRow?.[c] ?? null) as PixelValue
+                if (v == null) {
+                    v = (iRow?.[c] ?? null) as PixelValue
+                }
+                if (!v) continue
+                if (localIsTransparentValue(v)) continue
+                const finalColor = localResolveToColor(v)
+                if (!finalColor) continue
+                ctx.fillStyle = finalColor
+                ctx.fillRect(c * px, r * px, px, px)
+            }
+        }
+
+        return ctx.getImageData(0, 0, exportSize, exportSize)
+    }
+
+    const buildQuantizationRecorderSeed =
+        React.useCallback((): QuantizationRecorderSeed | null => {
+            const frozenReferenceSnapshot = cloneImageDataSnapshot(originalImageData)
+            if (!frozenReferenceSnapshot) return null
+
+            const frozenOverlaySnapshot =
+                cloneImageDataSnapshot(paintRefImageData)
+            const frozenAutoSwatches = cloneSwatches(autoSwatches)
+            const frozenUserSwatches = cloneSwatches(userSwatches)
+            const frozenAutoOverrides = { ...autoOverrides }
+            const frozenGridBounds = { min: 2, max: 128 }
+            const frozenPaletteBounds = {
+                min: PALETTE_MIN,
+                max: PALETTE_MAX,
+            }
+
+            const generateFrame = async ({
+                gridSize: rawGridSize,
+                paletteSize: rawPaletteSize,
+            }: {
+                gridSize: number
+                paletteSize: number
+            }): Promise<QuantizationRecorderFrame> => {
+                const nextGridSize = clampInt(
+                    rawGridSize,
+                    frozenGridBounds.min,
+                    frozenGridBounds.max
+                )
+                const nextPaletteSize = clampInt(
+                    rawPaletteSize,
+                    frozenPaletteBounds.min,
+                    frozenPaletteBounds.max
+                )
+
+                const basePixels = pixelizeFromImageDominant(
+                    frozenReferenceSnapshot,
+                    nextGridSize,
+                    16
+                )
+
+                const q = quantizePixels(basePixels, nextPaletteSize)
+                const finalQuantPixels: (string | null)[][] = q.pixels
+                const finalPalette: string[] = q.palette
+
+                const nextAutoRaw: Swatch[] = finalPalette.map((color, i) => ({
+                    id: `auto-${i}`,
+                    color,
+                    isTransparent: false,
+                    isUser: false,
+                }))
+
+                const colorToId = new Map<string, string>()
+                for (let i = 0; i < finalPalette.length; i++) {
+                    colorToId.set(finalPalette[i], `auto-${i}`)
+                }
+
+                const indexed: PixelValue[][] = finalQuantPixels.map((row) =>
+                    row.map((col) => {
+                        if (col == null) return null
+                        const id = colorToId.get(col)
+                        return (id ?? null) as PixelValue
+                    })
+                )
+
+                const nextAutoEffective = applyAutoOverrides(
+                    nextAutoRaw,
+                    frozenAutoOverrides
+                )
+
+                const collapsed = collapseDuplicateSwatchesAndRemap({
+                    imagePixels: indexed,
+                    overlayPixels: createEmptyPixels(nextGridSize),
+                    nextAuto: nextAutoEffective,
+                    nextUser: frozenUserSwatches,
+                    nextAutoOverrides: frozenAutoOverrides,
+                    selectedSwatch: "transparent",
+                })
+
+                const overlayPixelsNext = frozenOverlaySnapshot
+                    ? requantizePaintSnapshotToOverlayPixels({
+                          snapshot: frozenOverlaySnapshot,
+                          gridSize: nextGridSize,
+                          baseAuto: collapsed.autoSwatches,
+                          user: collapsed.userSwatches,
+                      })
+                    : createEmptyPixels(nextGridSize)
+
+                const imageData = renderRecorderExportFrameImageData({
+                    imagePixels: collapsed.imagePixels,
+                    overlayPixels: overlayPixelsNext,
+                    autoSwatches: collapsed.autoSwatches,
+                    userSwatches: collapsed.userSwatches,
+                    gridSize: nextGridSize,
+                })
+
+                return {
+                    imageData,
+                    exportSize: imageData.width,
+                    gridSize: nextGridSize,
+                    paletteSize: nextPaletteSize,
+                }
+            }
+
+            return {
+                referenceSnapshot: frozenReferenceSnapshot,
+                overlaySnapshot: frozenOverlaySnapshot,
+                autoSwatches: frozenAutoSwatches,
+                userSwatches: frozenUserSwatches,
+                autoOverrides: frozenAutoOverrides,
+                gridBounds: frozenGridBounds,
+                paletteBounds: frozenPaletteBounds,
+                initialGridSize: gridSize,
+                initialPaletteSize: paletteCount,
+                generateFrame,
+                saveBlob: async (produceBlob, filename) => {
+                    await saveBlobFromProducer(produceBlob, filename)
+                },
+            }
+        }, [
+            autoSwatches,
+            autoOverrides,
+            gridSize,
+            originalImageData,
+            paintRefImageData,
+            paletteCount,
+            saveBlobFromProducer,
+            userSwatches,
+        ])
+
+    const openQuantizationRecorder = React.useCallback(() => {
+        const nextSeed = buildQuantizationRecorderSeed()
+        if (!nextSeed) return
+        setQuantizationRecorderSeed(nextSeed)
+    }, [buildQuantizationRecorderSeed])
+
+    const closeQuantizationRecorder = React.useCallback(() => {
+        setQuantizationRecorderSeed(null)
+    }, [])
 
     const latestProjectStateRef = React.useRef<ProjectState | null>(null)
 
@@ -10338,7 +10547,13 @@ function PixelEditorFramer({
 
                                 {/* ---------- /RANGE THUMB ---------- */}
 
-                                <div style={trackWrap}>
+                                <div
+                                    style={{
+                                        ...trackWrap,
+                                        flex: "1 1 auto",
+                                        minWidth: 0,
+                                    }}
+                                >
                                     <input
                                         type="range"
                                         className="pxRange"
@@ -10432,42 +10647,85 @@ function PixelEditorFramer({
                                 </div>
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={onOpenSmartReferenceTest}
-                                disabled={!onOpenSmartReferenceTest}
-                                aria-label="Smart Object"
-                                className="pxUiAnim"
+                            <div
                                 style={{
-                                    width: 60,
-                                    height: 60,
-                                    flex: "0 0 60px",
-                                    alignSelf: "flex-start",
-                                    border: "0",
-                                    borderRadius: 0,
-                                    background: "transparent",
-                                    padding: 0,
-                                    margin: 0,
                                     display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    cursor: onOpenSmartReferenceTest
-                                        ? "pointer"
-                                        : "default",
-                                    opacity: onOpenSmartReferenceTest
-                                        ? 1
-                                        : 0.45,
+                                    alignItems: "flex-start",
+                                    gap: 0,
+                                    flex: "0 0 auto",
                                 }}
                             >
-                                <SvgSmartObject
+                                <button
+                                    type="button"
+                                    onClick={openQuantizationRecorder}
+                                    disabled={!originalImageData}
+                                    aria-label="Quantization Recorder"
+                                    className="pxUiAnim"
                                     style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        display: "block",
-                                        color: "#C02C66",
+                                        width: 60,
+                                        height: 60,
+                                        flex: "0 0 60px",
+                                        alignSelf: "flex-start",
+                                        border: "0",
+                                        borderRadius: 0,
+                                        background: "transparent",
+                                        padding: 0,
+                                        margin: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: originalImageData
+                                            ? "pointer"
+                                            : "default",
+                                        opacity: originalImageData ? 1 : 0.45,
                                     }}
-                                />
-                            </button>
+                                >
+                                    <SvgQuantizationRecorderButton
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            display: "block",
+                                        }}
+                                    />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={onOpenSmartReferenceTest}
+                                    disabled={!onOpenSmartReferenceTest}
+                                    aria-label="Smart Object"
+                                    className="pxUiAnim"
+                                    style={{
+                                        width: 60,
+                                        height: 60,
+                                        flex: "0 0 60px",
+                                        alignSelf: "flex-start",
+                                        border: "0",
+                                        borderRadius: 0,
+                                        background: "transparent",
+                                        padding: 0,
+                                        margin: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: onOpenSmartReferenceTest
+                                            ? "pointer"
+                                            : "default",
+                                        opacity: onOpenSmartReferenceTest
+                                            ? 1
+                                            : 0.45,
+                                    }}
+                                >
+                                    <SvgSmartObject
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            display: "block",
+                                            color: "#C02C66",
+                                        }}
+                                    />
+                                </button>
+                            </div>
                         </div>
 
                         {/* GRID SIZE (real slider) */}
@@ -10488,7 +10746,7 @@ function PixelEditorFramer({
                                 <input
                                     type="range"
                                     className="pxRange"
-                                    min={16}
+                                    min={2}
                                     max={128}
                                     step={1}
                                     value={gridSize}
@@ -10566,7 +10824,7 @@ function PixelEditorFramer({
                                             ...rangeStyleBase,
                                             ...rangeTrackStyle(
                                                 gridSize,
-                                                16,
+                                                2,
                                                 128,
                                                 "#79c7b2"
                                             ),
@@ -11736,6 +11994,24 @@ function PixelEditorFramer({
                                     <SvgOkButton style={okCancelSvgStyle} />
                                 </button>
                             </div>
+                        </div>,
+                        document.body
+                    )}
+
+                {quantizationRecorderSeed &&
+                    ReactDOM.createPortal(
+                        <div
+                            style={{
+                                position: "fixed",
+                                inset: 0,
+                                zIndex: 25000,
+                                pointerEvents: "auto",
+                            }}
+                        >
+                            <QuantizationRecorder
+                                seed={quantizationRecorderSeed}
+                                onClose={closeQuantizationRecorder}
+                            />
                         </div>,
                         document.body
                     )}

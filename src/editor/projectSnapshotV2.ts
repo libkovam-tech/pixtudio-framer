@@ -3,7 +3,7 @@ import type { SmartReferenceAdjustments } from "./SmartReferenceEditor.tsx"
 export const PROJECT_SNAPSHOT_V2_MAGIC = "PIXTUDIO" as const
 export const PROJECT_SNAPSHOT_V2_VERSION = 2 as const
 export const PROJECT_SNAPSHOT_V2_SMART_REFERENCE_VERSION = 1 as const
-export const PROJECT_SNAPSHOT_V2_PALETTE_MIN = 10
+export const PROJECT_SNAPSHOT_V2_PALETTE_MIN = 2
 export const PROJECT_SNAPSHOT_V2_PALETTE_MAX = 32
 export const V2_CELL_NULL = -1 as const
 export const V2_CELL_TRANSPARENT = -2 as const
@@ -415,7 +415,7 @@ export function validateProjectSnapshotV2OrThrow(
         throw makeLoadGateError("E_VERSION", "version: not allowed")
     }
 
-    assertIntInRange(raw.gridSize, 4, 128, "E_GRID", "gridSize")
+    assertIntInRange(raw.gridSize, 2, 128, "E_GRID", "gridSize")
     const g = raw.gridSize as number
     const cellsN = g * g
 

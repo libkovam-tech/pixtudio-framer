@@ -51,6 +51,31 @@ export const SvgSmartObject = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 )
 
+export const SvgQuantizationRecorderButton = (
+    props: React.SVGProps<SVGSVGElement>
+) => (
+    <svg
+        viewBox="0 0 153.6 232.9"
+        preserveAspectRatio="xMaxYMid meet"
+        xmlns="http://www.w3.org/2000/svg"
+        {...props}
+    >
+        <path
+            d="M0,0c0,0,0,145.9,0,232.9h7.7v-7.7c3.8,0,11.5,0,15.4,0v-7.7h7.7v-7.7c3.8,0,11.5,0,15.4,0v-7.7h7.7v-7.7
+	c3.8,0,11.5,0,15.4,0v-7.7c3.8,0,11.5,0,15.4,0v7.7c3.8,0,11.5,0,15.4,0v7.7h7.7v7.7c3.8,0,11.5,0,15.4,0v7.7h7.7v7.7
+	c3.8,0,11.5,0,15.4,0v7.7h7.7c0-87,0-232.9,0-232.9H0z"
+            fill="#C02C66"
+        />
+        <path
+            d="M27.5,46.6v98.6h98.6V46.6H27.5z M89.1,52.6h9.3V62h-9.3V52.6z M72.1,52.6h9.3V62h-9.3V52.6z M55.1,52.6h9.3V62
+	h-9.3V52.6z M47.5,139.2h-9.3v-9.3h9.3V139.2z M47.5,62h-9.3v-9.3h9.3V62z M64.5,139.2h-9.3v-9.3h9.3V139.2z M81.5,139.2h-9.3v-9.3
+	h9.3V139.2z M98.5,139.2h-9.3v-9.3h9.3V139.2z M59,121.3V70.5l44,25.4L59,121.3z M115.4,139.2h-9.3v-9.3h9.3V139.2z M115.4,62h-9.3
+	v-9.3h9.3V62z"
+            fill="#FFFFFF"
+        />
+    </svg>
+)
+
 export function SvgTopButton3({ style }: { style?: React.CSSProperties }) {
     return (
         <InlineSvgWrap style={style} ariaLabel="Top button 3">

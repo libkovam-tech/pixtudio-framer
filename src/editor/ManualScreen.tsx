@@ -14,6 +14,7 @@ import {
     HandIconOff,
     SvgSmartObject,
     SvgExportSOButton,
+    SvgQuantizationRecorderButton,
 } from "./SvgIcons.tsx"
 
 const FONT_FAMILY =
@@ -160,6 +161,33 @@ function HandIconInline({ style }: { style?: React.CSSProperties }) {
 
 function ManualIconInline({ style }: { style?: React.CSSProperties }) {
     return <SvgManualButton style={{ ...ICON_INLINE, ...style }} />
+}
+
+function QuantizationRecorderIconInline({
+    style,
+}: {
+    style?: React.CSSProperties
+}) {
+    return (
+        <span
+            style={{
+                width: 24,
+                height: 24,
+                display: "grid",
+                placeItems: "center",
+                transform: "translateX(-3px)",
+                ...style,
+            }}
+        >
+            <SvgQuantizationRecorderButton
+                style={{
+                    width: 24,
+                    height: 24,
+                    display: "block",
+                }}
+            />
+        </span>
+    )
 }
 
 type ManualSection = {
@@ -387,8 +415,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <BulletList
                             items={[
                                 "Brush size",
-                                "Grid size (16-128 cells horizontally and vertically)",
-                                "Palette size (10-32 colors)",
+                                "Grid size (2-128 cells horizontally and vertically)",
+                                "Palette size (2-32 colors)",
                             ]}
                         />
                         <SectionCopy>
@@ -650,6 +678,27 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 ),
             },
             {
+                id: "quantization-recorder",
+                title: "Quantization Recorder",
+                navLabel: "Quantization Recorder",
+                icon: <QuantizationRecorderIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            This button opens the screen for recording the
+                            image pixelation process.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Here you can configure and create a video of the
+                            pixelation process, and also add an audio track to
+                            the clip. The finished video can be published on
+                            the internet right away without additional
+                            conversion.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
                 id: "reference-edit-screen",
                 title: "Reference Edit Screen",
                 navLabel: "Reference Edit Screen",
@@ -688,19 +737,29 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             All changes are saved, so you can return anytime and
                             continue from where you left off.
                         </SectionCopy>
-                    </SectionStack>
-                ),
-            },
-            {
-                id: "reference-export",
-                title: "Reference Export",
-                navLabel: "Export",
-                icon: <SvgExportSOButton style={ICON_INLINE} />,
-                content: (
-                    <SectionStack>
                         <SectionCopy>
-                            This button saves the current reference image to
-                            your device as a <code>.png</code> file.
+                            <span
+                                style={{
+                                    display: "inline-flex",
+                                    alignItems: "flex-start",
+                                    gap: 8,
+                                }}
+                            >
+                                <SvgExportSOButton
+                                    style={{
+                                        ...ICON_INLINE,
+                                        width: 22,
+                                        height: 22,
+                                        flex: "0 0 auto",
+                                        transform: "translateY(2px)",
+                                    }}
+                                />
+                                <span>
+                                    This button also allows you to save the
+                                    current reference image to your device as a{" "}
+                            <code>.png</code> file.
+                                </span>
+                            </span>
                         </SectionCopy>
                     </SectionStack>
                 ),
