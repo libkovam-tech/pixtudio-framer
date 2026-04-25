@@ -2,7 +2,6 @@ import * as React from "react"
 
 import { FFmpeg } from "@ffmpeg/ffmpeg"
 import { fetchFile, toBlobURL } from "@ffmpeg/util"
-import ffmpegWorkerURL from "@ffmpeg/ffmpeg/worker?url"
 
 import {
     SvgAlertBacking,
@@ -98,6 +97,7 @@ const APP_BASE_URL =
     typeof import.meta.env.BASE_URL === "string" && import.meta.env.BASE_URL.length > 0
         ? import.meta.env.BASE_URL
         : "/"
+const FFMPEG_CUSTOM_WORKER_URL = `${APP_BASE_URL}vendor/ffmpeg-core-custom/worker.js`
 const FFMPEG_CUSTOM_CORE_URL = `${APP_BASE_URL}vendor/ffmpeg-core-custom/ffmpeg-core.js`
 const FFMPEG_CUSTOM_WASM_URL = `${APP_BASE_URL}vendor/ffmpeg-core-custom/ffmpeg-core.wasm`
 const PORTRAIT_WIDTH = 760
@@ -533,13 +533,13 @@ async function ensureFFmpegLoaded() {
             )
             if (QUANTIZATION_EXPORT_DEBUG) {
                 console.info("[QuantizationRecorder] About to call ffmpeg.load()", {
-                    classWorkerURL: ffmpegWorkerURL,
+                    classWorkerURL: FFMPEG_CUSTOM_WORKER_URL,
                     coreURL: coreBlobURL,
                     wasmURL: wasmBlobURL,
                 })
             }
             await ffmpeg.load({
-                classWorkerURL: ffmpegWorkerURL,
+                classWorkerURL: FFMPEG_CUSTOM_WORKER_URL,
                 coreURL: coreBlobURL,
                 wasmURL: wasmBlobURL,
             })
