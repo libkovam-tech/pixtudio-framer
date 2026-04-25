@@ -23,3 +23,5 @@ wrangler.analytics-reporter.toml
 *.njsproj
 *.sln
 *.sw?
+tools/ffmpeg-core-custom/upstream/
+tools/ffmpeg-core-custom/output/

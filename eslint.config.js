@@ -6,7 +6,11 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    'tools/ffmpeg-core-custom/upstream/**',
+    'tools/ffmpeg-core-custom/output/**',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
