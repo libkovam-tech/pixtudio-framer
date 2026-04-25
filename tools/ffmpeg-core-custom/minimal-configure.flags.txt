@@ -1,0 +1,34 @@
+# First-pass FFmpeg configure flags for a reduced Quantization Recorder core
+#
+# This is intentionally conservative for the first custom build:
+# the goal is to get a smaller working core before doing further cuts.
+
+--disable-everything
+--disable-doc
+--disable-debug
+--enable-ffmpeg
+--disable-ffplay
+--disable-ffprobe
+--enable-gpl
+--enable-version3
+--enable-libx264
+--enable-protocol=file
+--enable-demuxer=concat
+--enable-demuxer=wav
+--enable-demuxer=image2
+--enable-demuxer=png_pipe
+--enable-muxer=mp4
+--enable-decoder=png
+--enable-decoder=pcm_s16le
+--enable-decoder=pcm_s24le
+--enable-decoder=pcm_s32le
+--enable-decoder=pcm_f32le
+--enable-encoder=libx264
+--enable-encoder=aac
+--enable-parser=png
+--enable-filter=fps
+--enable-filter=scale
+--enable-filter=format
+--enable-filter=afade
+--enable-filter=aresample
+--enable-filter=aformat

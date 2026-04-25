@@ -1,10 +1,8 @@
 import * as React from "react"
 
 import { FFmpeg } from "@ffmpeg/ffmpeg"
-import { fetchFile } from "@ffmpeg/util"
+import { fetchFile, toBlobURL } from "@ffmpeg/util"
 import ffmpegWorkerURL from "@ffmpeg/ffmpeg/worker?url"
-import ffmpegCoreURL from "@ffmpeg/core?url"
-import ffmpegWasmURL from "@ffmpeg/core/wasm?url"
 
 import {
     SvgAlertBacking,
@@ -96,6 +94,12 @@ type GeneratedRecorderFrame = QuantizationRecorderFrame & {
 const CANVAS_TARGET = 256
 const EXPORT_FPS = 30
 const ENABLE_MP4_CONVERSION = true
+const APP_BASE_URL =
+    typeof import.meta.env.BASE_URL === "string" && import.meta.env.BASE_URL.length > 0
+        ? import.meta.env.BASE_URL
+        : "/"
+const FFMPEG_CUSTOM_CORE_URL = `${APP_BASE_URL}vendor/ffmpeg-core-custom/ffmpeg-core.js`
+const FFMPEG_CUSTOM_WASM_URL = `${APP_BASE_URL}vendor/ffmpeg-core-custom/ffmpeg-core.wasm`
 const PORTRAIT_WIDTH = 760
 const PREVIEW_SIZE = 690
 const SURFACE_BG = "#031219"
@@ -112,6 +116,8 @@ const EXPORT_PROGRESS_PREP_MAX = 12
 const EXPORT_PROGRESS_PNG_MAX = 42
 const EXPORT_PROGRESS_ENCODE_START = 56
 const EXPORT_PROGRESS_ENCODE_MAX = 96
+const FFMPEG_CUSTOM_CORE_MIME = "text/javascript"
+const FFMPEG_CUSTOM_WASM_MIME = "application/wasm"
 
 const okCancelButtonStyle: React.CSSProperties = {
     width: 50,
@@ -517,17 +523,25 @@ async function ensureFFmpegLoaded() {
     ffmpegLoadPromise = (async () => {
         const ffmpeg = ffmpegSingleton ?? new FFmpeg()
         if (!ffmpeg.loaded) {
+            const coreBlobURL = await toBlobURL(
+                FFMPEG_CUSTOM_CORE_URL,
+                FFMPEG_CUSTOM_CORE_MIME
+            )
+            const wasmBlobURL = await toBlobURL(
+                FFMPEG_CUSTOM_WASM_URL,
+                FFMPEG_CUSTOM_WASM_MIME
+            )
             if (QUANTIZATION_EXPORT_DEBUG) {
                 console.info("[QuantizationRecorder] About to call ffmpeg.load()", {
                     classWorkerURL: ffmpegWorkerURL,
-                    coreURL: ffmpegCoreURL,
-                    wasmURL: ffmpegWasmURL,
+                    coreURL: coreBlobURL,
+                    wasmURL: wasmBlobURL,
                 })
             }
             await ffmpeg.load({
                 classWorkerURL: ffmpegWorkerURL,
-                coreURL: ffmpegCoreURL,
-                wasmURL: ffmpegWasmURL,
+                coreURL: coreBlobURL,
+                wasmURL: wasmBlobURL,
             })
             if (QUANTIZATION_EXPORT_DEBUG) {
                 console.info("[QuantizationRecorder] ffmpeg.load() resolved")

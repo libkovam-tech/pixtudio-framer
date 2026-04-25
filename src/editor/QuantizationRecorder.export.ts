@@ -76,7 +76,7 @@ export async function runQuantizationExportPipeline(params: {
     const mp4Name = "quantization-preview.mp4"
     const webmName = "quantization-preview.webm"
     const textEncoder = new TextEncoder()
-    const mp4ScaleFilter = `fps=${fps},scale=iw*${MP4_UPSCALE_FACTOR}:ih*${MP4_UPSCALE_FACTOR}:flags=neighbor`
+    const mp4ScaleFilter = `fps=${fps},scale=iw*${MP4_UPSCALE_FACTOR}:ih*${MP4_UPSCALE_FACTOR}:flags=neighbor,format=yuv420p`
 
     onDebugLog?.("Export pipeline started", {
         frames: pngFrames.length,
@@ -260,8 +260,6 @@ export async function runQuantizationExportPipeline(params: {
               "animation",
               "-crf",
               "6",
-              "-pix_fmt",
-              "yuv420p",
               "-c:a",
               "aac",
               "-b:a",
@@ -288,8 +286,6 @@ export async function runQuantizationExportPipeline(params: {
               "animation",
               "-crf",
               "6",
-              "-pix_fmt",
-              "yuv420p",
               mp4Name,
           ]
 
