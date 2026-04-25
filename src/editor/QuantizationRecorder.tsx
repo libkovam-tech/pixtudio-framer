@@ -805,7 +805,7 @@ export default function QuantizationRecorder({
 
     const [frames, setFrames] = React.useState<GeneratedRecorderFrame[]>([])
     const [isPlaying, setIsPlaying] = React.useState(false)
-    const [isGenerating, setIsGenerating] = React.useState(false)
+    const [, setIsGenerating] = React.useState(false)
     const [isExporting, setIsExporting] = React.useState(false)
     const [hasEverPlayed, setHasEverPlayed] = React.useState(false)
     const [playbackTimeSec, setPlaybackTimeSec] = React.useState(0)
@@ -1218,11 +1218,6 @@ export default function QuantizationRecorder({
         setPlainStatus("Playing")
         void ensureGenerationStarted()
     }, [ensureGenerationStarted, setPlainStatus, steps.length, totalDurationSec])
-
-    const handlePause = React.useCallback(() => {
-        setIsPlaying(false)
-        setPlainStatus("Paused")
-    }, [setPlainStatus])
 
     const handleProgressChange = React.useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2107,13 +2102,10 @@ export default function QuantizationRecorder({
 
                         <button
                             type="button"
-                            onClick={isPlaying ? handlePause : handlePlay}
-                            aria-label={isPlaying ? "Pause" : "Play"}
+                            onClick={onClose}
+                            aria-label="OK"
                             className="pxUiAnim"
-                            style={{
-                                ...bottomActionButtonStyle,
-                                opacity: isGenerating && !hasEverPlayed ? 0.75 : 1,
-                            }}
+                            style={bottomActionButtonStyle}
                         >
                             <SvgOkButton style={okCancelSvgStyle} />
                         </button>
