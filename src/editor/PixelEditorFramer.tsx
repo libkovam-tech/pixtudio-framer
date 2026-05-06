@@ -17,7 +17,20 @@ import QuantizationRecorder, {
 } from "./QuantizationRecorder.tsx"
 
 import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
-
+import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
+import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
+import {
+    EXTRACT_QUANTIZATION_PROFILE,
+    QUANTIZATION_PROFILES,
+    buildDerivedWorld,
+    extractPalette,
+    quantizeWithFixedProfile,
+    quantizeWithFixedPalette,
+    type DerivedWorld,
+    type PaletteTab,
+    type PaletteTabsState,
+    type QuantizationProfile,
+} from "./paletteQuantizationEngine.ts"
 import {
     createRootHistoryState,
     rootHistoryAbort,
@@ -64,6 +77,7 @@ import {
     HandIconOff,
     SvgSmartObject,
     SvgQuantizationRecorderButton,
+    SvgPalettePresetButton,
 } from "./SvgIcons.tsx"
 
 import { track } from "./analytics.ts"
@@ -133,6 +147,11 @@ const ENABLE_ROOT_HISTORY_LOGS = false
 
 const ENABLE_CORE_LIFECYCLE_DEBUG_LOGS = false
 
+const ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS = false
+const ENABLE_PALETTE_UNDO_TRACE_LOGS = false
+const ENABLE_EDITOR_HISTORY_SHORTCUT_LOGS = false
+const ENABLE_SAVE_PATH_DEBUG_OVERLAY = false
+
 function coreLifecycleLog(stage: string, meta?: Record<string, unknown>) {
     if (!ENABLE_CORE_LIFECYCLE_DEBUG_LOGS) return
     const t = nowMs().toFixed(1)
@@ -140,6 +159,16 @@ function coreLifecycleLog(stage: string, meta?: Record<string, unknown>) {
         console.log(`[CORE t=${t}] ${stage}`, meta ?? "")
     } catch {
         console.log(`[CORE t=${t}] ${stage}`)
+    }
+}
+
+function editorHistoryShortcutLog(stage: string, meta?: Record<string, unknown>) {
+    if (!ENABLE_EDITOR_HISTORY_SHORTCUT_LOGS) return
+    const t = nowMs().toFixed(1)
+    try {
+        console.info(`[EditorHistoryShortcut t=${t}] ${stage}`, meta ?? {})
+    } catch {
+        console.info(`[EditorHistoryShortcut t=${t}] ${stage}`)
     }
 }
 
@@ -823,410 +852,23 @@ function preprocessImportedImageData(
     return boosted
 }
 
-// ===============================
-// E2.0 — Chinese Room bake pipeline (NO-OP)
-// ===============================
-//
-// Единственная функция, имеющая право
-// превращать prepared512 в bakedRef512.
-//
-// Порядок (пока NO-OP):
-// prepared512
-// → sanitize
-// → boost
-// → preset-bake
-// → bakedRef512
-//
-
-type PresetId = "DEFAULT" | "NEON" | "GRAYSCALE" | "BW"
-
 function bakeRef512InChineseRoom(
     prepared512: ImageData,
-    preset: PresetId, // DEFAULT | NEON | GRAYSCALE | BW
     source: "gallery" | "camera" | "other" = "other"
 ): ImageData {
-    // E2.0: NO-OP
-    // В следующих шагах здесь появится реальная логика.
-    // E2.2: sanitize -> boost (no preset)
+    // Crop Screen stays neutral: palette presets are applied only in Palette Presets.
     const sanitized = maybeSanitizeImageData(prepared512, source)
-    const boosted = maybeStylizeBoostImageData(sanitized, source)
-    const baked = applyPresetBakeToImageData(boosted, preset)
-    return baked
-}
-
-// ===============================
-// N0 — NEON migration anchor
-// Следующие шаги N1–N4 вставляют NEON_COLD_32 + NEON_STAIRCASE + force-map сюда,
-// и подключают их только в ветке preset === "NEON" внутри applyPresetBakeToImageData.
-// ===============================
-
-// ------------------- N2 — NEON_ARCADE palette (with electric yellow) -------------------
-
-const NEON_ARCADE_32: string[] = [
-    "#0B0A1A",
-    "#16132B",
-    "#1E1A3A",
-    "#241F4A",
-    "#2C255C",
-    "#332A6E",
-
-    "#2E3A8C",
-    "#3547A8",
-    "#3C54C2",
-    "#4662DA",
-    "#5270F0",
-
-    "#5F63E0",
-    "#6E6AE8",
-    "#7E72EE",
-    "#8E7BF2",
-
-    "#9B7BE0",
-    "#A783E6",
-    "#B28CEC",
-    "#BD96F0",
-    "#C9A0F4",
-
-    "#D6A9F7",
-    "#E2B3FA",
-    "#EDBEFC",
-
-    "#F3E6FF",
-    "#F2F6FF", // near white (new highlight)
-
-    "#BFD6FF",
-    "#9AD8FF",
-    "#5BC2FF",
-
-    "#4ED6C4",
-
-    "#FFF34D", // electric yellow
-
-    "#FF6AD5",
-]
-void NEON_ARCADE_32
-
-// ------------------- N1 — NEON palette (NO-OP, not used yet) -------------------
-
-// NEON_COLD_32 — холоднее: больше синих/индиго, меньше тёплых
-const NEON_COLD_32: string[] = [
-    "#0B0A1A",
-    "#16132B",
-    "#1E1A3A",
-    "#241F4A",
-    "#2C255C",
-    "#332A6E",
-
-    "#2E3A8C",
-    "#3547A8",
-    "#3C54C2",
-    "#4662DA",
-    "#5270F0",
-
-    "#5F63E0",
-    "#6E6AE8",
-    "#7E72EE",
-    "#8E7BF2",
-
-    "#9B7BE0",
-    "#A783E6",
-    "#B28CEC",
-    "#BD96F0",
-    "#C9A0F4",
-
-    "#D6A9F7",
-    "#E2B3FA",
-    "#EDBEFC",
-    "#F6CAFD",
-
-    "#F3E6FF",
-    "#E9DDF8",
-    "#DCD1F0",
-    "#BFD6FF",
-
-    "#9AD8FF",
-    "#5BC2FF",
-    "#4ED6C4",
-    "#FF6AD5",
-]
-
-// ✅ Активная палитра NEON (фиксируем “мир” пресета)
-const PALETTE_NEON_32: string[] = NEON_COLD_32
-//const PALETTE_NEON_32: string[] = NEON_ARCADE_32
-
-// ------------------- NEON PRE-TRANSFORM (NEON_STAIRCASE v2: chroma-preserving) -------------------
-
-// флаг (если захочешь быстро отключить, не удаляя код)
-const NEON_STAIRCASE_ENABLED = true
-
-// “мягкость” притягивания к якорю (0 = no-op, 1 = жёсткая лестница)
-const NEON_STAIRCASE_K = 0.9
-
-// Пороги зон по яркости L (0..1): 5 зон => 4 порога
-const NEON_STAIR_B1 = 0.1
-const NEON_STAIR_B2 = 0.3
-const NEON_STAIR_B3 = 0.55
-const NEON_STAIR_B4 = 0.8
-
-// Якоря яркости (0..1): должны отличаться скачком ~15–20%
-const NEON_STAIR_A_BLACK = 0.06
-const NEON_STAIR_A_DARK = 0.24
-const NEON_STAIR_A_MID = 0.44
-const NEON_STAIR_A_LIGHT = 0.64
-const NEON_STAIR_A_WHITE = 0.88
-
-function lerp01(a: number, b: number, t: number) {
-    return a + (b - a) * t
-}
-
-// Яркость (luma) в sRGB 0..255 -> 0..1 (быстро и достаточно для “лестницы”)
-function luma01(r: number, g: number, b: number) {
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-}
-
-function pickStairAnchor(L: number) {
-    if (L < NEON_STAIR_B1) return NEON_STAIR_A_BLACK
-    if (L < NEON_STAIR_B2) return NEON_STAIR_A_DARK
-    if (L < NEON_STAIR_B3) return NEON_STAIR_A_MID
-    if (L < NEON_STAIR_B4) return NEON_STAIR_A_LIGHT
-    return NEON_STAIR_A_WHITE
-}
-
-// NEON_STAIRCASE v2:
-function applyNeonPreTransform(imageData: ImageData): ImageData {
-    if (!NEON_STAIRCASE_ENABLED) return imageData
-
-    const w = imageData.width
-    const h = imageData.height
-
-    // работаем на копии, исходник не мутируем
-    const out = new ImageData(new Uint8ClampedArray(imageData.data), w, h)
-    const d = out.data
-
-    // reuse объектов (no-new-in-loop)
-    const hsvTmpDeg = { h: 0, s: 0, v: 0 }
-    const rgbTmp = { r: 0, g: 0, b: 0 }
-
-    for (let i = 0; i < d.length; i += 4) {
-        const a = d[i + 3]
-        if (a === 0) continue // полностью прозрачные не трогаем (alpha сохраняем)
-
-        const r = d[i + 0]
-        const g = d[i + 1]
-        const b = d[i + 2]
-
-        const L = luma01(r, g, b)
-        const A = pickStairAnchor(L)
-
-        // “мягко” тянем яркость к якорю
-        const Lp = clamp01(lerp01(L, A, NEON_STAIRCASE_K))
-
-        // RGB -> HSV (утилита уже есть в проекте; используем её)
-        rgbToHsvIntoDeg(r, g, b, hsvTmpDeg)
-
-        // Подменяем только V (яркость), Hue/Sat сохраняем.
-        // Важно: V в ваших утилитах обычно 0..1
-        const v2 = clamp01(hsvTmpDeg.v * (Lp / Math.max(1e-6, L)))
-
-        hsvToRgbIntoDeg(hsvTmpDeg.h, hsvTmpDeg.s, v2, rgbTmp)
-
-        d[i + 0] = rgbTmp.r
-        d[i + 1] = rgbTmp.g
-        d[i + 2] = rgbTmp.b
-        // d[i + 3] НЕ трогаем
-    }
-
-    return out
-}
-
-// ------------------- N3 — NEON fixed-palette force-map (NO-OP, not used yet) -------------------
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-    const m = hex.replace("#", "")
-    if (m.length !== 6) return null
-
-    const r = parseInt(m.slice(0, 2), 16)
-    const g = parseInt(m.slice(2, 4), 16)
-    const b = parseInt(m.slice(4, 6), 16)
-
-    if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null
-    return { r, g, b }
-}
-
-function quantizeImageDataToFixedPalette(
-    imageData: ImageData,
-    paletteHex: string[]
-): ImageData {
-    const out = new ImageData(
-        new Uint8ClampedArray(imageData.data),
-        imageData.width,
-        imageData.height
-    )
-
-    const pal = paletteHex
-        .map((hx) => hexToRgb(hx))
-        .filter((x): x is { r: number; g: number; b: number } => x != null)
-
-    if (pal.length === 0) return out
-
-    const d = out.data
-
-    for (let i = 0; i < d.length; i += 4) {
-        const a = d[i + 3]
-        if (a === 0) continue
-
-        const r = d[i + 0]
-        const g = d[i + 1]
-        const b = d[i + 2]
-
-        let best = 0
-        let bestDist = Number.POSITIVE_INFINITY
-
-        for (let k = 0; k < pal.length; k++) {
-            const pr = pal[k].r
-            const pg = pal[k].g
-            const pb = pal[k].b
-
-            const dr = r - pr
-            const dg = g - pg
-            const db = b - pb
-
-            const dist = dr * dr + dg * dg + db * db
-            if (dist < bestDist) {
-                bestDist = dist
-                best = k
-            }
-        }
-
-        d[i + 0] = pal[best].r
-        d[i + 1] = pal[best].g
-        d[i + 2] = pal[best].b
-        // alpha unchanged
-    }
-
-    return out
-}
-
-function applyPresetBakeToImageData(
-    imageData512: ImageData,
-    preset: PresetId
-): ImageData {
-    if (preset === "DEFAULT") return imageData512
-
-    // NEON: используем уже существующий ImageData->ImageData pre-transform
-    if (preset === "NEON") {
-        const pre = applyNeonPreTransform(imageData512)
-        const baked = quantizeImageDataToFixedPalette(pre, PALETTE_NEON_32)
-
-        if (ENABLE_PREP_LOGS) {
-            // Собираем до 10 уникальных RGB из baked (непрозрачные)
-            const uniq: string[] = []
-            const seen = new Set<string>()
-            const d = baked.data
-            for (let i = 0; i < d.length && uniq.length < 10; i += 4) {
-                const a = d[i + 3]
-                if (a === 0) continue
-                const key = `${d[i + 0]},${d[i + 1]},${d[i + 2]}`
-                if (!seen.has(key)) {
-                    seen.add(key)
-                    uniq.push(key)
-                }
-            }
-
-            // Проверяем, что все эти RGB есть в палитре
-            const palSet = new Set(
-                PALETTE_NEON_32.map((hx) => hexToRgb(hx))
-                    .filter(
-                        (x): x is { r: number; g: number; b: number } =>
-                            x != null
-                    )
-                    .map((p) => `${p.r},${p.g},${p.b}`)
-            )
-
-            const notInPalette = uniq.filter((k) => !palSet.has(k))
-
-            if (ENABLE_PREP_LOGS) {
-                console.log("[NEON][CHK] uniqRGB(<=10) =", uniq)
-                if (notInPalette.length > 0) {
-                    console.warn("[NEON][CHK] NOT IN PALETTE =", notInPalette)
-                } else {
-                    console.log(
-                        "[NEON][CHK] OK: all sampled colors are in PALETTE_NEON_32"
-                    )
-                }
-            }
-        }
-
-        if (ENABLE_PREP_LOGS) {
-            let alphaMismatch = 0
-            const a1 = pre.data
-            const a2 = baked.data
-            const n = Math.min(a1.length, a2.length)
-            for (let i = 3; i < n; i += 4) {
-                if (a1[i] !== a2[i]) {
-                    alphaMismatch++
-                    if (alphaMismatch >= 5) break
-                }
-            }
-            if (alphaMismatch > 0) {
-                console.warn("[NEON][ALPHA] mismatch detected:", alphaMismatch)
-            } else {
-                if (ENABLE_PREP_LOGS) {
-                    console.log("[NEON][ALPHA] OK (A_out = A_in)")
-                }
-            }
-        }
-
-        return baked
-    }
-
-    // GRAYSCALE / BW: делаем копию и меняем RGB, альфу не трогаем
-    const out = new ImageData(
-        new Uint8ClampedArray(imageData512.data),
-        imageData512.width,
-        imageData512.height
-    )
-    const d = out.data
-
-    if (preset === "GRAYSCALE") {
-        for (let i = 0; i < d.length; i += 4) {
-            const a = d[i + 3]
-            if (a === 0) continue
-
-            const r = d[i + 0]
-            const g = d[i + 1]
-            const b = d[i + 2]
-
-            const L = clamp255(Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b))
-            d[i + 0] = L
-            d[i + 1] = L
-            d[i + 2] = L
-            // alpha unchanged
-        }
-        return out
-    }
-
-    // BW
-    for (let i = 0; i < d.length; i += 4) {
-        const a = d[i + 3]
-        if (a === 0) continue
-
-        const r = d[i + 0]
-        const g = d[i + 1]
-        const b = d[i + 2]
-
-        const L01 = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-        const v = L01 < BW_THRESHOLD ? 0 : 255
-
-        d[i + 0] = v
-        d[i + 1] = v
-        d[i + 2] = v
-        // alpha unchanged
-    }
-    return out
+    return maybeStylizeBoostImageData(sanitized, source)
 }
 
 type PixelValue = SwatchId | null | typeof TRANSPARENT_PIXEL
+type FixedQuantizationProfile = Extract<QuantizationProfile, { kind: "fixed" }>
+
+type ImportedPalettePreset = {
+    id: string
+    name: string
+    profile: FixedQuantizationProfile
+}
 
 // ===== PIXEL TYPE (НАЧАЛО) =====
 type Pixel = {
@@ -1751,6 +1393,17 @@ function rgbToHex(r: number, g: number, b: number) {
     ).toUpperCase()
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const value = hex.trim().replace("#", "")
+    if (!/^[0-9a-fA-F]{6}$/.test(value)) return null
+
+    return {
+        r: parseInt(value.slice(0, 2), 16),
+        g: parseInt(value.slice(2, 4), 16),
+        b: parseInt(value.slice(4, 6), 16),
+    }
+}
+
 function rgbToCss(r: number, g: number, b: number) {
     return `rgb(${clamp255(r)}, ${clamp255(g)}, ${clamp255(b)})`
 }
@@ -1887,7 +1540,6 @@ void warnIfBwPaletteInvalid
 
 // -------------------- BW PRESET (Step BW2) — threshold helper --------------------
 // Принимает grid пикселей как после pixelizeFromImageDominant: (string|null)[][]
-// Возвращает grid тех же размеров, где каждый пиксель => BW_BLACK/BW_WHITE, а прозрачный => null.
 function toBlackWhiteGrid(pixels: (string | null)[][]): (string | null)[][] {
     if (!pixels || pixels.length === 0) return pixels
 
@@ -2192,7 +1844,6 @@ function quantizeToFixedPalette(
     pixels: (string | null)[][],
     paletteHex: string[]
 ): (string | null)[][] {
-    // Готовим RGB-палитру один раз
     const pal = paletteHex.map((hx) => hexToRgb(hx)) // hexToRgb уже есть в файле
 
     const safePal = pal.filter(
@@ -2248,114 +1899,7 @@ function quantizeToFixedPalette(
 
 // ---- palette quantization ----
 function quantizePixels(pixels: (string | null)[][], targetColors: number) {
-    const height = pixels.length
-    const width = height > 0 ? pixels[0].length : 0
-
-    const map = new Map<
-        string,
-        { color: string; r: number; g: number; b: number; count: number }
-    >()
-    for (let y = 0; y < height; y++) {
-        const row = pixels[y]
-        for (let x = 0; x < width; x++) {
-            const col = row[x]
-            if (col == null) continue
-            let entry = map.get(col)
-            if (!entry) {
-                const { r, g, b } = parseRGB(col)
-                entry = { color: col, r, g, b, count: 0 }
-                map.set(col, entry)
-            }
-            entry.count++
-        }
-    }
-
-    const uniqueColors = Array.from(map.values())
-    if (uniqueColors.length === 0) return { pixels, palette: [] as string[] }
-
-    const k = clamp(targetColors, 1, uniqueColors.length)
-    if (uniqueColors.length <= k)
-        return { pixels, palette: uniqueColors.map((c) => c.color) }
-
-    const centroids = uniqueColors
-        .slice(0, k)
-        .map((c) => ({ r: c.r, g: c.g, b: c.b }))
-    const ITER = 6
-
-    for (let iter = 0; iter < ITER; iter++) {
-        const clusters = centroids.map(() => ({
-            sumR: 0,
-            sumG: 0,
-            sumB: 0,
-            sumCount: 0,
-        }))
-
-        for (const uc of uniqueColors) {
-            let best = 0
-            let bestDist = Infinity
-            for (let i = 0; i < centroids.length; i++) {
-                const c = centroids[i]
-                const dr = uc.r - c.r
-                const dg = uc.g - c.g
-                const db = uc.b - c.b
-                const dist = dr * dr + dg * dg + db * db
-                if (dist < bestDist) {
-                    bestDist = dist
-                    best = i
-                }
-            }
-            const cl = clusters[best]
-            cl.sumR += uc.r * uc.count
-            cl.sumG += uc.g * uc.count
-            cl.sumB += uc.b * uc.count
-            cl.sumCount += uc.count
-        }
-
-        for (let i = 0; i < centroids.length; i++) {
-            const cl = clusters[i]
-            if (cl.sumCount > 0) {
-                centroids[i] = {
-                    r: cl.sumR / cl.sumCount,
-                    g: cl.sumG / cl.sumCount,
-                    b: cl.sumB / cl.sumCount,
-                }
-            }
-        }
-    }
-
-    const palette = centroids.map(
-        (c) =>
-            "rgb(" +
-            Math.round(c.r) +
-            ", " +
-            Math.round(c.g) +
-            ", " +
-            Math.round(c.b) +
-            ")"
-    )
-
-    const mapping = new Map<string, string>()
-    for (const uc of uniqueColors) {
-        let best = 0
-        let bestDist = Infinity
-        for (let i = 0; i < centroids.length; i++) {
-            const c = centroids[i]
-            const dr = uc.r - c.r
-            const dg = uc.g - c.g
-            const db = uc.b - c.b
-            const dist = dr * dr + dg * dg + db * db
-            if (dist < bestDist) {
-                bestDist = dist
-                best = i
-            }
-        }
-        mapping.set(uc.color, palette[best])
-    }
-
-    const newPixels = pixels.map((row) =>
-        row.map((col) => (col == null ? null : mapping.get(col) || col))
-    )
-    return { pixels: newPixels, palette }
+    return extractPalette(pixels, targetColors)
 }
 
 function generatePalette(count: number) {
@@ -2391,6 +1935,17 @@ function getViewportHeightPx() {
     return Math.round(vv?.height ?? window.innerHeight ?? 0)
 }
 
+function getViewportWidthPx() {
+    if (typeof window === "undefined") return 0
+    const vv: any = (window as any).visualViewport
+    return Math.round(
+        vv?.width ??
+            document.documentElement.clientWidth ??
+            window.innerWidth ??
+            0
+    )
+}
+
 /**
  * FitToViewport (NO-OP на шаге A0)
  * Считает scale = min(1, viewportHeight / contentHeight) и применяет transform: scale(scale).
@@ -2400,16 +1955,19 @@ function FitToViewport({
     children,
     background,
     onScale,
+    topPadding = 0,
 }: {
     children: React.ReactNode
     background: string
     onScale?: (s: number) => void
+    topPadding?: number
 }) {
     const contentRef = React.useRef<HTMLDivElement | null>(null)
     const [scale, setScale] = React.useState(1)
 
     // ✅ “воздух” внутри viewport
     const VIEWPORT_PAD = 0
+    const VIEWPORT_PAD_TOP = topPadding
 
     useIsomorphicLayoutEffect(() => {
         const el = contentRef.current
@@ -2438,14 +1996,16 @@ function FitToViewport({
                 // scrollWidth/scrollHeight НЕ зависят от transform: scale()
                 const h = Math.max(1, el.scrollHeight)
                 const w = Math.max(1, el.scrollWidth)
-
-                const availH = Math.max(1, vh - VIEWPORT_PAD * 2)
+                const availH = Math.max(
+                    1,
+                    vh - VIEWPORT_PAD_TOP - VIEWPORT_PAD
+                )
                 const availW = Math.max(1, vw - VIEWPORT_PAD * 2)
 
                 const sH = availH / h
                 const sW = availW / w
 
-                const next = Math.min(sH, sW)
+                const next = Math.min(1, sH, sW)
 
                 setScale((prev) =>
                     Math.abs(prev - next) < 0.001 ? prev : next
@@ -2468,7 +2028,7 @@ function FitToViewport({
             window.visualViewport?.removeEventListener("resize", recompute)
             if (raf) cancelAnimationFrame(raf)
         }
-    }, [onScale])
+    }, [onScale, VIEWPORT_PAD_TOP])
 
     return (
         <div
@@ -2481,11 +2041,13 @@ function FitToViewport({
                 background,
 
                 // ✅ прибиваем горизонтальный оверфлоу (чтобы ничего не “расширяло” центр)
-                overflowX: "clip",
-                overflowY: "hidden",
+                position: "fixed",
+                inset: 0,
+                overflow: "hidden",
 
                 // ✅ воздух по краям
                 padding: VIEWPORT_PAD,
+                paddingTop: VIEWPORT_PAD_TOP,
                 boxSizing: "border-box",
 
                 // ✅ центрируем контент
@@ -3339,7 +2901,6 @@ function StartScreen({
                 style={{
                     ...wrapStyle,
 
-                    // ✅ страховка: не даём первому контейнеру раздуваться шире контента
                     width: "fit-content",
                     maxWidth: "100%",
                     display: "inline-flex",
@@ -3547,6 +3108,8 @@ type EditorCommittedState = {
     autoSwatches: Swatch[]
     userSwatches: Swatch[]
     selectedSwatch: SwatchId | "transparent"
+    quantizationProfile?: QuantizationProfile
+    activePaletteTab?: PaletteTab
     autoOverrides: Record<
         string,
         {
@@ -3564,7 +3127,11 @@ type EditorCommittedStateBridge = {
 
 type EditorCommittedStateSettledPayload = {
     state: EditorCommittedState
-    routeKind: "import" | "load" | "smart-object-apply"
+    routeKind:
+        | "import"
+        | "load"
+        | "smart-object-apply"
+        | "smart-object-history-restore"
 }
 
 type UserActionBeginInput = {
@@ -3605,6 +3172,12 @@ function areEditorCommittedStatesEqual(
     if (a.showImage !== b.showImage) return false
     if (a.selectedSwatch !== b.selectedSwatch) return false
     if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
+    if (!areCommittedQuantizationProfilesEqual(
+        a.quantizationProfile,
+        b.quantizationProfile
+    )) {
+        return false
+    }
 
     const aOv = a.autoOverrides || {}
     const bOv = b.autoOverrides || {}
@@ -3668,6 +3241,75 @@ function areEditorCommittedStatesEqual(
     return true
 }
 
+function areCommittedQuantizationProfilesEqual(
+    a: QuantizationProfile | undefined,
+    b: QuantizationProfile | undefined
+): boolean {
+    const aa = a ?? EXTRACT_QUANTIZATION_PROFILE
+    const bb = b ?? EXTRACT_QUANTIZATION_PROFILE
+    if (aa.kind !== bb.kind) return false
+    if (aa.kind === "extract" || bb.kind === "extract") return true
+    if (
+        aa.id !== bb.id ||
+        aa.name !== bb.name ||
+        aa.source !== bb.source ||
+        aa.colors.length !== bb.colors.length
+    ) {
+        return false
+    }
+    for (let i = 0; i < aa.colors.length; i += 1) {
+        if (aa.colors[i] !== bb.colors[i]) return false
+    }
+    return true
+}
+
+function quantizationProfileTraceSummary(
+    profile: QuantizationProfile | undefined
+) {
+    const p = profile ?? EXTRACT_QUANTIZATION_PROFILE
+    if (p.kind === "extract") {
+        return { kind: "extract" }
+    }
+    return {
+        kind: "fixed",
+        id: p.id,
+        name: p.name,
+        source: p.source,
+        colors: p.colors.length,
+        first: p.colors[0] ?? null,
+        last: p.colors[p.colors.length - 1] ?? null,
+    }
+}
+
+function editorCommittedStateTraceSummary(
+    state: EditorCommittedState | null | undefined
+) {
+    if (!state) return null
+    return {
+        gridSize: state.gridSize,
+        paletteCount: state.paletteCount,
+        brushSize: state.brushSize,
+        activePaletteTab: state.activePaletteTab ?? null,
+        profile: quantizationProfileTraceSummary(state.quantizationProfile),
+        selectedSwatch: state.selectedSwatch,
+        autoSwatches: state.autoSwatches?.length ?? 0,
+        userSwatches: state.userSwatches?.length ?? 0,
+        imageNonNull: countNonNullCells(state.imagePixels ?? []),
+        overlayNonNull: countNonNullCells(state.overlayPixels ?? []),
+        hasOriginalImageData: state.hasOriginalImageData,
+    }
+}
+
+function paletteUndoTrace(stage: string, meta?: Record<string, unknown>) {
+    if (!ENABLE_PALETTE_UNDO_TRACE_LOGS) return
+    try {
+        const suffix = meta ? ` ${JSON.stringify(meta)}` : ""
+        console.info(`[PaletteUndoTrace] ${stage}${suffix}`)
+    } catch {
+        console.info(`[PaletteUndoTrace] ${stage}`)
+    }
+}
+
 function areSmartObjectCommittedStatesEqual(
     a: SmartObjectCommittedState | null,
     b: SmartObjectCommittedState | null
@@ -3717,7 +3359,12 @@ function PixelEditorFramer({
 }: {
     // committed reference snapshot from ROOT gateway
     initialImageData: ImageData | null
-    initialImageRouteKind: "import" | "load" | "smart-object-apply" | null
+    initialImageRouteKind:
+        | "import"
+        | "load"
+        | "smart-object-apply"
+        | "smart-object-history-restore"
+        | null
     // save-side bridge:
     // editor не владеет Smart Object base/committed adjustments,
     // поэтому получает их из root только для сериализации save-файла.
@@ -3779,6 +3426,30 @@ function PixelEditorFramer({
     const isMobileUI =
         typeof window !== "undefined" &&
         window.matchMedia("(max-width: 640px)").matches
+    const [mobileViewportWidth, setMobileViewportWidth] = React.useState(() =>
+        getViewportWidthPx()
+    )
+
+    useIsomorphicLayoutEffect(() => {
+        if (!isMobileUI) return
+
+        let raf = 0
+        const sync = () => {
+            if (raf) cancelAnimationFrame(raf)
+            raf = requestAnimationFrame(() => {
+                setMobileViewportWidth(getViewportWidthPx())
+            })
+        }
+
+        sync()
+        window.addEventListener("resize", sync)
+        window.visualViewport?.addEventListener("resize", sync)
+        return () => {
+            if (raf) cancelAnimationFrame(raf)
+            window.removeEventListener("resize", sync)
+            window.visualViewport?.removeEventListener("resize", sync)
+        }
+    }, [isMobileUI])
 
     // =====================
     // S0: USER ACTION CONTRACT "WIRES" (NO BEHAVIOR CHANGES)
@@ -3832,7 +3503,6 @@ function PixelEditorFramer({
         })
     }
 
-    // enqueueTxn: если idle — выполнить сразу как TXN; иначе — в очередь
     function enqueueTxn(kind: TxnKind, run: () => void | Promise<void>) {
         const action: TxnAction = { kind, run }
 
@@ -3842,7 +3512,6 @@ function PixelEditorFramer({
             return
         }
 
-        // idle → выполняем сразу как txn
         busyKindRef.current = "txn"
         try {
             const r = run()
@@ -3942,7 +3611,6 @@ function PixelEditorFramer({
         const reason = pendingBlankCheckReasonRef.current
         if (!reason) return
 
-        // сбрасываем сразу (fail-safe)
         pendingBlankCheckReasonRef.current = null
 
         autoEnableGridIfBlank(
@@ -4010,6 +3678,23 @@ function PixelEditorFramer({
     const [paletteCount, setPaletteCount] = React.useState(
         DEFAULT_EDITOR_PALETTE_COUNT
     )
+    const [quantizationProfile, setQuantizationProfile] =
+        React.useState<QuantizationProfile>(EXTRACT_QUANTIZATION_PROFILE)
+    const [paletteTabsState, setPaletteTabsState] = React.useState<
+        PaletteTabsState<PixelValue>
+    >({
+        activeTab: "size",
+        sizeWorld: null,
+        presetsWorld: null,
+    })
+    const [activePresetButton, setActivePresetButton] = React.useState<
+        string | null
+    >(null)
+    const [hiddenPresetIds, setHiddenPresetIds] = React.useState<string[]>([])
+    const [importedPalettePresets, setImportedPalettePresets] = React.useState<
+        ImportedPalettePreset[]
+    >([])
+    const palettePresetFileInputRef = React.useRef<HTMLInputElement | null>(null)
     const [imagePixels, setImagePixels] = React.useState<PixelValue[][]>(() =>
         createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE)
     )
@@ -4023,6 +3708,58 @@ function PixelEditorFramer({
     function resetAutoOverridesForNewImport() {
         setAutoOverrides({})
     }
+
+    function resetPalettePresetsForNewImport() {
+        setQuantizationProfile(EXTRACT_QUANTIZATION_PROFILE)
+        setPaletteTabsState({
+            activeTab: "size",
+            sizeWorld: null,
+            presetsWorld: null,
+        })
+        setActivePresetButton(null)
+        setHiddenPresetIds([])
+        setImportedPalettePresets([])
+    }
+
+    function quantizePixelsForActiveProfile(
+        pixels: (string | null)[][],
+        targetColors: number
+    ) {
+        if (quantizationProfile.kind === "fixed") {
+            return {
+                pixels: quantizeWithFixedProfile(
+                    pixels,
+                    quantizationProfile
+                ),
+                palette: quantizationProfile.colors,
+            }
+        }
+
+        return quantizePixels(pixels, targetColors)
+    }
+
+    React.useEffect(() => {
+        if (!ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) return
+
+        const extractSmoke = extractPalette(
+            [
+                ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
+                ["rgb(255, 0, 0)", null],
+            ],
+            2
+        )
+        const fixedSmoke = quantizeWithFixedPalette(
+            [["rgb(250, 10, 10)", "rgb(8, 12, 250)", null]],
+            ["#FF0000", "#0000FF"]
+        )
+
+        console.info("[PaletteQuantizationEngine][SMOKE] connected", {
+            activeProfile: quantizationProfile.kind,
+            extractPaletteSize: extractSmoke.palette.length,
+            extractPixelsRows: extractSmoke.pixels.length,
+            fixedPixels: fixedSmoke,
+        })
+    }, [quantizationProfile])
 
     // =====================
     // IMPORT UI STATE (used by crop/import modal + failClosedLoad)
@@ -4088,6 +3825,7 @@ function PixelEditorFramer({
         // 1.5) Новый импорт = новая палитровая сессия
         setUserSwatches([])
         setSelectedSwatch("auto-0")
+        resetPalettePresetsForNewImport()
 
         // 2) Import context — строго выключаем
         setOriginalImageData(null)
@@ -4115,6 +3853,7 @@ function PixelEditorFramer({
 
             if (initialImageRouteKind === "import") {
                 resetAutoOverridesForNewImport()
+                resetPalettePresetsForNewImport()
                 setUserSwatches([])
                 setSelectedSwatch("auto-0")
             }
@@ -4129,6 +3868,7 @@ function PixelEditorFramer({
         // Только настоящий import имеет право сбрасывать import-session state.
         if (initialImageRouteKind === "import") {
             resetAutoOverridesForNewImport()
+            resetPalettePresetsForNewImport()
             setUserSwatches([])
             setSelectedSwatch("auto-0")
         }
@@ -4327,7 +4067,7 @@ function PixelEditorFramer({
               }
             : undefined
 
-        return {
+        const canonical: ProjectSnapshotV2 = {
             magic: "PIXTUDIO",
             version: 2,
             gridSize: s.gridSize,
@@ -4356,6 +4096,27 @@ function PixelEditorFramer({
                 ? { w: 512, h: 512, ext: "rgba8", b64: s.ref.b64 }
                 : null,
         }
+        if (s.quantizationProfile) {
+            if (s.quantizationProfile.kind === "extract") {
+                canonical.quantizationProfile = { kind: "extract" }
+            } else if (s.quantizationProfile.source === "builtin") {
+                canonical.quantizationProfile = {
+                    kind: "fixed",
+                    source: "builtin",
+                    id: s.quantizationProfile.id,
+                    name: s.quantizationProfile.name,
+                }
+            } else {
+                canonical.quantizationProfile = {
+                    kind: "fixed",
+                    source: "imported",
+                    id: s.quantizationProfile.id,
+                    name: s.quantizationProfile.name,
+                    colors: [...s.quantizationProfile.colors],
+                }
+            }
+        }
+        return canonical
     }
 
     // ============================================================
@@ -4396,6 +4157,22 @@ function PixelEditorFramer({
         }
 
         paletteCount?: number
+
+        quantizationProfile?:
+            | { kind: "extract" }
+            | {
+                  kind: "fixed"
+                  source: "builtin"
+                  id: string
+                  name: string
+              }
+            | {
+                  kind: "fixed"
+                  source: "imported"
+                  id: string
+                  name: string
+                  colors: string[]
+              }
 
         smartObjectState?: {
             version: typeof SMART_REFERENCE_VERSION_1
@@ -4568,6 +4345,21 @@ function PixelEditorFramer({
             [...allowBase, "autoOverrides", "smartObjectState"]
                 .sort()
                 .join("|"),
+            [...allowBase, "quantizationProfile"].sort().join("|"),
+            [...allowBase, "autoOverrides", "quantizationProfile"]
+                .sort()
+                .join("|"),
+            [...allowBase, "smartObjectState", "quantizationProfile"]
+                .sort()
+                .join("|"),
+            [
+                ...allowBase,
+                "autoOverrides",
+                "smartObjectState",
+                "quantizationProfile",
+            ]
+                .sort()
+                .join("|"),
         ])
 
         if (!allowedRootKeySets.has(keys)) {
@@ -4656,6 +4448,79 @@ function PixelEditorFramer({
             }
         }
 
+        if ("quantizationProfile" in raw) {
+            const qp = raw.quantizationProfile
+            if (!isPlainObject(qp)) {
+                throw makeLoadGateError(
+                    "E_PALETTE",
+                    "quantizationProfile: not object"
+                )
+            }
+            if (qp.kind === "extract") {
+                assertExactKeys(
+                    qp,
+                    ["kind"],
+                    "E_PALETTE",
+                    "quantizationProfile"
+                )
+            } else if (qp.kind === "fixed") {
+                assertString(qp.source, "E_PALETTE", "quantizationProfile.source")
+                assertString(qp.id, "E_PALETTE", "quantizationProfile.id")
+                assertString(qp.name, "E_PALETTE", "quantizationProfile.name")
+                if (qp.source === "builtin") {
+                    assertExactKeys(
+                        qp,
+                        ["kind", "source", "id", "name"],
+                        "E_PALETTE",
+                        "quantizationProfile"
+                    )
+                } else if (qp.source === "imported") {
+                    assertExactKeys(
+                        qp,
+                        ["kind", "source", "id", "name", "colors"],
+                        "E_PALETTE",
+                        "quantizationProfile"
+                    )
+                    if (!Array.isArray(qp.colors)) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.colors: not array"
+                        )
+                    }
+                    if (qp.colors.length <= 0 || qp.colors.length > 256) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.colors: invalid length"
+                        )
+                    }
+                    for (let i = 0; i < qp.colors.length; i++) {
+                        const color = qp.colors[i]
+                        assertString(
+                            color,
+                            "E_PALETTE",
+                            `quantizationProfile.colors[${i}]`
+                        )
+                        if (!/^#[0-9A-F]{6}$/.test(color)) {
+                            throw makeLoadGateError(
+                                "E_PALETTE",
+                                `quantizationProfile.colors[${i}]: invalid hex`
+                            )
+                        }
+                    }
+                } else {
+                    throw makeLoadGateError(
+                        "E_PALETTE",
+                        "quantizationProfile.source: invalid"
+                    )
+                }
+            } else {
+                throw makeLoadGateError(
+                    "E_PALETTE",
+                    "quantizationProfile.kind: invalid"
+                )
+            }
+        }
+
         if ("smartObjectState" in raw) {
             const so = raw.smartObjectState
             if (!isPlainObject(so)) {
@@ -4732,7 +4597,7 @@ function PixelEditorFramer({
             )
             assertFiniteNumberInRange(
                 adj.shadows,
-                0,
+                -100,
                 100,
                 "E_ROOT_KEYS",
                 "smartObjectState.adjustments.shadows"
@@ -4746,7 +4611,7 @@ function PixelEditorFramer({
             )
             assertFiniteNumberInRange(
                 adj.highlights,
-                0,
+                -100,
                 100,
                 "E_ROOT_KEYS",
                 "smartObjectState.adjustments.highlights"
@@ -4976,6 +4841,8 @@ function PixelEditorFramer({
         //paletteOrder: Array<{ id: string; isUser: boolean }>
 
         paletteOrderIds: string[]
+
+        quantizationProfile: QuantizationProfile
     }
 
     // сюда L1 складывает результат (без setState)
@@ -4987,7 +4854,6 @@ function PixelEditorFramer({
 
     const silentLoadHydrationRef = React.useRef(false)
 
-    // B2 restore-trigger nonce: нужен, чтобы один раз прогнать визуальный композит
     // после того, как isRestoringFromSaveRef.current станет false.
     const [restoreVisualNonce, setRestoreVisualNonce] = React.useState(0)
 
@@ -5034,6 +4900,33 @@ function PixelEditorFramer({
             bin += s
         }
         return btoa(bin)
+    }
+
+    function serializeQuantizationProfileForSave():
+        | ProjectSnapshotV2["quantizationProfile"]
+        | undefined {
+        if (quantizationProfile.kind === "extract") {
+            return undefined
+        }
+
+        if (quantizationProfile.source === "builtin") {
+            return {
+                kind: "fixed",
+                source: "builtin",
+                id: quantizationProfile.id,
+                name: quantizationProfile.name,
+            }
+        }
+
+        return {
+            kind: "fixed",
+            source: "imported",
+            id: quantizationProfile.id,
+            name: quantizationProfile.name,
+            colors: quantizationProfile.colors.map((color) =>
+                toHexUpperSafe(color)
+            ),
+        }
     }
 
     function buildProjectSnapshotV2(): ProjectSnapshotV2 {
@@ -5108,6 +5001,7 @@ function PixelEditorFramer({
             gridSize: g,
             palette: { swatches },
             paletteCount: clampInt(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            quantizationProfile: serializeQuantizationProfileForSave(),
             smartObjectState:
                 smartReferenceBaseForSave && smartAdjustmentsForSave
                     ? {
@@ -5267,6 +5161,31 @@ function PixelEditorFramer({
         return new ImageData(bytes, 512, 512)
     }
 
+    function resolveLoadedQuantizationProfile(
+        validated: ValidatedSnapshotV2
+    ): QuantizationProfile {
+        const saved = validated.quantizationProfile
+        if (!saved || saved.kind === "extract") {
+            return EXTRACT_QUANTIZATION_PROFILE
+        }
+
+        if (saved.source === "builtin") {
+            const builtin = Object.values(QUANTIZATION_PROFILES).find(
+                (profile) => profile.kind === "fixed" && profile.id === saved.id
+            )
+            if (builtin?.kind === "fixed") return builtin
+            return EXTRACT_QUANTIZATION_PROFILE
+        }
+
+        return {
+            kind: "fixed",
+            source: "imported",
+            id: saved.id,
+            name: saved.name,
+            colors: saved.colors,
+        }
+    }
+
     function buildNextStateFromValidatedSnapshotV2(
         validated: ValidatedSnapshotV2
     ): LoadNextState {
@@ -5391,6 +5310,7 @@ function PixelEditorFramer({
             project,
             smartObjectBaseForRestore: original,
             paletteOrderIds: paletteOrderIds,
+            quantizationProfile: resolveLoadedQuantizationProfile(validated),
         }
     }
 
@@ -5507,10 +5427,11 @@ function PixelEditorFramer({
         autoSwatches: Swatch[]
         userSwatches: Swatch[]
         refNonce: number
+        referenceSignature: string
     }): string {
         const autoH = hashSwatchesForQC(params.autoSwatches)
         const userH = hashSwatchesForQC(params.userSwatches)
-        return `g=${params.gridSize}|p=${params.paletteCount}|a=${autoH}|u=${userH}|ref=${params.refNonce}`
+        return `g=${params.gridSize}|p=${params.paletteCount}|a=${autoH}|u=${userH}|ref=${params.refNonce}|src=${params.referenceSignature}`
     }
 
     function commitPaintRefIfDirty(
@@ -5930,13 +5851,10 @@ function PixelEditorFramer({
     // canvasPixels = visual composite (overlay over base) всегда, когда меняются слои или gridSize.
     // Это устраняет гонку "repixelize перетёр витрину —> штрихи пропали до следующего overlay-change".
     useIsomorphicLayoutEffect(() => {
-        // во время restore можно либо разрешить sync (как в legacy),
         // либо запретить и ждать restoreVisualNonce.
-        // Я делаю мягко: во время restore не трогаем, но сразу после restore будет прогон.
         if (isRestoringFromSaveRef.current) return
 
         // ✅ После Load не делаем repixelize автоматически (это проверяется в repixelizeEffect).
-        // Но витрину (canvasPixels) мы обязаны синхронизировать сразу, поэтому здесь НЕ return.
 
         if (p3InFlightKeyRef.current) return
 
@@ -6265,6 +6183,7 @@ function PixelEditorFramer({
 
     type PendingLoadProjectCommit = {
         project: ProjectState
+        quantizationProfile: QuantizationProfile
         canonicalChecksum?: string
         fileName?: string
     }
@@ -6364,6 +6283,567 @@ function PixelEditorFramer({
         return src.map((s) => ({ ...s }))
     }
 
+    function cloneQuantizationProfileForHistory(
+        profile: QuantizationProfile
+    ): QuantizationProfile {
+        if (profile.kind === "extract") return EXTRACT_QUANTIZATION_PROFILE
+        return {
+            ...profile,
+            colors: profile.colors.slice(),
+        }
+    }
+
+    function resolveSelectedSwatchForAutoSwatches(
+        nextAuto: Swatch[]
+    ): SwatchId | "transparent" {
+        if (selectedSwatch === "transparent") return selectedSwatch
+        if (userSwatches.some((swatch) => swatch.id === selectedSwatch)) {
+            return selectedSwatch
+        }
+        if (nextAuto.some((swatch) => swatch.id === selectedSwatch)) {
+            return selectedSwatch
+        }
+        return nextAuto[0]?.id ?? userSwatches[0]?.id ?? "transparent"
+    }
+
+    function makeProjectStateFromDerivedWorld(
+        world: DerivedWorld<PixelValue>,
+        activePaletteTab: PaletteTab
+    ): ProjectState {
+        const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
+        return {
+            gridSize,
+            paletteCount,
+            brushSize,
+            imagePixels: clonePixelsGrid(world.imagePixels),
+            overlayPixels: clonePixelsGrid(world.overlayPixels),
+            showImage,
+            hasOriginalImageData: hasImportContext,
+            referenceSnapshot: originalImageData,
+            autoSwatches: nextAuto,
+            userSwatches: cloneSwatches(userSwatches),
+            selectedSwatch: resolveSelectedSwatchForAutoSwatches(nextAuto),
+            quantizationProfile: cloneQuantizationProfileForHistory(
+                world.profile
+            ),
+            activePaletteTab,
+            autoOverrides: { ...autoOverrides },
+        }
+    }
+
+    function imageDataSampleSignature(src: ImageData | null): string {
+        if (!src) return "null"
+        let hash = 2166136261
+        const data = src.data
+        const step = Math.max(4, Math.floor(data.length / 512 / 4) * 4)
+        for (let i = 0; i < data.length; i += step) {
+            hash ^= data[i] ?? 0
+            hash = Math.imul(hash, 16777619)
+            hash ^= data[i + 1] ?? 0
+            hash = Math.imul(hash, 16777619)
+            hash ^= data[i + 2] ?? 0
+            hash = Math.imul(hash, 16777619)
+            hash ^= data[i + 3] ?? 0
+            hash = Math.imul(hash, 16777619)
+        }
+        return `${src.width}x${src.height}:${(hash >>> 0).toString(16)}`
+    }
+
+    function makeCurrentDerivedWorldSnapshot(): DerivedWorld<PixelValue> {
+        return {
+            profile: quantizationProfile,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+            autoSwatches: cloneSwatches(autoSwatches),
+            imagePixels: clonePixelsGrid(imagePixels),
+            overlayPixels: clonePixelsGrid(overlayPixels),
+            canvasPixels: clonePixelsGrid(canvasPixels),
+        }
+    }
+
+    function isPixelGridCompatibleWithCurrentGrid(
+        pixels: PixelValue[][]
+    ): boolean {
+        if (pixels.length !== gridSize) return false
+        return pixels.every((row) => row.length === gridSize)
+    }
+
+    function isDerivedWorldCompatibleWithCurrentGrid(
+        world: DerivedWorld<PixelValue>
+    ): boolean {
+        const currentReferenceSignature = imageDataSampleSignature(originalImageData)
+        const worldReferenceSignature = world.referenceSignature ?? null
+        return (
+            worldReferenceSignature === currentReferenceSignature &&
+            isPixelGridCompatibleWithCurrentGrid(world.imagePixels) &&
+            isPixelGridCompatibleWithCurrentGrid(world.overlayPixels) &&
+            isPixelGridCompatibleWithCurrentGrid(world.canvasPixels)
+        )
+    }
+
+    function buildPaletteWorldForTab(
+        tab: PaletteTab,
+        staleWorld?: DerivedWorld<PixelValue> | null
+    ): DerivedWorld<PixelValue> | null {
+        if (tab === "size") return buildExtractWorldFromReference()
+
+        const profile =
+            staleWorld?.profile.kind === "fixed"
+                ? staleWorld.profile
+                : quantizationProfile.kind === "fixed"
+                  ? quantizationProfile
+                  : null
+
+        return profile ? buildFixedPresetWorldFromReference(profile) : null
+    }
+
+    function applyDerivedWorldSnapshot(world: DerivedWorld<PixelValue>) {
+        const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
+        const nextImage = clonePixelsGrid(world.imagePixels)
+        const nextOverlay = clonePixelsGrid(world.overlayPixels)
+        const nextSelectedSwatch =
+            resolveSelectedSwatchForAutoSwatches(nextAuto)
+        paletteUndoTrace("applyDerivedWorldSnapshot:before", {
+            activeTab: paletteTabsState.activeTab,
+            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+            worldProfile: quantizationProfileTraceSummary(world.profile),
+            selectedSwatch,
+            nextSelectedSwatch,
+            latestRef: editorCommittedStateTraceSummary(
+                latestProjectStateRef.current
+            ),
+            worldImageNonNull: countNonNullCells(world.imagePixels),
+            worldOverlayNonNull: countNonNullCells(world.overlayPixels),
+        })
+        setQuantizationProfile(world.profile)
+        setActivePresetButton(
+            world.profile.kind === "fixed" ? world.profile.id : null
+        )
+        setAutoSwatches(nextAuto)
+        setImagePixels(nextImage)
+        setOverlayPixels(nextOverlay)
+        setCanvasPixels(clonePixelsGrid(world.canvasPixels))
+        latestProjectStateRef.current = {
+            gridSize,
+            paletteCount,
+            brushSize,
+            imagePixels: nextImage,
+            overlayPixels: nextOverlay,
+            showImage,
+            hasOriginalImageData: hasImportContext,
+            referenceSnapshot: originalImageData,
+            autoSwatches: nextAuto,
+            userSwatches: cloneSwatches(userSwatches),
+            selectedSwatch: nextSelectedSwatch,
+            quantizationProfile: cloneQuantizationProfileForHistory(
+                world.profile
+            ),
+            activePaletteTab:
+                world.profile.kind === "fixed"
+                    ? "presets"
+                    : paletteTabsState.activeTab,
+            autoOverrides: { ...autoOverrides },
+        }
+        paletteUndoTrace("applyDerivedWorldSnapshot:latest-ref-updated", {
+            latestRef: editorCommittedStateTraceSummary(
+                latestProjectStateRef.current
+            ),
+        })
+        enforceGridRuleAfterRestore(
+            {
+                imagePixels: nextImage,
+                overlayPixels: nextOverlay,
+                autoSwatches: nextAuto,
+                userSwatches,
+                hasOriginalImageData: hasImportContext,
+            },
+            `palette-world:${world.profile.kind}`
+        )
+        setSelectedSwatch(nextSelectedSwatch)
+    }
+
+    function buildExtractWorldFromReference(): DerivedWorld<PixelValue> | null {
+        if (!originalImageData) return null
+
+        const sourcePixels = pixelizeFromImageDominant(
+            originalImageData,
+            gridSize,
+            16
+        )
+
+        const world = buildDerivedWorld<PixelValue>({
+            profile: EXTRACT_QUANTIZATION_PROFILE,
+            sourcePixels,
+            overlayPixels,
+            previousSwatches: autoSwatches,
+            userSwatches,
+            paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
+        })
+        return {
+            ...world,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+        }
+    }
+
+    function switchPaletteTab(nextTab: PaletteTab) {
+        const currentTab = paletteTabsState.activeTab
+        if (currentTab === nextTab) return
+
+        const currentWorld = makeCurrentDerivedWorldSnapshot()
+        const savedState: PaletteTabsState<PixelValue> =
+            currentTab === "size"
+                ? { ...paletteTabsState, sizeWorld: currentWorld }
+                : { ...paletteTabsState, presetsWorld: currentWorld }
+        const targetWorld =
+            nextTab === "size"
+                ? savedState.sizeWorld
+                : savedState.presetsWorld
+        const targetWorldIsCompatible =
+            !!targetWorld &&
+            isDerivedWorldCompatibleWithCurrentGrid(targetWorld)
+
+        setPaletteTabsState({
+            ...savedState,
+            activeTab: nextTab,
+            ...(nextTab === "size" && !targetWorldIsCompatible
+                ? { sizeWorld: null }
+                : {}),
+            ...(nextTab === "presets" && !targetWorldIsCompatible
+                ? { presetsWorld: null }
+                : {}),
+        })
+
+        if (targetWorld && targetWorldIsCompatible) {
+            setActivePresetButton(
+                nextTab === "presets" && targetWorld.profile.kind === "fixed"
+                    ? targetWorld.profile.id
+                    : null
+            )
+            applyDerivedWorldSnapshot(targetWorld)
+            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                console.info("[PaletteTabs][CHECK] world restored", {
+                    from: currentTab,
+                    to: nextTab,
+                    profile: targetWorld.profile.kind,
+                    autoSwatches: targetWorld.autoSwatches.length,
+                    imageNonNull: countNonNullCells(targetWorld.imagePixels),
+                    overlayNonNull: countNonNullCells(targetWorld.overlayPixels),
+                })
+            }
+            return
+        }
+
+        const lazyWorld = buildPaletteWorldForTab(nextTab, targetWorld)
+        if (nextTab === "size") {
+            setQuantizationProfile(EXTRACT_QUANTIZATION_PROFILE)
+            setActivePresetButton(null)
+
+            if (lazyWorld) {
+                setPaletteTabsState((prev) => ({
+                    ...prev,
+                    activeTab: "size",
+                    sizeWorld: lazyWorld,
+                }))
+                applyDerivedWorldSnapshot(lazyWorld)
+                if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                    console.info("[PaletteTabs][CHECK] size rebuilt lazily", {
+                        profile: lazyWorld.profile.kind,
+                        autoSwatches: lazyWorld.autoSwatches.length,
+                        imageNonNull: countNonNullCells(lazyWorld.imagePixels),
+                        overlayNonNull: countNonNullCells(
+                            lazyWorld.overlayPixels
+                        ),
+                    })
+                }
+            }
+        } else {
+            if (lazyWorld) {
+                setActivePresetButton(
+                    lazyWorld.profile.kind === "fixed"
+                        ? lazyWorld.profile.id
+                        : null
+                )
+                setPaletteTabsState((prev) => ({
+                    ...prev,
+                    activeTab: "presets",
+                    presetsWorld: lazyWorld,
+                }))
+                applyDerivedWorldSnapshot(lazyWorld)
+                if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                    console.info("[PaletteTabs][CHECK] presets rebuilt lazily", {
+                        profile: lazyWorld.profile.kind,
+                        autoSwatches: lazyWorld.autoSwatches.length,
+                        imageNonNull: countNonNullCells(lazyWorld.imagePixels),
+                        overlayNonNull: countNonNullCells(
+                            lazyWorld.overlayPixels
+                        ),
+                    })
+                }
+            } else {
+                setActivePresetButton(null)
+            }
+        }
+    }
+
+    const paletteWorldReferenceSignatureRef = React.useRef<string | null>(null)
+    React.useEffect(() => {
+        const nextSignature = imageDataSampleSignature(originalImageData)
+        const prevSignature = paletteWorldReferenceSignatureRef.current
+        paletteWorldReferenceSignatureRef.current = nextSignature
+        if (prevSignature === null || prevSignature === nextSignature) return
+
+        setPaletteTabsState((prev) => ({
+            activeTab: prev.activeTab,
+            sizeWorld: null,
+            presetsWorld: null,
+        }))
+
+        if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+            console.info("[PaletteTabs][CHECK] worlds invalidated", {
+                from: prevSignature,
+                to: nextSignature,
+            })
+        }
+    }, [originalImageData])
+
+    function buildFixedPresetWorldFromReference(
+        profile: FixedQuantizationProfile
+    ): DerivedWorld<PixelValue> | null {
+        if (!originalImageData) return null
+
+        const sourcePixels = pixelizeFromImageDominant(
+            originalImageData,
+            gridSize,
+            16
+        )
+
+        const world = buildDerivedWorld<PixelValue>({
+            profile,
+            sourcePixels,
+            overlayPixels,
+            previousSwatches: autoSwatches,
+            userSwatches,
+            paletteCountTarget: profile.colors.length,
+        })
+        return {
+            ...world,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+        }
+    }
+
+    function applyFixedPalettePreset(profile: FixedQuantizationProfile) {
+        const before = latestProjectStateRef.current ?? makeProjectState()
+        paletteUndoTrace("applyFixedPalettePreset:start", {
+            profile: quantizationProfileTraceSummary(profile),
+            activeTab: paletteTabsState.activeTab,
+            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+            latestRef: editorCommittedStateTraceSummary(
+                before
+            ),
+        })
+        const beforeReferenceSignature =
+            imageDataSampleSignature(originalImageData)
+        const world = buildFixedPresetWorldFromReference(profile)
+        const afterReferenceSignature = imageDataSampleSignature(originalImageData)
+
+        if (!world) {
+            paletteUndoTrace("applyFixedPalettePreset:skipped", {
+                profile: quantizationProfileTraceSummary(profile),
+                reason: "missing-reference",
+            })
+            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                console.info("[PaletteTabs][CHECK] fixed preset skipped", {
+                    profileId: profile.id,
+                    reason: "missing-reference",
+                    referenceSignature: beforeReferenceSignature,
+                })
+            }
+            return
+        }
+
+        const afterState = makeProjectStateFromDerivedWorld(world, "presets")
+        beginEditorActionTransaction("editor-action", before)
+        setActivePresetButton(profile.id)
+        setPaletteTabsState((prev) => ({
+            ...prev,
+            activeTab: "presets",
+            presetsWorld: world,
+        }))
+        paletteUndoTrace("applyFixedPalettePreset:world-built", {
+            profile: quantizationProfileTraceSummary(world.profile),
+            imageNonNull: countNonNullCells(world.imagePixels),
+            overlayNonNull: countNonNullCells(world.overlayPixels),
+            autoSwatches: world.autoSwatches.length,
+        })
+        applyDerivedWorldSnapshot(world)
+        pushCommit(before, { afterState })
+
+        if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+            console.info("[PaletteTabs][CHECK] extract -> fixed preset", {
+                profileId: profile.id,
+                source: profile.source,
+                referenceUnchanged:
+                    beforeReferenceSignature === afterReferenceSignature,
+                referenceSignature: afterReferenceSignature,
+                autoSwatches: world.autoSwatches.length,
+                userSwatches: userSwatches.length,
+                imageNonNull: countNonNullCells(world.imagePixels),
+                overlayNonNull: countNonNullCells(world.overlayPixels),
+                canvasNonNull: countNonNullCells(world.canvasPixels),
+            })
+        }
+    }
+
+    function makeImportedPalettePresetName(fileName: string): string {
+        return (
+            fileName.replace(/\.(pixtudio|json|png|jpe?g|webp|gif|bmp|avif)$/i, "").trim() ||
+            "Imported palette"
+        )
+    }
+
+    function makeImportedPalettePresetId() {
+        const rand =
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        return `imported-${rand}`
+    }
+
+    function openPalettePresetFileDialog() {
+        const el = palettePresetFileInputRef.current
+        if (!el) return
+
+        try {
+            el.value = ""
+        } catch {
+            // Some browsers expose a read-only value; click still opens the picker.
+        }
+
+        el.click()
+    }
+
+    async function importPalettePresetFromPixtudioFile(file: File) {
+        try {
+            const text = await file.text()
+            const parsed = parseProjectSnapshotV2Json(text)
+            if (!parsed.ok) {
+                showImportError("Import failed. Please try again.")
+                return
+            }
+
+            const colors = [...parsed.canonical.palette.swatches]
+                .sort((a, b) => a.index - b.index)
+                .map((swatch) => swatch.hex.toUpperCase())
+
+            if (colors.length <= 0) {
+                showImportError("Import failed. Please try again.")
+                return
+            }
+
+            const name = makeImportedPalettePresetName(file.name)
+            const profile: FixedQuantizationProfile = {
+                kind: "fixed",
+                source: "imported",
+                id: makeImportedPalettePresetId(),
+                name,
+                colors,
+            }
+            const preset: ImportedPalettePreset = {
+                id: profile.id,
+                name,
+                profile,
+            }
+
+            setImportedPalettePresets((prev) => [...prev, preset])
+            applyFixedPalettePreset(profile)
+
+            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                console.info("[PaletteTabs][CHECK] palette imported", {
+                    fileName: file.name,
+                    profileId: profile.id,
+                    colors: profile.colors.length,
+                })
+            }
+        } catch {
+            showImportError("Import failed. Please try again.")
+        }
+    }
+
+    async function importPalettePresetFromImageFile(file: File) {
+        try {
+            const colors = await extractPaletteFromImageFile(file, {
+                targetColors: 32,
+            })
+
+            if (colors.length <= 0) {
+                showImportError("Import failed. Please try again.")
+                return
+            }
+
+            const name = makeImportedPalettePresetName(file.name)
+            const profile: FixedQuantizationProfile = {
+                kind: "fixed",
+                source: "imported",
+                id: makeImportedPalettePresetId(),
+                name,
+                colors,
+            }
+            const preset: ImportedPalettePreset = {
+                id: profile.id,
+                name,
+                profile,
+            }
+
+            setImportedPalettePresets((prev) => [...prev, preset])
+            applyFixedPalettePreset(profile)
+
+            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                console.info("[PaletteTabs][CHECK] palette extracted from image", {
+                    fileName: file.name,
+                    profileId: profile.id,
+                    colors: profile.colors.length,
+                })
+            }
+        } catch {
+            showImportError("Import failed. Please try again.")
+        }
+    }
+
+    function isPaletteSourceImageFile(file: File) {
+        return (
+            file.type.startsWith("image/") ||
+            /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(file.name)
+        )
+    }
+
+    function handlePalettePresetFilePicked(
+        event: React.ChangeEvent<HTMLInputElement>
+    ) {
+        const file = event.target.files?.[0]
+        event.target.value = ""
+        if (!file) return
+
+        if (isPaletteSourceImageFile(file)) {
+            void importPalettePresetFromImageFile(file)
+            return
+        }
+
+        void importPalettePresetFromPixtudioFile(file)
+    }
+
+    function deletePalettePreset(profileId: string) {
+        setHiddenPresetIds((prev) =>
+            prev.includes(profileId) ? prev : [...prev, profileId]
+        )
+        setImportedPalettePresets((prev) =>
+            prev.filter((preset) => preset.id !== profileId)
+        )
+
+        if (activePresetButton !== profileId) return
+
+        setActivePresetButton(null)
+        switchPaletteTab("size")
+    }
+
     // H0:
     // Editor domain contract for future History Engine:
     //
@@ -6390,6 +6870,9 @@ function PixelEditorFramer({
             selectedSwatch,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
+            quantizationProfile:
+                cloneQuantizationProfileForHistory(quantizationProfile),
+            activePaletteTab: paletteTabsState.activeTab,
 
             autoOverrides: { ...autoOverrides },
         } as ProjectState
@@ -6463,6 +6946,19 @@ function PixelEditorFramer({
             const frozenAutoSwatches = cloneSwatches(autoSwatches)
             const frozenUserSwatches = cloneSwatches(userSwatches)
             const frozenAutoOverrides = { ...autoOverrides }
+            const frozenFixedPaletteColors = frozenAutoSwatches
+                .filter((swatch) => !swatch.isTransparent)
+                .map((swatch) => swatch.color)
+            const frozenQuantizationProfile: QuantizationProfile =
+                quantizationProfile.kind === "fixed"
+                    ? {
+                          ...quantizationProfile,
+                          colors:
+                              frozenFixedPaletteColors.length > 0
+                                  ? frozenFixedPaletteColors
+                                  : quantizationProfile.colors,
+                      }
+                    : EXTRACT_QUANTIZATION_PROFILE
             const frozenGridBounds = { min: 2, max: 128 }
             const frozenPaletteBounds = {
                 min: PALETTE_MIN,
@@ -6493,7 +6989,16 @@ function PixelEditorFramer({
                     16
                 )
 
-                const q = quantizePixels(basePixels, nextPaletteSize)
+                const q =
+                    frozenQuantizationProfile.kind === "fixed"
+                        ? {
+                              pixels: quantizeWithFixedProfile(
+                                  basePixels,
+                                  frozenQuantizationProfile
+                              ),
+                              palette: frozenQuantizationProfile.colors,
+                          }
+                        : quantizePixels(basePixels, nextPaletteSize)
                 const finalQuantPixels: (string | null)[][] = q.pixels
                 const finalPalette: string[] = q.palette
 
@@ -6506,13 +7011,16 @@ function PixelEditorFramer({
 
                 const colorToId = new Map<string, string>()
                 for (let i = 0; i < finalPalette.length; i++) {
-                    colorToId.set(finalPalette[i], `auto-${i}`)
+                    const key =
+                        toHexUpperOrNull(finalPalette[i]) ?? finalPalette[i]
+                    colorToId.set(key, `auto-${i}`)
                 }
 
                 const indexed: PixelValue[][] = finalQuantPixels.map((row) =>
                     row.map((col) => {
                         if (col == null) return null
-                        const id = colorToId.get(col)
+                        const key = toHexUpperOrNull(col) ?? col
+                        const id = colorToId.get(key)
                         return (id ?? null) as PixelValue
                     })
                 )
@@ -6565,7 +7073,14 @@ function PixelEditorFramer({
                 gridBounds: frozenGridBounds,
                 paletteBounds: frozenPaletteBounds,
                 initialGridSize: gridSize,
-                initialPaletteSize: paletteCount,
+                initialPaletteSize:
+                    frozenQuantizationProfile.kind === "fixed"
+                        ? clampInt(
+                              frozenQuantizationProfile.colors.length,
+                              frozenPaletteBounds.min,
+                              frozenPaletteBounds.max
+                          )
+                        : paletteCount,
                 generateFrame,
                 saveBlob: async (produceBlob, filename) => {
                     await saveBlobFromProducer(produceBlob, filename)
@@ -6578,6 +7093,7 @@ function PixelEditorFramer({
             originalImageData,
             paintRefImageData,
             paletteCount,
+            quantizationProfile,
             saveBlobFromProducer,
             userSwatches,
         ])
@@ -6596,6 +7112,13 @@ function PixelEditorFramer({
 
     React.useEffect(() => {
         latestProjectStateRef.current = makeProjectState()
+        paletteUndoTrace("latestProjectStateRef:effect-update", {
+            state: editorCommittedStateTraceSummary(
+                latestProjectStateRef.current
+            ),
+            activeTab: paletteTabsState.activeTab,
+            activePresetButton,
+        })
     }, [
         gridSize,
         paletteCount,
@@ -6609,6 +7132,9 @@ function PixelEditorFramer({
         hasImportContext,
         originalImageData,
         autoOverrides,
+        quantizationProfile,
+        paletteTabsState.activeTab,
+        activePresetButton,
     ])
 
     function makeProjectStateWithOverlay(
@@ -6624,6 +7150,15 @@ function PixelEditorFramer({
     pendingBlankCheckReasonRef.current = null
 
     function applyProjectState(state: ProjectState) {
+        paletteUndoTrace("applyProjectState:start", {
+            state: editorCommittedStateTraceSummary(state),
+            activeTabBefore: paletteTabsState.activeTab,
+            currentProfileBefore:
+                quantizationProfileTraceSummary(quantizationProfile),
+            latestRefBefore: editorCommittedStateTraceSummary(
+                latestProjectStateRef.current
+            ),
+        })
         isRestoringHistoryRef.current = true
         setGridSize(state.gridSize)
         setPaletteCount(state.paletteCount)
@@ -6663,7 +7198,115 @@ function PixelEditorFramer({
 
         setSelectedSwatch(state.selectedSwatch)
 
+        const nextProfile =
+            state.quantizationProfile ?? EXTRACT_QUANTIZATION_PROFILE
+        const nextActivePaletteTab: PaletteTab =
+            nextProfile.kind === "fixed"
+                ? "presets"
+                : state.activePaletteTab ?? paletteTabsState.activeTab ?? "size"
+        setQuantizationProfile(nextProfile)
+        setActivePresetButton(
+            nextProfile.kind === "fixed" ? nextProfile.id : null
+        )
+        setPaletteTabsState((prev) => {
+            const restoredCanvas =
+                overlayOverBaseGrid(state.imagePixels, state.overlayPixels) ??
+                clonePixelsGrid(state.imagePixels)
+            const restoredWorld: DerivedWorld<PixelValue> = {
+                profile: nextProfile,
+                referenceSignature: imageDataSampleSignature(
+                    state.referenceSnapshot ?? originalImageData
+                ),
+                autoSwatches: cloneSwatches(autoEffective),
+                imagePixels: clonePixelsGrid(state.imagePixels),
+                overlayPixels: clonePixelsGrid(state.overlayPixels),
+                canvasPixels: restoredCanvas,
+            }
+
+            if (nextProfile.kind === "fixed") {
+                paletteUndoTrace("applyProjectState:tabs-restore", {
+                    to: "presets",
+                    profile: quantizationProfileTraceSummary(nextProfile),
+                    previousActiveTab: prev.activeTab,
+                })
+                return {
+                    activeTab: "presets",
+                    sizeWorld: prev.sizeWorld,
+                    presetsWorld: restoredWorld,
+                }
+            }
+
+            if (nextActivePaletteTab === "presets") {
+                paletteUndoTrace("applyProjectState:tabs-restore", {
+                    to: "presets",
+                    profile: quantizationProfileTraceSummary(nextProfile),
+                    previousActiveTab: prev.activeTab,
+                })
+                return {
+                    activeTab: "presets",
+                    sizeWorld: prev.sizeWorld,
+                    presetsWorld: restoredWorld,
+                }
+            }
+
+            paletteUndoTrace("applyProjectState:tabs-restore", {
+                to: "size",
+                profile: quantizationProfileTraceSummary(nextProfile),
+                previousActiveTab: prev.activeTab,
+            })
+            return {
+                activeTab: "size",
+                sizeWorld: restoredWorld,
+                presetsWorld: prev.presetsWorld,
+            }
+        })
+
         // Важно: флаги истории не меняем здесь — их меняют undo/redo/pushCommit
+    }
+
+    function applyLoadedQuantizationState(
+        profile: QuantizationProfile,
+        project: ProjectState
+    ) {
+        setQuantizationProfile(profile)
+        setHiddenPresetIds([])
+
+        const canvas =
+            overlayOverBaseGrid(project.imagePixels, project.overlayPixels) ??
+            clonePixelsGrid(project.imagePixels)
+        const loadedWorld: DerivedWorld<PixelValue> = {
+            profile,
+            referenceSignature: imageDataSampleSignature(
+                project.referenceSnapshot ?? originalImageData
+            ),
+            autoSwatches: cloneSwatches(project.autoSwatches),
+            imagePixels: clonePixelsGrid(project.imagePixels),
+            overlayPixels: clonePixelsGrid(project.overlayPixels),
+            canvasPixels: canvas,
+        }
+
+        if (profile.kind === "fixed") {
+            setActivePresetButton(profile.id)
+            setPaletteTabsState({
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld: loadedWorld,
+            })
+            setImportedPalettePresets(
+                profile.source === "imported"
+                    ? [{ id: profile.id, name: profile.name, profile }]
+                    : []
+            )
+            return
+        }
+
+        setActivePresetButton(null)
+        setImportedPalettePresets([])
+        setPaletteTabsState({
+            activeTab: "size",
+            sizeWorld: loadedWorld,
+            presetsWorld: null,
+        })
     }
 
     function prepareLoadedProjectForCommit(project: ProjectState): ProjectState {
@@ -6736,6 +7379,10 @@ function PixelEditorFramer({
             postLoadCheckNonceRef.current = 1
 
             applyProjectState(fixedProject)
+            applyLoadedQuantizationState(
+                pending.quantizationProfile,
+                fixedProject
+            )
 
             coreLifecycleLog("restore:project-state-applied", {
                 gridSize: fixedProject.gridSize,
@@ -6876,6 +7523,7 @@ function PixelEditorFramer({
             const fixedProject = prepareLoadedProjectForCommit(next.project)
             pendingLoadProjectCommitRef.current = {
                 project: fixedProject,
+                quantizationProfile: next.quantizationProfile,
                 canonicalChecksum: payload.canonicalChecksum,
                 fileName: payload.fileName,
             }
@@ -6988,6 +7636,15 @@ function PixelEditorFramer({
         beforeState?: ProjectState
     ) {
         const before = beforeState ?? makeProjectState()
+        paletteUndoTrace("editorAction:begin", {
+            kind,
+            before: editorCommittedStateTraceSummary(before),
+            activeTab: paletteTabsState.activeTab,
+            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+            latestRef: editorCommittedStateTraceSummary(
+                latestProjectStateRef.current
+            ),
+        })
 
         // если вдруг не закрыли предыдущую — безопасно перезаписываем
         pendingEditorActionTransactionRef.current = {
@@ -7006,8 +7663,16 @@ function PixelEditorFramer({
         if (!tx) return
 
         const after = afterState ?? makeProjectState()
+        const same = isSameProjectState(tx.before, after)
+        paletteUndoTrace("editorAction:commit-attempt", {
+            before: editorCommittedStateTraceSummary(tx.before),
+            after: editorCommittedStateTraceSummary(after),
+            activeTab: paletteTabsState.activeTab,
+            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+            same,
+        })
 
-        if (isSameProjectState(tx.before, after)) {
+        if (same) {
             pendingEditorActionTransactionRef.current = null
             onAbortUserAction?.()
             return
@@ -7032,6 +7697,12 @@ function PixelEditorFramer({
         }
     ) {
         const now = options?.afterState ?? makeProjectState()
+        paletteUndoTrace("pushCommit", {
+            before: editorCommittedStateTraceSummary(before),
+            after: editorCommittedStateTraceSummary(now),
+            activeTab: paletteTabsState.activeTab,
+            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+        })
 
         // ✅ STEP 7: защита от пустых коммитов
         if (isSameProjectState(before, now)) {
@@ -7326,6 +7997,13 @@ function PixelEditorFramer({
     }>({ x: 0, y: 0, inside: false, w: 0, h: 0 })
 
     const brushPreviewRef = React.useRef<HTMLDivElement | null>(null)
+    type PipetteHoverCell = { row: number; col: number }
+    const [pipetteHoverCell, setPipetteHoverCell] =
+        React.useState<PipetteHoverCell | null>(null)
+
+    const clearPipetteHoverCell = React.useCallback(() => {
+        setPipetteHoverCell((prev) => (prev === null ? prev : null))
+    }, [])
 
     function handlePointerDown(e: any) {
         if (overlayMode) return
@@ -7340,6 +8018,7 @@ function PixelEditorFramer({
             const x = pointerRef.current.x
             const y = pointerRef.current.y
 
+            updatePipetteHoverFromEvent(e)
             const picked = pickSwatchAtXY(x, y)
             setSelectedSwatch(picked)
 
@@ -7397,9 +8076,17 @@ function PixelEditorFramer({
         })
 
         // Step 1:
-        // before для stroke снимается ОДИН раз в начале жеста.
-        const before = makeProjectState()
+        const before = latestProjectStateRef.current ?? makeProjectState()
 
+        paletteUndoTrace("stroke:pointerDown:before", {
+            before: editorCommittedStateTraceSummary(before),
+            activeTab: paletteTabsState.activeTab,
+            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+            activePresetButton,
+            latestRef: editorCommittedStateTraceSummary(
+                latestProjectStateRef.current
+            ),
+        })
         beginEditorActionTransaction("editor-action", before)
         strokeBeforeRef.current = before
         strokeDidMutateRef.current = false
@@ -7448,6 +8135,30 @@ function PixelEditorFramer({
         return picked
     }
 
+    function updatePipetteHoverCell(next: PipetteHoverCell | null) {
+        setPipetteHoverCell((prev) => {
+            if (prev === null && next === null) return prev
+            if (
+                prev !== null &&
+                next !== null &&
+                prev.row === next.row &&
+                prev.col === next.col
+            ) {
+                return prev
+            }
+            return next
+        })
+    }
+
+    function updatePipetteHoverFromEvent(e: any) {
+        if (isMobileUI || overlayMode || toolMode !== "pipette") {
+            updatePipetteHoverCell(null)
+            return
+        }
+
+        updatePipetteHoverCell(getCellFromEvent(e))
+    }
+
     function handlePointerMove(e: any) {
         if (overlayMode) return
 
@@ -7473,6 +8184,11 @@ function PixelEditorFramer({
         updatePointerFromEvent(e, true)
 
         // если не рисуем — просто двигаем рамку
+        if (toolMode === "pipette") {
+            updatePipetteHoverFromEvent(e)
+            return
+        }
+
         if (!isDrawing) return
 
         // рисуем кистью по клеткам
@@ -7554,9 +8270,7 @@ function PixelEditorFramer({
 
     // Поджимать pan, если:
     // - изменился zoom (уменьшили — чтобы pan не оказался вне диапазона)
-    // - изменился размер viewport (мобилка повернулась, изменился layout и т.п.)
     React.useEffect(() => {
-        // ждём валидный размер viewport (он приходит из ResizeObserver)
         if (!viewportSize.w || !viewportSize.h) return
 
         const { x, y } = clampPanWithSize(
@@ -7719,6 +8433,11 @@ function PixelEditorFramer({
 
     const [overlayMode, setOverlayMode] = React.useState<OverlayMode>(null)
 
+    React.useEffect(() => {
+        if (toolMode === "pipette" && !isMobileUI && !overlayMode) return
+        clearPipetteHoverCell()
+    }, [toolMode, isMobileUI, overlayMode, clearPipetteHoverCell])
+
     const [manualOpen, setManualOpen] = React.useState(false)
 
     // EXPORT: re-entry guard (enterprise UX)
@@ -7748,6 +8467,9 @@ function PixelEditorFramer({
     const bg = "#e9d8a6"
     const textColor = "#1b1b1b"
     const canvasMax = 640
+    const editorContentWidth = isMobileUI
+        ? Math.min(canvasMax, Math.max(1, mobileViewportWidth))
+        : canvasMax
 
     const squareButton = (clickable = false): React.CSSProperties => ({
         width: 44,
@@ -7775,7 +8497,7 @@ function PixelEditorFramer({
     void iconButton
 
     const iconOnlyButton = (clickable = false): React.CSSProperties => {
-        const s = "clamp(28px, 3vw, 38px)"
+        const s = 38
 
         return {
             /* ✅ ВСЕ кнопки равноправны */
@@ -7962,7 +8684,11 @@ function PixelEditorFramer({
     // после входа committed reference editor должен сообщить наружу,
     // когда новый editor committed-state уже реально собран.
     const pendingCommittedStateSettledKindRef = React.useRef<
-        "import" | "load" | "smart-object-apply" | null
+        | "import"
+        | "load"
+        | "smart-object-apply"
+        | "smart-object-history-restore"
+        | null
     >(null)
 
     // ------------------- IMAGE INPUT -------------------
@@ -8024,6 +8750,7 @@ function PixelEditorFramer({
             setAutoOverrides({})
             setUserSwatches([])
             setSelectedSwatch("auto-0")
+            resetPalettePresetsForNewImport()
 
             // Blank import = новая пустая сессия.
             if (!initialImageData) {
@@ -8150,6 +8877,7 @@ function PixelEditorFramer({
         userSwatches,
         selectedSwatch,
         autoOverrides,
+        quantizationProfile,
     ])
 
     const [repixelizeKick, setRepixelizeKick] = React.useState(0)
@@ -8226,6 +8954,9 @@ function PixelEditorFramer({
                   autoSwatches,
                   userSwatches,
                   refNonce: paintSnapshotNonceRef.current,
+                  referenceSignature: imageDataSampleSignature(
+                      originalImageData
+                  ),
               })
             : null
 
@@ -8287,7 +9018,7 @@ function PixelEditorFramer({
                 const pixelsForQuant = basePixels
 
                 const target = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
-                const q = quantizePixels(pixelsForQuant, target)
+                const q = quantizePixelsForActiveProfile(pixelsForQuant, target)
 
                 const finalQuantPixels: (string | null)[][] = q.pixels
                 const finalPalette: string[] = q.palette
@@ -8303,13 +9034,16 @@ function PixelEditorFramer({
                 // map quant pixels -> SwatchId grid
                 const mapColorToId = new Map<string, string>()
                 for (let i = 0; i < finalPalette.length; i++) {
-                    mapColorToId.set(finalPalette[i], `auto-${i}`)
+                    const key =
+                        toHexUpperOrNull(finalPalette[i]) ?? finalPalette[i]
+                    mapColorToId.set(key, `auto-${i}`)
                 }
 
                 const indexed: PixelValue[][] = finalQuantPixels.map((row) =>
                     row.map((col) => {
                         if (col == null) return null
-                        const id = mapColorToId.get(col)
+                        const key = toHexUpperOrNull(col) ?? col
+                        const id = mapColorToId.get(key)
                         return (id ?? null) as any
                     })
                 )
@@ -8389,6 +9123,17 @@ function PixelEditorFramer({
                     snapshot: paintRefImageData,
                     reason: "repixelize:with-original",
                 })
+
+                enforceGridRuleAfterRestore(
+                    {
+                        imagePixels: collapsed.imagePixels,
+                        overlayPixels,
+                        autoSwatches: collapsed.autoSwatches,
+                        userSwatches: collapsed.userSwatches,
+                        hasOriginalImageData: hasImportContext,
+                    },
+                    "repixelize:with-original"
+                )
             } else {
                 // ==========================
                 // TRACE: MUTATIONS (no-original)
@@ -8522,7 +9267,6 @@ function PixelEditorFramer({
 
         // ==========================
         // B1.4-FIX2:
-        // Рендер берёт И размеры, И данные ТОЛЬКО из canvasPixels.
         // Это убирает промежуточные кадры "ужатия" и полосы при смене gridSize.
         // ==========================
         const renderRows = canvasPixels?.length || 0
@@ -8665,7 +9409,6 @@ function PixelEditorFramer({
         return { start, end }
     }
 
-    // Интерполяция между быстрыми точками, чтобы не было разрывов
     function paintInterpolatedStroke(
         x0: number,
         y0: number,
@@ -8785,7 +9528,6 @@ function PixelEditorFramer({
         const xViewportUnscaledPx = xViewportPx / fit
         const yViewportUnscaledPx = yViewportPx / fit
 
-        // размеры viewport в "unscaled" px
         const viewportWUnscaledPx = rect.width / fit
         const viewportHUnscaledPx = rect.height / fit
 
@@ -8871,6 +9613,58 @@ function PixelEditorFramer({
         }
     }
 
+    function refreshBrushPreviewFromPointerState() {
+        const viewport = viewportRef.current
+        if (!viewport) return
+
+        const p = pointerRef.current
+        const canShowPreview =
+            SHOW_BRUSH_PREVIEW &&
+            toolMode === "brush" &&
+            !isPanning &&
+            p.inside
+
+        if (!canShowPreview) {
+            hideBrushPreview()
+            return
+        }
+
+        const rect = viewport.getBoundingClientRect()
+        const fit = Math.max(0.0001, fitScaleRef.current || 1)
+        const viewportWUnscaledPx = rect.width / fit
+        const viewportHUnscaledPx = rect.height / fit
+
+        const cellW = CANVAS_SIZE / cols
+        const cellH = CANVAS_SIZE / rows
+        const brushW = brushSize * cellW
+        const brushH = brushSize * cellH
+        const padX = cellW * BRUSH_PREVIEW_PAD_CELL
+        const padY = cellH * BRUSH_PREVIEW_PAD_CELL
+
+        const previewW = brushW + 2 * padX
+        const previewH = brushH + 2 * padY
+        const previewWContentPx = (previewW / CANVAS_SIZE) * viewportWUnscaledPx
+        const previewHContentPx = (previewH / CANVAS_SIZE) * viewportHUnscaledPx
+
+        const xContentPx = (p.x / CANVAS_SIZE) * viewportWUnscaledPx
+        const yContentPx = (p.y / CANVAS_SIZE) * viewportHUnscaledPx
+
+        pointerRef.current = { ...p, w: previewW, h: previewH }
+        brushPreviewPendingRef.current = {
+            show: true,
+            leftPx: xContentPx - previewWContentPx / 2,
+            topPx: yContentPx - previewHContentPx / 2,
+            wPx: previewWContentPx,
+            hPx: previewHContentPx,
+        }
+
+        if (!brushPreviewRafRef.current) {
+            brushPreviewRafRef.current = requestAnimationFrame(
+                commitBrushPreviewDOM
+            )
+        }
+    }
+
     function updatePointerFromEvent(e: any, inside: boolean = true) {
         const viewport = viewportRef.current
         if (!viewport) return
@@ -8888,7 +9682,6 @@ function PixelEditorFramer({
         const xViewportUnscaledPx = xViewportPx / fit
         const yViewportUnscaledPx = yViewportPx / fit
 
-        // размеры viewport в "unscaled" px
         const viewportWUnscaledPx = rect.width / fit
         const viewportHUnscaledPx = rect.height / fit
 
@@ -8901,14 +9694,12 @@ function PixelEditorFramer({
         const x = (xContentPx / viewportWUnscaledPx) * CANVAS_SIZE
         const y = (yContentPx / viewportHUnscaledPx) * CANVAS_SIZE
 
-        // --- размеры рамки в координатах CANVAS_SIZE ---
         const cellW = CANVAS_SIZE / cols
         const cellH = CANVAS_SIZE / rows
 
         const brushW = brushSize * cellW
         const brushH = brushSize * cellH
 
-        // padding считаем от размера одной ячейки
         const padX = cellW * BRUSH_PREVIEW_PAD_CELL
         const padY = cellH * BRUSH_PREVIEW_PAD_CELL
 
@@ -8940,7 +9731,6 @@ function PixelEditorFramer({
             return
         }
 
-        // Конвертируем размеры превью из CANVAS_SIZE → content px (unscaled viewport px)
         // ВАЖНО: brushPreviewRef живёт ВНУТРИ zoom/pan контейнера,
         // поэтому сюда нельзя подмешивать zoom/fit — они применятся DOM-трансформами сами.
         const previewWContentPx = (previewW / CANVAS_SIZE) * viewportWUnscaledPx
@@ -8966,6 +9756,10 @@ function PixelEditorFramer({
             )
         }
     }
+
+    React.useEffect(() => {
+        refreshBrushPreviewFromPointerState()
+    }, [brushSize, cols, rows, toolMode, isPanning])
 
     function stopDrawing(e: any, reason: string = "pointerup") {
         if (e && typeof e.preventDefault === "function") {
@@ -8996,6 +9790,18 @@ function PixelEditorFramer({
                 const afterOverlayRaw =
                     strokeAfterOverlayRef.current ?? overlayPixels
                 const afterState = makeProjectStateWithOverlay(afterOverlayRaw)
+                paletteUndoTrace("stroke:stopDrawing:commit", {
+                    reason,
+                    before: editorCommittedStateTraceSummary(before),
+                    after: editorCommittedStateTraceSummary(afterState),
+                    activeTab: paletteTabsState.activeTab,
+                    currentProfile:
+                        quantizationProfileTraceSummary(quantizationProfile),
+                    activePresetButton,
+                    latestRef: editorCommittedStateTraceSummary(
+                        latestProjectStateRef.current
+                    ),
+                })
 
                 paintRefSnapshot = {
                     overlay: afterState.overlayPixels,
@@ -9044,11 +9850,13 @@ function PixelEditorFramer({
     function handleCanvasPointerLeave() {
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
+        clearPipetteHoverCell()
     }
 
     function handleCanvasPointerCancel(e: any) {
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
+        clearPipetteHoverCell()
         stopDrawing(e, "pointercancel")
     }
 
@@ -9431,6 +10239,17 @@ function PixelEditorFramer({
     // Strict feature detection (no try/catch), SSR-safe
     const supportsFileSystemAccess =
         typeof window !== "undefined" && "showSaveFilePicker" in window
+    const [savePathDebugLines, setSavePathDebugLines] = React.useState<
+        string[]
+    >([])
+
+    const savePathDebug = React.useCallback((message: string) => {
+        if (!ENABLE_SAVE_PATH_DEBUG_OVERLAY) return
+        const stamp = new Date().toLocaleTimeString()
+        setSavePathDebugLines((prev) =>
+            [...prev, `${stamp} ${message}`].slice(-12)
+        )
+    }, [])
 
     function getSavePickerOptionsForFilename(filename: string) {
         const lower = filename.toLowerCase()
@@ -9461,6 +10280,9 @@ function PixelEditorFramer({
     }
 
     function downloadBlob(blob: Blob, filename: string) {
+        savePathDebug(
+            `download fallback: ${filename}, type=${blob.type || "-"}, size=${blob.size}`
+        )
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url
@@ -9475,6 +10297,7 @@ function PixelEditorFramer({
         produceBlob: () => Promise<Blob | null>,
         filename: string
     ): Promise<boolean> {
+        savePathDebug(`save start: ${filename}`)
         // SSR safety
         if (typeof window === "undefined") {
             const b = await produceBlob()
@@ -9488,15 +10311,29 @@ function PixelEditorFramer({
             supportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"
+        savePathDebug(
+            `env: secure=${String(window.isSecureContext)}, inWindow=${String(
+                supportsFileSystemAccess
+            )}, picker=${String(
+                typeof anyWin.showSaveFilePicker === "function"
+            )}, canSaveAs=${String(canSaveAs)}`
+        )
 
         // 1) Если можем — открываем Save As СРАЗУ (пока есть user gesture)
         if (canSaveAs) {
             let handle: any = null
             try {
+                savePathDebug("picker: opening")
                 handle = await anyWin.showSaveFilePicker(
                     getSavePickerOptionsForFilename(filename)
                 )
+                savePathDebug(`picker: selected=${String(Boolean(handle))}`)
             } catch (e: any) {
+                savePathDebug(
+                    `picker: error name=${e?.name ?? "-"} message=${
+                        e?.message ?? "-"
+                    }`
+                )
                 // cancel → считаем экспорт отменённым
                 if (e?.name === "AbortError") return false
                 // прочие ошибки → fallback download ниже
@@ -9506,14 +10343,23 @@ function PixelEditorFramer({
             // 2) Готовим blob уже после выбора файла
             const blob = await produceBlob()
             if (!blob) return false
+            savePathDebug(
+                `blob ready: type=${blob.type || "-"}, size=${blob.size}`
+            )
 
             if (handle) {
                 try {
                     const writable = await handle.createWritable()
                     await writable.write(blob)
                     await writable.close()
+                    savePathDebug("picker write: ok")
                     return true
-                } catch {
+                } catch (e: any) {
+                    savePathDebug(
+                        `picker write: error name=${e?.name ?? "-"} message=${
+                            e?.message ?? "-"
+                        }`
+                    )
                     // permission/прочее → fallback download ниже
                 }
             }
@@ -9524,6 +10370,7 @@ function PixelEditorFramer({
         }
 
         // нет API → старый download
+        savePathDebug("no picker path: producing blob")
         const blob = await produceBlob()
         if (!blob) return false
 
@@ -9963,6 +10810,8 @@ function PixelEditorFramer({
 
     const renderSwatchButton = (sw: Swatch) => {
         const isActive = selectedSwatch === sw.id
+        const isPipetteSwatchLifted =
+            toolMode === "pipette" && !isMobileUI && selectedSwatch === sw.id
 
         let longPressTimeout: number | null = null
         const cancelLongPress = () => {
@@ -10012,6 +10861,189 @@ function PixelEditorFramer({
                     border: isActive
                         ? "2px solid rgba(0,0,0,0.95)"
                         : "1px solid rgba(0,0,0,0.25)",
+                    transform: isPipetteSwatchLifted
+                        ? "scale(1.15)"
+                        : "scale(1)",
+                    transformOrigin: "center",
+                    transition:
+                        "transform 120ms ease, box-shadow 120ms ease",
+                    position: "relative",
+                    zIndex: isPipetteSwatchLifted ? 2 : 1,
+                }}
+            />
+        )
+    }
+
+    const builtinPresetProfiles: FixedQuantizationProfile[] = [
+        QUANTIZATION_PROFILES.neon,
+        QUANTIZATION_PROFILES.grayscale,
+        QUANTIZATION_PROFILES.bw,
+    ]
+    const visibleBuiltinPresetProfiles = builtinPresetProfiles.filter(
+        (profile) => !hiddenPresetIds.includes(profile.id)
+    )
+
+    const shouldShowImportedPresetSwatches =
+        paletteTabsState.activeTab === "presets" &&
+        quantizationProfile.kind === "fixed" &&
+        quantizationProfile.source === "imported"
+
+    const getPresetButtonLabel = (profile: FixedQuantizationProfile) =>
+        profile.id === "black-white-2" ? "BLACK/WHITE" : profile.name
+
+    const presetButtonStyle = (
+        label: string,
+        secondary = false
+    ): React.CSSProperties => {
+        const wide = label.length >= 10
+        return {
+            position: "relative",
+            width: isMobileUI
+                ? secondary
+                    ? 123
+                    : wide
+                      ? 144
+                      : 123
+                : secondary
+                  ? 145
+                  : wide
+                    ? 168
+                    : 147,
+            height: isMobileUI ? 35 : 43,
+            border: "none",
+            background: "transparent",
+            color: "#001219",
+            fontWeight: 900,
+            fontSize: isMobileUI ? 12 : 15,
+            letterSpacing: 0,
+            cursor: "pointer",
+            boxSizing: "border-box",
+            padding: 0,
+            overflow: "hidden",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+        }
+    }
+
+    const presetButtonTextStyle = (
+        hasDelete: boolean
+    ): React.CSSProperties => ({
+        position: "absolute",
+        left: 17,
+        right: hasDelete ? 32 : 17,
+        top: "50%",
+        transform: "translateY(-50%)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        textAlign: "center",
+        pointerEvents: "none",
+    })
+
+    const presetDeleteButtonStyle: React.CSSProperties = {
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: "17%",
+        height: "100%",
+        border: "none",
+        background: "transparent",
+        cursor: "pointer",
+        padding: 0,
+    }
+
+    const renderPresetButton = (profile: FixedQuantizationProfile) => {
+        const active = activePresetButton === profile.id
+        const label = getPresetButtonLabel(profile)
+
+        return (
+            <button
+                key={profile.id}
+                type="button"
+                onClick={() => applyFixedPalettePreset(profile)}
+                className="pxUiAnim"
+                title={profile.name}
+                style={presetButtonStyle(label)}
+            >
+                <SvgPalettePresetButton
+                    active={active}
+                    fill={bg}
+                    style={{ position: "absolute", inset: 0 }}
+                />
+                <span style={presetButtonTextStyle(true)}>{label}</span>
+                <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={`Delete ${profile.name} preset`}
+                    title={`Delete ${profile.name}`}
+                    onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        deletePalettePreset(profile.id)
+                    }}
+                    style={presetDeleteButtonStyle}
+                />
+            </button>
+        )
+    }
+
+    const renderLoadPaletteButton = () => {
+        const label = "Load Palette"
+
+        return (
+            <button
+                type="button"
+                onClick={openPalettePresetFileDialog}
+                className="pxUiAnim"
+                style={presetButtonStyle(label, true)}
+            >
+                <SvgPalettePresetButton
+                    active={false}
+                    fill={bg}
+                    showDeleteMark={false}
+                    style={{ position: "absolute", inset: 0 }}
+                />
+                <span style={presetButtonTextStyle(false)}>{label}</span>
+            </button>
+        )
+    }
+
+    const renderPipetteHoverCell = () => {
+        if (
+            isMobileUI ||
+            overlayMode ||
+            toolMode !== "pipette" ||
+            pipetteHoverCell === null
+        ) {
+            return null
+        }
+
+        const { row, col } = pipetteHoverCell
+        if (row < 0 || col < 0 || row >= rows || col >= cols) return null
+
+        const value = overlayPixels[row]?.[col] ?? imagePixels[row]?.[col] ?? null
+        const color = resolveToColor(value)
+
+        return (
+            <div
+                aria-hidden="true"
+                style={{
+                    position: "absolute",
+                    left: `${(col / cols) * 100}%`,
+                    top: `${(row / rows) * 100}%`,
+                    width: `${100 / cols}%`,
+                    height: `${100 / rows}%`,
+                    background: color ?? checkerBackground,
+                    border: "2px solid rgba(255,255,255,0.95)",
+                    boxShadow: "0 3px 8px rgba(0,0,0,0.3)",
+                    boxSizing: "border-box",
+                    pointerEvents: "none",
+                    transform: "scale(1.15)",
+                    transformOrigin: "center",
+                    zIndex: 3,
+                    imageRendering: "pixelated",
+                    willChange: "transform",
                 }}
             />
         )
@@ -10020,17 +11052,25 @@ function PixelEditorFramer({
     return (
         <FitToViewport
             background={bg}
+            topPadding={isMobileUI ? 0 : 20}
             onScale={(s) => {
                 // FitToViewport может давать любое число, но нам нужна безопасная нижняя граница
                 fitScaleRef.current = Math.max(0.0001, s || 1)
             }}
         >
             <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
+            <input
+                ref={palettePresetFileInputRef}
+                type="file"
+                accept=".pixtudio,application/json,image/*"
+                style={{ display: "none" }}
+                onChange={handlePalettePresetFilePicked}
+            />
 
             <div
                 style={{
                     position: "relative",
-                    display: "flex",
+                    display: "none",
                     flexDirection: "column",
                     padding: 7,
                     paddingTop: 10,
@@ -10051,7 +11091,7 @@ function PixelEditorFramer({
             {/* Top toolbar (unified layout) */}
             <div
                 style={{
-                    width: "100%",
+                    width: editorContentWidth,
                     display: "flex",
                     justifyContent: "center",
                     marginBottom: 12,
@@ -10066,7 +11106,7 @@ function PixelEditorFramer({
 
                         // ✅ распределяем кнопки на всю ширину тулбара (ширина = ширина холста)
                         justifyContent: "space-between",
-                        gap: "clamp(7px, 0.6vw, 8px)",
+                        gap: 8,
 
                         flexWrap: "nowrap",
                         minWidth: 0,
@@ -10212,7 +11252,7 @@ function PixelEditorFramer({
                             }}
                         >
                             <PipetteIcon
-                                size={50}
+                                size={38}
                                 active={toolMode === "pipette"}
                             />
                         </button>
@@ -10233,9 +11273,9 @@ function PixelEditorFramer({
                             }}
                         >
                             {toolMode === "hand" ? (
-                                <HandIconOn size={50} />
+                                <HandIconOn size={38} />
                             ) : (
-                                <HandIconOff size={50} />
+                                <HandIconOff size={38} />
                             )}
                         </button>
                     </div>
@@ -10268,7 +11308,7 @@ function PixelEditorFramer({
             {/* Canvas */}
             <div
                 style={{
-                    width: "100%",
+                    width: editorContentWidth,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -10368,6 +11408,8 @@ function PixelEditorFramer({
                                     }}
                                 >
                                     {/* рамка кисти (двигается через brushPreviewRef) */}
+                                    {renderPipetteHoverCell()}
+
                                     {SHOW_BRUSH_PREVIEW && !overlayMode && (
                                         <div
                                             ref={brushPreviewRef}
@@ -10390,7 +11432,7 @@ function PixelEditorFramer({
             {/* Controls area */}
             <div
                 style={{
-                    width: "100%",
+                    width: editorContentWidth,
                     display: "flex",
                     justifyContent: "center",
                     marginTop: 0,
@@ -10836,11 +11878,105 @@ function PixelEditorFramer({
                             </div>
                         </div>
 
+                        {/* Palette tabs */}
+                        <div
+                            style={{
+                                marginTop: isMobileUI ? 18 : 30,
+                                opacity: overlayMode ? 0.5 : 1,
+                                pointerEvents: overlayMode
+                                    ? "none"
+                                    : ("auto" as any),
+                            }}
+                        >
+                            <div
+                                style={{
+                                    position: "relative",
+                                    display: "grid",
+                                    gridTemplateColumns: "1fr 1fr",
+                                    alignItems: "center",
+                                    height: 22,
+                                }}
+                            >
+                                <div
+                                    aria-hidden="true"
+                                    style={{
+                                        position: "absolute",
+                                        left: "50%",
+                                        top: "50%",
+                                        transform: "translate(-50%, -50%)",
+                                        width: 3,
+                                        height: isMobileUI ? 18 : 24,
+                                        background: "rgba(30, 43, 47, 0.2)",
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => switchPaletteTab("size")}
+                                    style={{
+                                        height: "100%",
+                                        background: "transparent",
+                                        border: "none",
+                                        color:
+                                            paletteTabsState.activeTab ===
+                                            "size"
+                                                ? "#001219"
+                                                : "rgba(30, 43, 47, 0.32)",
+                                        fontWeight: 800,
+                                        fontSize: 13,
+                                        letterSpacing: 0.4,
+                                        textAlign: "left",
+                                        padding: isMobileUI ? "0 10px" : 0,
+                                        cursor: "pointer",
+                                        boxSizing: "border-box",
+                                    }}
+                                >
+                                    AUTO PALETTE{" "}
+                                    <span style={{ fontWeight: 500 }}>
+                                        {paletteCountActual} colors
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => switchPaletteTab("presets")}
+                                    style={{
+                                        height: "100%",
+                                        background: "transparent",
+                                        border: "none",
+                                        color:
+                                            paletteTabsState.activeTab ===
+                                            "presets"
+                                                ? "#001219"
+                                                : "rgba(30, 43, 47, 0.32)",
+                                        fontWeight: 800,
+                                        fontSize: 13,
+                                        letterSpacing: 0.4,
+                                        textAlign: "left",
+                                        padding: isMobileUI
+                                            ? "0 10px"
+                                            : "0 0 0 44px",
+                                        cursor: "pointer",
+                                        boxSizing: "border-box",
+                                    }}
+                                >
+                                    PALETTE PRESETS
+                                </button>
+                            </div>
+
+                            <div
+                                style={{
+                                    minHeight: isMobileUI ? 126 : 164,
+                                    padding: 0,
+                                    boxSizing: "border-box",
+                                }}
+                            >
+                                {paletteTabsState.activeTab === "size" ? (
+                                    <>
                         {/* PALETTE SIZE (real slider) */}
                         <div style={{ marginBottom: 14 }}>
                             <div
                                 style={{
-                                    display: "flex",
+                                    display: "none",
                                     alignItems: "baseline",
                                 }}
                             >
@@ -10992,6 +12128,22 @@ function PixelEditorFramer({
                                                 ? "0 0 0 2px rgba(0,0,0,0.6)"
                                                 : "0 0 0 2px rgba(0,0,0,0.35)",
                                         boxSizing: "border-box",
+                                        transform:
+                                            toolMode === "pipette" &&
+                                            !isMobileUI &&
+                                            selectedSwatch === "transparent"
+                                                ? "scale(1.15)"
+                                                : "scale(1)",
+                                        transformOrigin: "center",
+                                        transition:
+                                            "transform 120ms ease, box-shadow 120ms ease",
+                                        position: "relative",
+                                        zIndex:
+                                            toolMode === "pipette" &&
+                                            !isMobileUI &&
+                                            selectedSwatch === "transparent"
+                                                ? 2
+                                                : 1,
                                     }}
                                 />
 
@@ -11025,6 +12177,65 @@ function PixelEditorFramer({
 
                             {/* Clear под палитрой */}
                             <div style={{ marginTop: 12, width: "100%" }} />
+                        </div>
+                                    </>
+                                ) : (
+                                    <div
+                                        style={{
+                                            minHeight: isMobileUI ? 112 : 132,
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            alignItems: "center",
+                                            justifyContent: "flex-start",
+                                            gap: isMobileUI ? 14 : 28,
+                                            paddingTop: 15,
+                                            boxSizing: "border-box",
+                                        }}
+                                    >
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                flexWrap: "wrap",
+                                                columnGap: isMobileUI
+                                                    ? 10
+                                                    : 28,
+                                                rowGap: isMobileUI ? 12 : 26,
+                                                width: "100%",
+                                            }}
+                                        >
+                                            {visibleBuiltinPresetProfiles.map(
+                                                renderPresetButton
+                                            )}
+                                            {importedPalettePresets.map(
+                                                (preset) =>
+                                                    renderPresetButton(
+                                                        preset.profile
+                                                    )
+                                            )}
+                                            {renderLoadPaletteButton()}
+                                        </div>
+
+                                        {shouldShowImportedPresetSwatches && (
+                                            <div
+                                                style={{
+                                                    width: "100%",
+                                                    display: "grid",
+                                                    gridTemplateColumns: `repeat(auto-fill, ${SWATCH_PX}px)`,
+                                                    gap: SWATCH_GAP,
+                                                    alignItems: "start",
+                                                    justifyContent: "start",
+                                                }}
+                                            >
+                                                {sortedAutoSwatchesForUI.map(
+                                                    renderSwatchButton
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -12015,6 +13226,41 @@ function PixelEditorFramer({
                         </div>,
                         document.body
                     )}
+
+                {ENABLE_SAVE_PATH_DEBUG_OVERLAY &&
+                    savePathDebugLines.length > 0 &&
+                    ReactDOM.createPortal(
+                        <div
+                            style={{
+                                position: "fixed",
+                                left: 8,
+                                bottom: 8,
+                                zIndex: 30000,
+                                maxWidth: "calc(100vw - 16px)",
+                                maxHeight: "42vh",
+                                overflow: "auto",
+                                padding: "8px 10px",
+                                boxSizing: "border-box",
+                                border: "1px solid rgba(255,255,255,0.55)",
+                                background: "rgba(0,0,0,0.82)",
+                                color: "#ffffff",
+                                fontFamily:
+                                    "Consolas, Menlo, Monaco, monospace",
+                                fontSize: 11,
+                                lineHeight: 1.35,
+                                pointerEvents: "none",
+                                whiteSpace: "pre-wrap",
+                            }}
+                        >
+                            <div style={{ fontWeight: 900 }}>
+                                SAVE DEBUG
+                            </div>
+                            {savePathDebugLines.map((line, index) => (
+                                <div key={`${index}-${line}`}>{line}</div>
+                            ))}
+                        </div>,
+                        document.body
+                    )}
             </div>
         </FitToViewport>
     )
@@ -12104,7 +13350,13 @@ export default function PIXTUDIO_Mobile_MVP() {
         React.useState<ImageData | null>(null)
 
     const [gatewayCommittedReferenceKind, setGatewayCommittedReferenceKind] =
-        React.useState<"import" | "load" | "smart-object-apply" | null>(null)
+        React.useState<
+            | "import"
+            | "load"
+            | "smart-object-apply"
+            | "smart-object-history-restore"
+            | null
+        >(null)
 
     const [smartObjectHasBase, setSmartObjectHasBase] = React.useState(false)
 
@@ -12146,7 +13398,11 @@ export default function PIXTUDIO_Mobile_MVP() {
     const commitGatewaySnapshotToEditor = React.useCallback(
         (
             snapshot: ImageData | null,
-            kind: "import" | "load" | "smart-object-apply"
+            kind:
+                | "import"
+                | "load"
+                | "smart-object-apply"
+                | "smart-object-history-restore"
         ) => {
             // Любой вход эталона в editor идёт через эту точку,
             // но editor обязан знать ПРИЧИНУ входа:
@@ -12180,6 +13436,9 @@ export default function PIXTUDIO_Mobile_MVP() {
     const restoreEditorCommittedState = React.useCallback(
         (state: EditorCommittedState | null) => {
             if (!state) return
+            paletteUndoTrace("rootHistory:restoreEditorCommittedState", {
+                state: editorCommittedStateTraceSummary(state),
+            })
             editorCommittedStateBridgeRef.current?.applyCommittedState(state)
         },
         []
@@ -12195,9 +13454,12 @@ export default function PIXTUDIO_Mobile_MVP() {
     const restoreSmartObjectCommittedState = React.useCallback(
         (state: SmartObjectCommittedState | null) => {
             if (!state) return
-            smartObjectCommittedStateBridgeRef.current?.applyCommittedState(
-                state
-            )
+            const current =
+                smartObjectCommittedStateBridgeRef.current?.captureCommittedState() ??
+                null
+            if (areSmartObjectCommittedStatesEqual(current, state)) return
+
+            smartObjectCommittedStateBridgeRef.current?.applyCommittedState(state)
         },
         []
     )
@@ -12256,6 +13518,13 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const beginTransaction = React.useCallback(
         (input: BeginHistoryTransactionInput) => {
+            paletteUndoTrace("rootHistory:begin", {
+                kind: input.kind,
+                editorBefore: editorCommittedStateTraceSummary(
+                    input.editorBefore
+                ),
+                smartBeforeRevision: input.smartBefore?.revision ?? null,
+            })
             rootHistoryBegin(rootHistoryRef.current, input)
             syncRootHistoryFlags()
         },
@@ -12269,9 +13538,35 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const commitTransaction = React.useCallback(
         (editorAfter: EditorCommittedState | null) => {
+            paletteUndoTrace("rootHistory:commit:before", {
+                pendingBefore: editorCommittedStateTraceSummary(
+                    rootHistoryRef.current.pending?.editorBefore
+                ),
+                editorAfter: editorCommittedStateTraceSummary(editorAfter),
+                committedCount: rootHistoryRef.current.committed.length,
+                redoCount: rootHistoryRef.current.redo.length,
+            })
             rootHistoryCommit(rootHistoryRef.current, editorAfter, {
                 isEditorEqual: areEditorCommittedStatesEqual,
                 isSmartEqual: areSmartObjectCommittedStatesEqual,
+            })
+            paletteUndoTrace("rootHistory:commit:after", {
+                committedCount: rootHistoryRef.current.committed.length,
+                redoCount: rootHistoryRef.current.redo.length,
+                lastEntry: rootHistoryRef.current.committed.length
+                    ? {
+                          before: editorCommittedStateTraceSummary(
+                              rootHistoryRef.current.committed[
+                                  rootHistoryRef.current.committed.length - 1
+                              ]?.editorBefore
+                          ),
+                          after: editorCommittedStateTraceSummary(
+                              rootHistoryRef.current.committed[
+                                  rootHistoryRef.current.committed.length - 1
+                              ]?.editorAfter
+                          ),
+                      }
+                    : null,
             })
             syncRootHistoryFlags()
         },
@@ -12282,6 +13577,14 @@ export default function PIXTUDIO_Mobile_MVP() {
     // begin → optional finalize metadata → commit / abort
     const beginUserAction = React.useCallback(
         (input: UserActionBeginInput) => {
+            if (rootHistoryRef.current.pending?.kind === "smart-object-apply") {
+                rootHistoryFinalize(
+                    rootHistoryRef.current,
+                    captureSmartObjectCommittedState()
+                )
+                commitTransaction(captureEditorCommittedState())
+            }
+
             beginTransaction({
                 kind: input.kind,
                 editorBefore: input.editorBefore,
@@ -12289,7 +13592,12 @@ export default function PIXTUDIO_Mobile_MVP() {
                     input.smartBefore ?? captureSmartObjectCommittedState(),
             })
         },
-        [beginTransaction, captureSmartObjectCommittedState]
+        [
+            beginTransaction,
+            captureEditorCommittedState,
+            captureSmartObjectCommittedState,
+            commitTransaction,
+        ]
     )
 
     const finalizePendingUserAction = React.useCallback(
@@ -12322,6 +13630,14 @@ export default function PIXTUDIO_Mobile_MVP() {
         // Он обязан восстанавливать ОБА домена из root history.
         const entry = rootHistoryUndo(rootHistoryRef.current)
         if (!entry) return
+        paletteUndoTrace("rootHistory:undo", {
+            restoreEditorBefore: editorCommittedStateTraceSummary(
+                entry.editorBefore
+            ),
+            entryEditorAfter: editorCommittedStateTraceSummary(entry.editorAfter),
+            remainingCommitted: rootHistoryRef.current.committed.length,
+            redoCount: rootHistoryRef.current.redo.length,
+        })
 
         restoreEditorCommittedState(entry.editorBefore)
         restoreSmartObjectCommittedState(entry.smartBefore)
@@ -12347,6 +13663,61 @@ export default function PIXTUDIO_Mobile_MVP() {
         restoreSmartObjectCommittedState,
         syncRootHistoryFlags,
     ])
+
+    React.useEffect(() => {
+        if (typeof window === "undefined") return
+
+        editorHistoryShortcutLog("listener-mounted", {
+            screen,
+            canUndo: rootCanUndo,
+            canRedo: rootCanRedo,
+        })
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            editorHistoryShortcutLog("keydown", {
+                screen,
+                key: event.key,
+                code: event.code,
+                ctrlKey: event.ctrlKey,
+                shiftKey: event.shiftKey,
+                altKey: event.altKey,
+                metaKey: event.metaKey,
+                repeat: event.repeat,
+                targetTag:
+                    event.target instanceof HTMLElement
+                        ? event.target.tagName
+                        : null,
+                activeTag:
+                    document.activeElement instanceof HTMLElement
+                        ? document.activeElement.tagName
+                        : null,
+                canUndo: rootCanUndo,
+                canRedo: rootCanRedo,
+            })
+
+            if (screen !== "editor") {
+                editorHistoryShortcutLog("rejected", {
+                    reason: "screen-not-editor",
+                    screen,
+                })
+                return
+            }
+
+            handleEditorHistoryShortcut(event, {
+                undo,
+                redo,
+                canUndo: rootCanUndo,
+                canRedo: rootCanRedo,
+                log: editorHistoryShortcutLog,
+            })
+        }
+
+        window.addEventListener("keydown", onKeyDown, true)
+        return () => {
+            editorHistoryShortcutLog("listener-unmounted", { screen })
+            window.removeEventListener("keydown", onKeyDown, true)
+        }
+    }, [screen, undo, redo, rootCanUndo, rootCanRedo])
 
     const debugHistoryInfo = React.useCallback(() => {
         return {
@@ -12842,28 +14213,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     function handleImportDecision(decision: ImportDecision) {
         const base = decision.preparedImageData
-
-        // ✅ NEON_STAIRCASE включаем ТОЛЬКО для пресета NEON и ТОЛЬКО один раз на импорт
-        let withNeonStaircase = base
-
-        if (decision.presetId === "NEON") {
-            withNeonStaircase = applyNeonPreTransform(base)
-        } else if (decision.presetId === "BW") {
-            // BW0: NO-OP, поведение как DEFAULT
-            withNeonStaircase = base
-        } else if (decision.presetId === "GRAYSCALE") {
-            // GRAYSCALE в BW0 здесь не трогаем (оно применяется в Editor pipeline)
-            withNeonStaircase = base
-        } else {
-            // DEFAULT
-            withNeonStaircase = base
-        }
-
-        // (sanitize + boost остаются как есть внутри preprocessImportedImageData)
-        const preprocessed = preprocessImportedImageData(
-            withNeonStaircase,
-            "gallery" // было "file" — лучше держать в рамках union-типа
-        )
+        const preprocessed = preprocessImportedImageData(base, "gallery")
 
         const bridge = smartObjectCommittedStateBridgeRef.current
         if (!bridge) {
@@ -12966,19 +14316,13 @@ export default function PIXTUDIO_Mobile_MVP() {
     // bakedRef512: ImageData (crop + preset + preprocess уже запечены).
     //
     // NOTE (C0): пока это только контракт типами/комментариями.
-    // Старый ImportDecision (preparedImageData + presetId) остаётся работать,
-    // пока мы не перейдём на E1/E2.
+    // The old ImportDecision path remains as a compatibility bridge while
+    // CropFlow moves toward ImportArtifact-only publishing.
     // ============================================================
 
     type ImportArtifact = {
         bakedRef512: ImageData
     }
-
-    type PresetId = "DEFAULT" | "NEON" | "GRAYSCALE" | "BW"
-
-    const [selectedPresetId, setSelectedPresetId] =
-        React.useState<PresetId | null>(null)
-    // null = “ничего не выбрано” => по твоим правилам это DEFAULT
 
     type ImportStatus = "idle" | "decoding" | "ready" | "applying"
 
@@ -13017,25 +14361,16 @@ export default function PIXTUDIO_Mobile_MVP() {
     )
 
     // LEGACY (to be removed):
-    // ImportDecision carries presetId past crop boundary -> violates Chinese Room.
-    // Kept temporarily for transition; will be replaced by ImportArtifact(bakedRef512) in E1/E2.
-
-    // LEGACY (to be removed):
-
-    // ImportDecision carries presetId past crop boundary -> violates Chinese Room.
-
-    // Kept temporarily for transition; will be replaced by ImportArtifact(bakedRef512) in E1/E2.
+    // ImportDecision is kept temporarily for transition; Palette Presets are no
+    // longer carried through CropFlow or baked into the reference snapshot.
 
     type CropFlowResult = {
         prepared512: ImageData
-        presetId: PresetId
         source: "gallery" | "camera"
     }
 
     type ImportDecision = {
         preparedImageData: ImageData
-
-        presetId: PresetId // DEFAULT, если selectedPresetId == null
     }
 
     // RF3: транзакция импорта — decision, ожидающий применения
@@ -13141,7 +14476,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                     hasPrepared: !!d?.preparedImageData,
                     w: d?.preparedImageData?.width,
                     h: d?.preparedImageData?.height,
-                    presetId: d?.presetId,
                 })
             }
 
@@ -13173,7 +14507,6 @@ export default function PIXTUDIO_Mobile_MVP() {
 
             // закрываем кроп-оверлей и сбрасываем UI кроп-комнаты
             setCropPending(null)
-            setSelectedPresetId(null)
             setImportStatus("idle")
             setImportError(null)
         } catch (e: any) {
@@ -13191,10 +14524,9 @@ export default function PIXTUDIO_Mobile_MVP() {
         if (!r) return
 
         try {
-            // P5: единственное место между CropFlow и Editor, где существует presetId
+            // CropFlow publishes only a neutral baked reference.
             const bakedRef512 = bakeRef512InChineseRoom(
                 r.prepared512,
-                r.presetId,
                 r.source
             )
 
@@ -13207,14 +14539,12 @@ export default function PIXTUDIO_Mobile_MVP() {
             )
             handleImportArtifact(artifact)
             setCropPending(null)
-            setSelectedPresetId(null)
             setImportStatus("idle")
             setImportError(null)
         } catch (e: any) {
             console.error("[IMPORT][P5] cropResult->artifact failed", e)
             failImportInFlow("Failed to bake import artifact.")
         } finally {
-            // важно: presetId не должен жить дольше одного тика
             setPendingCropResult(null)
         }
     }, [pendingCropResult])
@@ -13386,7 +14716,6 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
 
-        // Универсальные размеры для CanvasImageSource:
         // - HTMLImageElement: naturalWidth/naturalHeight
         // - ImageBitmap / Canvas: width/height
         const anySrc: any = srcAny as any
@@ -13397,7 +14726,6 @@ export default function PIXTUDIO_Mobile_MVP() {
         if (imgW <= 0 || imgH <= 0) return null
 
         // --- ВАЖНО: повторяем геометрию preview ---
-        // В preview "viewport — квадрат внутри preview", размер vSize = W - 2*vInset
         // Поэтому cropUiOffset и cropUiScale должны интерпретироваться в координатах vSize, а не 512.
 
         const previewCanvas = cropPreviewCanvasRef.current
@@ -13509,10 +14837,10 @@ export default function PIXTUDIO_Mobile_MVP() {
         previewCtx.lineWidth = Math.max(2, Math.round(W * 0.006))
         const half = previewCtx.lineWidth / 2
         previewCtx.strokeRect(
-            vx + half,
-            vy + half,
-            vSize - previewCtx.lineWidth,
-            vSize - previewCtx.lineWidth
+            vx - half,
+            vy - half,
+            vSize + previewCtx.lineWidth,
+            vSize + previewCtx.lineWidth
         )
         previewCtx.restore()
     }
@@ -13648,7 +14976,6 @@ export default function PIXTUDIO_Mobile_MVP() {
         setImportStatus("idle")
         setImportError(null)
 
-        setSelectedPresetId(null)
         setCropPending(null)
 
         cropDecodedRef.current = null
@@ -13786,7 +15113,6 @@ export default function PIXTUDIO_Mobile_MVP() {
 
                 const decoded = ctx.getImageData(0, 0, srcW, srcH)
 
-                // Ещё раз проверяем job перед коммитом (на случай, если getImageData занял время)
                 if (jobId !== cropDecodeJobRef.current) return
 
                 cropDecodedRef.current = decoded
@@ -13861,14 +15187,11 @@ export default function PIXTUDIO_Mobile_MVP() {
             })
         }
 
-        const preset: PresetId = selectedPresetId ?? "DEFAULT"
-
-        // P5: Confirm = выход CropFlow = { prepared512, presetId }
+        // P5: Confirm publishes a neutral cropped reference.
         setImportError(null)
         setImportStatus("applying")
         setPendingCropResult({
             prepared512: prepared,
-            presetId: preset,
             source: cropFlowSource,
         })
     }
@@ -13901,13 +15224,8 @@ export default function PIXTUDIO_Mobile_MVP() {
         // wheel up -> zoom in, wheel down -> zoom out
         const k = delta < 0 ? 1.08 : 0.92
 
-        setCropUiScale((s) => {
-            const next = s * k
-            // разумные пределы, чтобы не улетать
-            if (next < 0.25) return 0.25
-            if (next > 8) return 8
-            return next
-        })
+        const clampedScale = Math.max(0.25, Math.min(8, cropUiScale * k))
+        setCropUiScale(clampedScale)
 
         bumpCropPreview()
     }
@@ -13940,6 +15258,96 @@ export default function PIXTUDIO_Mobile_MVP() {
         return Math.max(a, Math.min(b, n))
     }
     void clamp
+
+    function getCropViewportGeometry() {
+        const W = cropPreviewCanvasPx || cropPreviewCanvasRef.current?.width || 0
+        const src = cropPreviewSrcCanvasRef.current
+        if (!W || !src || src.width <= 0 || src.height <= 0) return null
+
+        const insetFrac = isMobileUI
+            ? IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE
+            : IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP
+        const vInset = Math.round(W * insetFrac)
+        const vSize = Math.max(1, W - vInset * 2)
+
+        return {
+            W,
+            vInset,
+            vSize,
+            vx: vInset,
+            vy: vInset,
+            vcx: vInset + vSize / 2,
+            vcy: vInset + vSize / 2,
+            imgW: src.width,
+            imgH: src.height,
+            baseScale: Math.max(vSize / src.width, vSize / src.height),
+        }
+    }
+
+    function snapCropOffsetToViewportEdges(
+        offset: { x: number; y: number },
+        scale: number,
+        rotation: number
+    ) {
+        const g = getCropViewportGeometry()
+        if (!g) return offset
+
+        const drawW = g.imgW * g.baseScale * scale
+        const drawH = g.imgH * g.baseScale * scale
+        const cos = Math.abs(Math.cos(rotation))
+        const sin = Math.abs(Math.sin(rotation))
+        const halfW = (drawW * cos + drawH * sin) / 2
+        const halfH = (drawW * sin + drawH * cos) / 2
+
+        const cx = g.vcx + offset.x
+        const cy = g.vcy + offset.y
+        const imageLeft = cx - halfW
+        const imageRight = cx + halfW
+        const imageTop = cy - halfH
+        const imageBottom = cy + halfH
+        const viewportLeft = g.vx
+        const viewportRight = g.vx + g.vSize
+        const viewportTop = g.vy
+        const viewportBottom = g.vy + g.vSize
+        const threshold = Math.max(6, Math.min(18, g.vSize * 0.0375))
+        const centerThreshold = Math.max(4, Math.min(12, g.vSize * 0.025))
+
+        const xCandidates = [
+            g.vcx - cx,
+            viewportLeft - imageLeft,
+            viewportRight - imageRight,
+        ].filter((delta, index) =>
+            Math.abs(delta) <= (index === 0 ? centerThreshold : threshold)
+        )
+        const yCandidates = [
+            g.vcy - cy,
+            viewportTop - imageTop,
+            viewportBottom - imageBottom,
+        ].filter((delta, index) =>
+            Math.abs(delta) <= (index === 0 ? centerThreshold : threshold)
+        )
+
+        const pickSmallest = (deltas: number[]) => {
+            if (deltas.length === 0) return 0
+            return deltas.reduce((best, delta) =>
+                Math.abs(delta) < Math.abs(best) ? delta : best
+            )
+        }
+
+        const dx = pickSmallest(xCandidates)
+        const dy = pickSmallest(yCandidates)
+
+        if (dx === 0 && dy === 0) return offset
+        return { x: offset.x + dx, y: offset.y + dy }
+    }
+
+    function getCropClientToPreviewScale() {
+        const canvas = cropPreviewCanvasRef.current
+        if (!canvas) return 1
+        const rect = canvas.getBoundingClientRect()
+        if (!rect.width || !rect.height) return 1
+        return canvas.width / rect.width
+    }
 
     function getCropCenterClient() {
         const canvas = cropPreviewCanvasRef.current
@@ -14069,13 +15477,20 @@ export default function PIXTUDIO_Mobile_MVP() {
         e.stopPropagation()
 
         if (st.mode === "pan") {
-            const dx = e.clientX - st.startX
-            const dy = e.clientY - st.startY
+            const clientToPreview = getCropClientToPreviewScale()
+            const dx = (e.clientX - st.startX) * clientToPreview
+            const dy = (e.clientY - st.startY) * clientToPreview
 
-            setCropUiOffset({
-                x: st.startOffsetX + dx,
-                y: st.startOffsetY + dy,
-            })
+            setCropUiOffset(
+                snapCropOffsetToViewportEdges(
+                    {
+                        x: st.startOffsetX + dx,
+                        y: st.startOffsetY + dy,
+                    },
+                    cropUiScale,
+                    cropUiRotation
+                )
+            )
             return
         }
 
@@ -14084,7 +15499,8 @@ export default function PIXTUDIO_Mobile_MVP() {
         if (st.mode === "rotate") {
             const a = Math.atan2(e.clientY - cy, e.clientX - cx)
             const delta = a - st.startAngle
-            setCropUiRotation(st.startRotation + delta)
+            const nextRotation = st.startRotation + delta
+            setCropUiRotation(nextRotation)
             return
         }
 
@@ -14115,6 +15531,16 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const st = cropDragRef.current
         if (st.pointerId !== e.pointerId) return
+
+        if (st.mode === "pan") {
+            setCropUiOffset((offset) =>
+                snapCropOffsetToViewportEdges(
+                    offset,
+                    cropUiScale,
+                    cropUiRotation
+                )
+            )
+        }
 
         st.mode = "none"
         st.pointerId = null
@@ -14749,109 +16175,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                                 <div
                                     style={{
                                         display: "flex",
-                                        //gap: 26,
                                         justifyContent: "center",
                                     }}
-                                >
-                                    {(() => {
-                                        const chosen = selectedPresetId // null => DEFAULT
-                                        const dimOthers = chosen !== null
-
-                                        const opacityFor = (id: PresetId) => {
-                                            if (!dimOthers) return 1
-                                            return chosen === id ? 1 : 0.5
-                                        }
-                                        const presetTextBtnStyle: React.CSSProperties =
-                                            {
-                                                border: "none",
-                                                background: "transparent",
-                                                padding: 0,
-                                                cursor: "pointer",
-                                                WebkitTapHighlightColor:
-                                                    "transparent",
-
-                                                // компоновка (вместо 110×110)
-                                                height: 40,
-                                                minWidth: 88,
-
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-
-                                                // типографика
-                                                color: "#FFFFFF",
-                                                fontSize: 24,
-                                                letterSpacing: 0.5,
-
-                                                // важно: шрифт тот же, что в приложении
-                                                // если у тебя в проекте уже есть глобальный fontFamily на body,
-                                                // можно НЕ задавать fontFamily здесь вообще.
-                                                fontFamily: "inherit",
-
-                                                // и вот это — requested Black
-                                                fontWeight: 900,
-
-                                                // чтобы текст не выделялся при случайном свайпе/драгге
-                                                userSelect: "none",
-                                            }
-
-                                        const togglePreset = (id: PresetId) => {
-                                            setSelectedPresetId((prev) =>
-                                                prev === id ? null : id
-                                            )
-                                        }
-
-                                        return (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        togglePreset(
-                                                            "GRAYSCALE"
-                                                        )
-                                                    }
-                                                    style={{
-                                                        ...presetTextBtnStyle,
-                                                        opacity:
-                                                            opacityFor(
-                                                                "GRAYSCALE"
-                                                            ),
-                                                    }}
-                                                    aria-label="GRAYSCALE"
-                                                >
-                                                    <span
-                                                        style={{
-                                                            lineHeight: 1,
-                                                        }}
-                                                    >
-                                                        GRAY
-                                                    </span>
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        togglePreset("BW")
-                                                    }
-                                                    style={{
-                                                        ...presetTextBtnStyle,
-                                                        opacity:
-                                                            opacityFor("BW"),
-                                                    }}
-                                                    aria-label="B/W"
-                                                >
-                                                    <span
-                                                        style={{
-                                                            lineHeight: 1,
-                                                        }}
-                                                    >
-                                                        B/W
-                                                    </span>
-                                                </button>
-                                            </>
-                                        )
-                                    })()}
-                                </div>
+                                />
                             </div>
                         </div>
 

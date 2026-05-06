@@ -76,6 +76,51 @@ export const SvgQuantizationRecorderButton = (
     </svg>
 )
 
+export function SvgPalettePresetButton({
+    active = false,
+    fill = "#e9d8a6",
+    stroke = "#001219",
+    showDeleteMark = true,
+    style,
+}: {
+    active?: boolean
+    fill?: string
+    stroke?: string
+    showDeleteMark?: boolean
+    style?: React.CSSProperties
+}) {
+    return (
+        <svg
+            viewBox="0 0 341.1 97.1"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            focusable="false"
+            style={{
+                width: "100%",
+                height: "100%",
+                display: "block",
+                ...style,
+            }}
+        >
+            <path
+                fill={stroke}
+                d="M336.2,29.1c0-2.4,0-7.3,0-9.7h-4.9v-4.9h-4.9V9.7h-4.9V4.9c-2.4,0-7.3,0-9.7,0V0C222.6,0,118.5,0,29.1,0v4.9 c-2.4,0-7.3,0-9.7,0v4.9h-4.9v4.9H9.7v4.9H4.9c0,2.4,0,7.3,0,9.7H0C0,41.9,0,55.2,0,68h4.9c0,2.4,0,7.3,0,9.7h4.9v4.9h4.9v4.9h4.9 v4.9c2.4,0,7.3,0,9.7,0v4.9c89.4,0,193.4,0,282.8,0v-4.9c2.4,0,7.3,0,9.7,0v-4.9h4.9v-4.9h4.9v-4.9h4.9c0-2.4,0-7.3,0-9.7h4.9 c0-12.8,0-26.1,0-38.9H336.2z"
+            />
+            <path
+                fill={active ? "#FFFFFF" : fill}
+                d="M336.2,38.9c0,7.8,0,16.5,0,24.3h-4.9c0,2.4,0,7.3,0,9.7h-4.9v4.9h-4.9v4.9h-4.9v4.9c-2.4,0-7.3,0-9.7,0v4.9 c-85.8,0-187.3,0-273.1,0v-4.9c-2.4,0-7.3,0-9.7,0v-4.9h-4.9v-4.9h-4.9v-4.9H9.7c0-2.4,0-7.3,0-9.7H4.9c0-9.5,0-19.7,0-29.1h4.9 c0-2.4,0-7.3,0-9.7h4.9v-4.9h4.9v-4.9h4.9V9.7c2.4,0,7.3,0,9.7,0V4.9c85.8,0,187.3,0,273.1,0v4.9c2.4,0,7.3,0,9.7,0v4.9h4.9v4.9h4.9 v4.9h4.9c0,2.4,0,7.3,0,9.7h4.9V38.9z"
+            />
+            {showDeleteMark && (
+                <polygon
+                    fill={stroke}
+                    points="314.2,40.1 309.8,35.7 301.4,44.2 292.9,35.7 288.5,40.1 297,48.6 288.5,57 292.9,61.4 301.4,53 309.8,61.4 314.2,57 305.8,48.6"
+                />
+            )}
+        </svg>
+    )
+}
+
 export function SvgTopButton3({ style }: { style?: React.CSSProperties }) {
     return (
         <InlineSvgWrap style={style} ariaLabel="Top button 3">

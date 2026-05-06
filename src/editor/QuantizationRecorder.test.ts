@@ -209,4 +209,5 @@ describe("Quantization Recorder export pipeline", () => {
         ])
         expect(deleteFile).toHaveBeenCalledWith("audio-track.mp3")
     })
+
 })

@@ -31,6 +31,21 @@ export type ProjectSnapshotV2 = {
         }>
     }
     paletteCount?: number
+    quantizationProfile?:
+        | { kind: "extract" }
+        | {
+              kind: "fixed"
+              source: "builtin"
+              id: string
+              name: string
+          }
+        | {
+              kind: "fixed"
+              source: "imported"
+              id: string
+              name: string
+              colors: string[]
+          }
     smartObjectState?: {
         version: typeof PROJECT_SNAPSHOT_V2_SMART_REFERENCE_VERSION
         adjustments: SmartReferenceAdjustments
@@ -255,6 +270,26 @@ export function canonicalizeSnapshotV2(
     if (autoOverridesCanon) {
         canonical.autoOverrides = autoOverridesCanon
     }
+    if (s.quantizationProfile) {
+        if (s.quantizationProfile.kind === "extract") {
+            canonical.quantizationProfile = { kind: "extract" }
+        } else if (s.quantizationProfile.source === "builtin") {
+            canonical.quantizationProfile = {
+                kind: "fixed",
+                source: "builtin",
+                id: s.quantizationProfile.id,
+                name: s.quantizationProfile.name,
+            }
+        } else {
+            canonical.quantizationProfile = {
+                kind: "fixed",
+                source: "imported",
+                id: s.quantizationProfile.id,
+                name: s.quantizationProfile.name,
+                colors: [...s.quantizationProfile.colors],
+            }
+        }
+    }
 
     return canonical
 }
@@ -282,6 +317,12 @@ export function validateProjectSnapshotV2OrThrow(
         [...allowBase, "autoOverrides"].sort().join("|"),
         [...allowBase, "smartObjectState"].sort().join("|"),
         [...allowBase, "autoOverrides", "smartObjectState"].sort().join("|"),
+        [...allowBase, "quantizationProfile"].sort().join("|"),
+        [...allowBase, "autoOverrides", "quantizationProfile"].sort().join("|"),
+        [...allowBase, "smartObjectState", "quantizationProfile"].sort().join("|"),
+        [...allowBase, "autoOverrides", "smartObjectState", "quantizationProfile"]
+            .sort()
+            .join("|"),
     ])
 
     if (!allowedRootKeySets.has(keys)) {
@@ -355,6 +396,74 @@ export function validateProjectSnapshotV2OrThrow(
         }
     }
 
+    if ("quantizationProfile" in raw) {
+        const qp = raw.quantizationProfile
+        if (!isPlainObject(qp)) {
+            throw makeLoadGateError(
+                "E_PALETTE",
+                "quantizationProfile: not object"
+            )
+        }
+        if (qp.kind === "extract") {
+            assertExactKeys(qp, ["kind"], "E_PALETTE", "quantizationProfile")
+        } else if (qp.kind === "fixed") {
+            assertString(qp.source, "E_PALETTE", "quantizationProfile.source")
+            assertString(qp.id, "E_PALETTE", "quantizationProfile.id")
+            assertString(qp.name, "E_PALETTE", "quantizationProfile.name")
+            if (qp.source === "builtin") {
+                assertExactKeys(
+                    qp,
+                    ["kind", "source", "id", "name"],
+                    "E_PALETTE",
+                    "quantizationProfile"
+                )
+            } else if (qp.source === "imported") {
+                assertExactKeys(
+                    qp,
+                    ["kind", "source", "id", "name", "colors"],
+                    "E_PALETTE",
+                    "quantizationProfile"
+                )
+                if (!Array.isArray(qp.colors)) {
+                    throw makeLoadGateError(
+                        "E_PALETTE",
+                        "quantizationProfile.colors: not array"
+                    )
+                }
+                if (qp.colors.length <= 0 || qp.colors.length > 256) {
+                    throw makeLoadGateError(
+                        "E_PALETTE",
+                        "quantizationProfile.colors: invalid length"
+                    )
+                }
+                for (let i = 0; i < qp.colors.length; i++) {
+                    const color = qp.colors[i]
+                    assertString(
+                        color,
+                        "E_PALETTE",
+                        `quantizationProfile.colors[${i}]`
+                    )
+                    if (!/^#[0-9A-F]{6}$/.test(color)) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            `quantizationProfile.colors[${i}]: invalid hex`
+                        )
+                    }
+                }
+            } else {
+                throw makeLoadGateError(
+                    "E_PALETTE",
+                    "quantizationProfile.source: invalid"
+                )
+            }
+        } else {
+            throw makeLoadGateError(
+                "E_PALETTE",
+                "quantizationProfile.kind: invalid"
+            )
+        }
+    }
+
     if ("smartObjectState" in raw) {
         const so = raw.smartObjectState
         if (!isPlainObject(so)) {
@@ -396,9 +505,9 @@ export function validateProjectSnapshotV2OrThrow(
         assertFiniteNumberInRange(adj.whiteBalance, 0, 1, "E_ROOT_KEYS", "smartObjectState.adjustments.whiteBalance")
         assertFiniteNumberInRange(adj.contrast, -100, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.contrast")
         assertFiniteNumberInRange(adj.saturation, -100, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.saturation")
-        assertFiniteNumberInRange(adj.shadows, 0, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.shadows")
+        assertFiniteNumberInRange(adj.shadows, -100, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.shadows")
         assertFiniteNumberInRange(adj.midtones, -100, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.midtones")
-        assertFiniteNumberInRange(adj.highlights, 0, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.highlights")
+        assertFiniteNumberInRange(adj.highlights, -100, 100, "E_ROOT_KEYS", "smartObjectState.adjustments.highlights")
     }
 
     if ("smartObjectState" in raw && raw.ref === null) {

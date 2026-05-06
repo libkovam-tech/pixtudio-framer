@@ -294,8 +294,17 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
     const [activeId, setActiveId] = React.useState("about")
     const [navScale, setNavScale] = React.useState(1)
     const [navBox, setNavBox] = React.useState({ width: 0, height: 0 })
+    const [navHighlight, setNavHighlight] = React.useState<{
+        top: number
+        left: number
+        width: number
+        height: number
+    } | null>(null)
     const cardScrollRef = React.useRef<HTMLDivElement | null>(null)
     const navInnerRef = React.useRef<HTMLDivElement | null>(null)
+    const navItemRefs = React.useRef<Record<string, HTMLAnchorElement | null>>(
+        {}
+    )
     const sectionRefs = React.useRef<Record<string, HTMLElement | null>>({})
 
     const isNarrow = viewportWidth < 980
@@ -445,25 +454,68 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             All canvas pixels are linked to palette colors.
                         </SectionCopy>
                         <SectionCopy>
-                            Long press or right-click a color swatch to edit it.
+                            PIXTUDIO can read the colors of the same image in
+                            two different ways: it can build a palette
+                            automatically from the image, or it can apply a
+                            palette that does not come from the current image.
+                        </SectionCopy>
+                        <SectionCopy>
+                            <b>Auto Palette</b> is the default mode. It lets
+                            you control the number of colors with the Palette
+                            Size slider, from 2 to 32 colors.
+                        </SectionCopy>
+                        <SectionCopy>
+                            In Auto Palette, you can edit palette colors and add
+                            new swatches. Long press or right-click a swatch to
+                            open Swatch Edit.
                         </SectionCopy>
                         <BulletList
                             items={[
-                                "choose a new color from the spectrum",
-                                "enter a color value in #HEX format",
+                                "choose a color from the spectrum",
+                                "enter a #HEX value by hand",
                                 "make the swatch transparent",
                             ]}
                         />
                         <SectionCopy>
-                            Changing a swatch updates all linked pixels.
+                            When you apply the change, every canvas pixel linked
+                            to that swatch changes with it.
                         </SectionCopy>
                         <SectionCopy>
-                            You can add custom colors by pressing the green plus
-                            button.
+                            <b>Palette Presets</b> let you apply a different
+                            color palette to the image. Built-in presets, such
+                            as Neon, Gray, and Black/White, work as ready-made
+                            styles and do not have extra settings.
                         </SectionCopy>
                         <SectionCopy>
-                            The active color is used for drawing. Using a
-                            transparent color creates a hole in the image.
+                            Palettes loaded from images or saved project files
+                            can be edited just like an Auto Palette. Any image
+                            can be used as a palette source, including palette
+                            images from color websites, for example popular
+                            palette images from{" "}
+                            <a
+                                href="https://coolors.co/palettes/trending"
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ color: TEXT, fontWeight: 700 }}
+                            >
+                                Coolors
+                            </a>
+                            .
+                        </SectionCopy>
+                        <SectionCopy>
+                            An imported palette becomes a button named after the
+                            file and exists only during the current session. You
+                            can remove an imported or built-in palette button by
+                            pressing the cross on the right side of the button.
+                        </SectionCopy>
+                        <SectionCopy>
+                            When you save a project, PIXTUDIO stores only the
+                            palette state that is active at that moment. If Auto
+                            Palette is active, that palette is saved. If an
+                            imported palette is active, it is stored inside the
+                            project file. If a built-in preset is active, only
+                            the preset id is saved; the built-in palette is not
+                            stored as an imported palette.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -483,6 +535,12 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Use it when you want to continue working later
                             without losing the project state.
+                        </SectionCopy>
+                        <SectionCopy>
+                            A <code>.pixtudio</code> file can also be used as a
+                            palette source. In the Palette Presets tab, choose{" "}
+                            <b>Load Palette</b> and select a saved project file
+                            to import its palette into the current project.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -691,9 +749,32 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Here you can configure and create a video of the
                             pixelation process, and also add an audio track to
-                            the clip. The finished video can be published on
-                            the internet right away without additional
-                            conversion.
+                            the clip.
+                        </SectionCopy>
+                        <SectionCopy>
+                            <span
+                                style={{
+                                    display: "inline-flex",
+                                    alignItems: "flex-start",
+                                    gap: 8,
+                                }}
+                            >
+                                <SvgExportSOButton
+                                    style={{
+                                        ...ICON_INLINE,
+                                        width: 22,
+                                        height: 22,
+                                        flex: "0 0 auto",
+                                        transform: "translateY(2px)",
+                                    }}
+                                />
+                                <span>
+                                    This button saves the current video sequence
+                                    to your device as an <code>.mp4</code> file,
+                                    ready to publish online without additional
+                                    conversion.
+                                </span>
+                            </span>
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -804,40 +885,90 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
         return () => ro.disconnect()
     }, [sections, isNarrow, viewportHeight, viewportWidth])
 
-    React.useEffect(() => {
+    React.useLayoutEffect(() => {
         const root = cardScrollRef.current
         if (!root) return
 
-        const entries = Object.values(sectionRefs.current).filter(
-            (node): node is HTMLElement => !!node
-        )
-        if (entries.length === 0) return
+        let raf = 0
 
-        const observer = new IntersectionObserver(
-            (items) => {
-                const visible = items
-                    .filter((item) => item.isIntersecting)
-                    .sort(
-                        (a, b) => b.intersectionRatio - a.intersectionRatio
-                    )[0]
+        const syncActiveSection = () => {
+            if (raf) window.cancelAnimationFrame(raf)
+            raf = window.requestAnimationFrame(() => {
+                const rootRect = root.getBoundingClientRect()
+                const activationTop = rootRect.top + 6
+                const activationBottom = rootRect.bottom
 
-                const nextId =
-                    visible?.target instanceof HTMLElement
-                        ? visible.target.dataset.manualId
-                        : null
+                const visible = sections
+                    .map((section) => {
+                        const node = sectionRefs.current[section.id]
+                        if (!node) return null
+                        const rect = node.getBoundingClientRect()
+                        if (
+                            rect.bottom <= activationTop ||
+                            rect.top >= activationBottom
+                        ) {
+                            return null
+                        }
+                        return {
+                            id: section.id,
+                            top: rect.top,
+                        }
+                    })
+                    .filter(
+                        (
+                            item
+                        ): item is {
+                            id: string
+                            top: number
+                        } => item != null
+                    )
+                    .sort((a, b) => a.top - b.top)
 
-                if (nextId) setActiveId(nextId)
-            },
-            {
-                root,
-                threshold: [0.2, 0.45, 0.7],
-                rootMargin: "-8% 0px -52% 0px",
+                const nextId = visible[0]?.id
+                if (nextId) {
+                    setActiveId((prev) => (prev === nextId ? prev : nextId))
+                }
+            })
+        }
+
+        syncActiveSection()
+        root.addEventListener("scroll", syncActiveSection, { passive: true })
+        window.addEventListener("resize", syncActiveSection)
+
+        return () => {
+            if (raf) window.cancelAnimationFrame(raf)
+            root.removeEventListener("scroll", syncActiveSection)
+            window.removeEventListener("resize", syncActiveSection)
+        }
+    }, [sections, viewportHeight, viewportWidth])
+
+    React.useLayoutEffect(() => {
+        const item = navItemRefs.current[activeId]
+        if (!item) {
+            setNavHighlight(null)
+            return
+        }
+
+        const next = {
+            top: item.offsetTop - 5,
+            left: item.offsetLeft - 9,
+            width: item.offsetWidth + 18,
+            height: item.offsetHeight + 10,
+        }
+
+        setNavHighlight((prev) => {
+            if (
+                prev &&
+                Math.abs(prev.top - next.top) < 0.5 &&
+                Math.abs(prev.left - next.left) < 0.5 &&
+                Math.abs(prev.width - next.width) < 0.5 &&
+                Math.abs(prev.height - next.height) < 0.5
+            ) {
+                return prev
             }
-        )
-
-        entries.forEach((node) => observer.observe(node))
-        return () => observer.disconnect()
-    }, [sections])
+            return next
+        })
+    }, [activeId, isNarrow, navBox.height, navBox.width, navScale, sections])
 
     const scrollToSection = React.useCallback((id: string) => {
         const root = cardScrollRef.current
@@ -1033,10 +1164,32 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                 ref={navInnerRef}
                                 style={{
                                     ...navBase,
+                                    position: "relative",
                                     transform: `scale(${navScale})`,
                                     transformOrigin: "top left",
                                 }}
                             >
+                                {navHighlight ? (
+                                    <div
+                                        aria-hidden="true"
+                                        style={{
+                                            position: "absolute",
+                                            left: 0,
+                                            top: 0,
+                                            width: navHighlight.width,
+                                            height: navHighlight.height,
+                                            transform: `translate(${navHighlight.left}px, ${navHighlight.top}px)`,
+                                            background:
+                                                "rgba(0, 0, 0, 0.075)",
+                                            borderRadius: 4,
+                                            transition:
+                                                "transform 180ms ease, width 180ms ease, height 180ms ease",
+                                            pointerEvents: "none",
+                                            zIndex: 0,
+                                        }}
+                                    />
+                                ) : null}
+
                                 {isNarrow ? (
                                     <div
                                         style={{
@@ -1059,6 +1212,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     return (
                                         <a
                                             key={section.id}
+                                            ref={(node) => {
+                                                navItemRefs.current[
+                                                    section.id
+                                                ] = node
+                                            }}
                                             href={`#manual-${section.id}`}
                                             onClick={(e) => {
                                                 e.preventDefault()
@@ -1066,6 +1224,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                             }}
                                             style={{
                                                 display: "flex",
+                                                position: "relative",
+                                                zIndex: 1,
                                                 alignItems: "center",
                                                 gap: isIconRow ? 10 : 0,
                                                 marginTop: addTopGap ? 8 : 0,

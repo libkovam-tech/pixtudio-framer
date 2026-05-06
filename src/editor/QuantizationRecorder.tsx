@@ -110,7 +110,8 @@ const TEXT_LIGHT = "#ffffff"
 const TEXT_MUTED = "rgba(255,255,255,0.86)"
 const TEXT_DIM = "rgba(255,255,255,0.74)"
 const TEXT_GREEN = "#69f17c"
-const QUANTIZATION_EXPORT_DEBUG = true
+const QUANTIZATION_EXPORT_DEBUG = false
+const ENABLE_QUANTIZATION_RECORDER_SAVE_DEBUG_OVERLAY = false
 const AUDIO_FADE_SECONDS = 0.5
 const EXPORT_PROGRESS_PREP_MAX = 12
 const EXPORT_PROGRESS_PNG_MAX = 42
@@ -352,46 +353,6 @@ function getSavePickerOptionsForFilename(filename: string) {
     return pickerOpts
 }
 
-async function requestEarlySaveTarget(
-    filename: string
-): Promise<SaveFileHandleLike | null> {
-    if (typeof window === "undefined") return null
-    const savePickerWindow = window as SavePickerWindowLike
-    const canSaveAs =
-        window.isSecureContext &&
-        typeof savePickerWindow.showSaveFilePicker === "function"
-
-    if (!canSaveAs) return null
-
-    try {
-        return await savePickerWindow.showSaveFilePicker!(
-            getSavePickerOptionsForFilename(filename)
-        )
-    } catch (error: unknown) {
-        if (
-            error instanceof DOMException &&
-            error.name === "AbortError"
-        ) {
-            return null
-        }
-        throw error
-    }
-}
-
-async function writeBlobToSaveTarget(
-    handle: SaveFileHandleLike,
-    blob: Blob
-): Promise<boolean> {
-    try {
-        const writable = await handle.createWritable()
-        await writable.write(blob)
-        await writable.close()
-        return true
-    } catch {
-        return false
-    }
-}
-
 function getViewportHeightPx() {
     if (typeof document === "undefined") return 0
     const vv = typeof window !== "undefined" ? window.visualViewport : null
@@ -572,6 +533,68 @@ async function canvasToBlob(canvas: HTMLCanvasElement, type: string) {
     return await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((blob) => resolve(blob), type)
     })
+}
+
+async function requestEarlySaveTarget(
+    filename: string,
+    debugLog?: (message: string) => void
+): Promise<SaveFileHandleLike | null> {
+    if (typeof window === "undefined") return null
+    const savePickerWindow = window as SavePickerWindowLike
+    const canSaveAs =
+        window.isSecureContext &&
+        typeof savePickerWindow.showSaveFilePicker === "function"
+
+    debugLog?.(
+        `early picker env: secure=${String(
+            window.isSecureContext
+        )}, picker=${String(
+            typeof savePickerWindow.showSaveFilePicker === "function"
+        )}, canSaveAs=${String(canSaveAs)}`
+    )
+
+    if (!canSaveAs) return null
+
+    try {
+        debugLog?.("early picker: opening")
+        const handle = await savePickerWindow.showSaveFilePicker!(
+            getSavePickerOptionsForFilename(filename)
+        )
+        debugLog?.(`early picker: selected=${String(Boolean(handle))}`)
+        return handle
+    } catch (error: unknown) {
+        debugLog?.(
+            `early picker: error name=${
+                error instanceof Error ? error.name : "-"
+            } message=${error instanceof Error ? error.message : "-"}`
+        )
+        if (error instanceof DOMException && error.name === "AbortError") {
+            return null
+        }
+        throw error
+    }
+}
+
+async function writeBlobToSaveTarget(
+    handle: SaveFileHandleLike,
+    blob: Blob,
+    debugLog?: (message: string) => void
+): Promise<boolean> {
+    try {
+        debugLog?.(`early picker write: start size=${blob.size}`)
+        const writable = await handle.createWritable()
+        await writable.write(blob)
+        await writable.close()
+        debugLog?.("early picker write: ok")
+        return true
+    } catch (error: unknown) {
+        debugLog?.(
+            `early picker write: error name=${
+                error instanceof Error ? error.name : "-"
+            } message=${error instanceof Error ? error.message : "-"}`
+        )
+        return false
+    }
 }
 
 function drawFrameIntoCanvas(
@@ -814,6 +837,15 @@ export default function QuantizationRecorder({
         null
     )
     const [alertMessage, setAlertMessage] = React.useState<string | null>(null)
+    const [saveDebugLines, setSaveDebugLines] = React.useState<string[]>([])
+
+    const saveDebugLog = React.useCallback((message: string) => {
+        if (!ENABLE_QUANTIZATION_RECORDER_SAVE_DEBUG_OVERLAY) return
+        const stamp = new Date().toLocaleTimeString()
+        setSaveDebugLines((prev) =>
+            [...prev, `${stamp} ${message}`].slice(-12)
+        )
+    }, [])
 
     const showGenericAlert = React.useCallback(() => {
         setAlertMessage("generic")
@@ -1303,7 +1335,11 @@ export default function QuantizationRecorder({
         let earlySaveHandle: SaveFileHandleLike | null = null
         try {
             const expectedFilename = getExportFilename()
-            earlySaveHandle = await requestEarlySaveTarget(expectedFilename)
+            saveDebugLog(`mp4 save start: ${expectedFilename}`)
+            earlySaveHandle = await requestEarlySaveTarget(
+                expectedFilename,
+                saveDebugLog
+            )
             if (
                 typeof window !== "undefined" &&
                 window.isSecureContext &&
@@ -1311,6 +1347,7 @@ export default function QuantizationRecorder({
                     "function" &&
                 !earlySaveHandle
             ) {
+                saveDebugLog("early picker: cancelled, export aborted")
                 return
             }
 
@@ -1352,6 +1389,16 @@ export default function QuantizationRecorder({
                 : undefined
             if (!allFrames || allFrames.length !== steps.length) {
                 throw new Error("Not all frames are ready for export yet.")
+            }
+
+            const exportVideoDurationSec = totalDurationSec
+
+            exportEncodeRef.current = {
+                ...exportEncodeRef.current,
+                totalFrames: Math.max(
+                    1,
+                    Math.round(exportVideoDurationSec * EXPORT_FPS)
+                ),
             }
 
             updateExportStatus("Preparing export...", EXPORT_PROGRESS_PREP_MAX)
@@ -1399,8 +1446,8 @@ export default function QuantizationRecorder({
                 const ffmpegProgress =
                     Number.isFinite(progress) && progress > 0
                         ? progress
-                        : totalDurationSec > 0
-                          ? time / totalDurationSec
+                        : exportVideoDurationSec > 0
+                          ? time / exportVideoDurationSec
                           : 0
                 updateExportStatus(
                     exportStageRef.current,
@@ -1422,18 +1469,27 @@ export default function QuantizationRecorder({
             ffmpeg.on("progress", progressListener)
 
             const pngFrames: RecorderExportPngFrame[] = []
-            for (let i = 0; i < allFrames.length; i++) {
+            const pushPngFrame = async (
+                frame: GeneratedRecorderFrame,
+                name: string
+            ) => {
                 const pngCanvas = document.createElement("canvas")
-                drawFrameIntoCanvas(pngCanvas, allFrames[i], previewTargetSize)
+                drawFrameIntoCanvas(pngCanvas, frame, previewTargetSize)
                 const pngBlob = await canvasToBlob(pngCanvas, "image/png")
                 if (!pngBlob) {
                     throw new Error("A frame could not be encoded as PNG.")
                 }
-
                 pngFrames.push({
-                    name: `frame-${String(i).padStart(5, "0")}.png`,
+                    name,
                     bytes: new Uint8Array(await pngBlob.arrayBuffer()),
                 })
+            }
+
+            for (let i = 0; i < allFrames.length; i++) {
+                await pushPngFrame(
+                    allFrames[i],
+                    `frame-${String(i).padStart(5, "0")}.png`
+                )
                 updateExportStatus(
                     "Preparing export...",
                     mapRangeProgress(
@@ -1469,7 +1525,7 @@ export default function QuantizationRecorder({
                 pngFrames,
                 frameDurationSec: stepDurationSec,
                 fps: EXPORT_FPS,
-                videoDurationSec: totalDurationSec,
+                videoDurationSec: exportVideoDurationSec,
                 onStageChange: (stage: string) => {
                     updateExportStatus(
                         stage,
@@ -1509,10 +1565,15 @@ export default function QuantizationRecorder({
 
             updateExportStatus("Finalizing file...", 99, { immediate: true })
             const wroteToPickedTarget = earlySaveHandle
-                ? await writeBlobToSaveTarget(earlySaveHandle, outputBlob)
+                ? await writeBlobToSaveTarget(
+                      earlySaveHandle,
+                      outputBlob,
+                      saveDebugLog
+                  )
                 : false
 
             if (!wroteToPickedTarget) {
+                saveDebugLog("early picker unavailable/write failed: seed.saveBlob")
                 await seed.saveBlob(
                     async () => outputBlob,
                     exportResult.filename
@@ -1547,10 +1608,11 @@ export default function QuantizationRecorder({
         audioTrackFile,
         previewTargetSize,
         safeDurationSeconds,
+        saveDebugLog,
         seed,
         stepDurationSec,
+        steps,
         totalDurationSec,
-        steps.length,
         setPlainStatus,
         showGenericAlert,
         updateExportStatus,
@@ -2144,6 +2206,38 @@ export default function QuantizationRecorder({
                     onClose={() => setAlertMessage(null)}
                 />
             )}
+
+            {ENABLE_QUANTIZATION_RECORDER_SAVE_DEBUG_OVERLAY &&
+                saveDebugLines.length > 0 && (
+                    <div
+                        style={{
+                            position: "fixed",
+                            left: 8,
+                            bottom: 8,
+                            zIndex: 40000,
+                            maxWidth: "calc(100vw - 16px)",
+                            maxHeight: "42vh",
+                            overflow: "auto",
+                            padding: "8px 10px",
+                            boxSizing: "border-box",
+                            border: "1px solid rgba(255,255,255,0.55)",
+                            background: "rgba(0,0,0,0.84)",
+                            color: "#ffffff",
+                            fontFamily: "Consolas, Menlo, Monaco, monospace",
+                            fontSize: 11,
+                            lineHeight: 1.35,
+                            pointerEvents: "none",
+                            whiteSpace: "pre-wrap",
+                        }}
+                    >
+                        <div style={{ fontWeight: 900 }}>
+                            QR SAVE DEBUG
+                        </div>
+                        {saveDebugLines.map((line, index) => (
+                            <div key={`${index}-${line}`}>{line}</div>
+                        ))}
+                    </div>
+                )}
         </>
     )
 }

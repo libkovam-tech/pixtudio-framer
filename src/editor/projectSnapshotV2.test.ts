@@ -71,6 +71,29 @@ describe("ProjectSnapshotV2 invariants", () => {
         expect(twice).toEqual(once)
     })
 
+    it("preserves the active built-in preset marker when present", () => {
+        const snapshot: ProjectSnapshotV2 = {
+            ...canonicalProject(),
+            quantizationProfile: {
+                kind: "fixed",
+                source: "builtin",
+                id: "neon-cold-32",
+                name: "NEON",
+            },
+        }
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(true)
+        if (!parsed.ok) return
+        expect(parsed.canonical.quantizationProfile).toEqual({
+            kind: "fixed",
+            source: "builtin",
+            id: "neon-cold-32",
+            name: "NEON",
+        })
+    })
+
     it("rejects malformed saved payloads without accepting partial state", () => {
         const malformed = {
             ...canonicalProject(),

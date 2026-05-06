@@ -17,7 +17,7 @@ export const SMART_REFERENCE_VERSION_1 = 1 as const
 export type ReferenceSnapshotEnvelope = {
     snapshot: ImageData | null
     revision: number
-    kind: "import" | "load" | "smart-object-apply"
+    kind: "import" | "load" | "smart-object-apply" | "smart-object-history-restore"
 }
 
 export type SmartObjectCommittedState = {
@@ -143,6 +143,50 @@ const SMART_UI_BUTTON_ANIM_CSS = `
     }
 }
 `
+
+const SMART_SLIDER_MAGNET_PCT = 0.035
+
+function snapToDefaultValue(params: {
+    value: number
+    min: number
+    max: number
+    defaultValue: number
+    magnetPct?: number
+}): number {
+    const range = params.max - params.min
+    if (!Number.isFinite(params.value) || range <= 0) return params.defaultValue
+    const magnet = range * (params.magnetPct ?? SMART_SLIDER_MAGNET_PCT)
+    return Math.abs(params.value - params.defaultValue) <= magnet
+        ? params.defaultValue
+        : params.value
+}
+
+function smartAdjustmentDefaultValue(
+    key: keyof SmartReferenceAdjustments
+): number {
+    return ZERO_SMART_REFERENCE_ADJUSTMENTS[key]
+}
+
+function snapSmartAdjustmentValue(
+    key: keyof SmartReferenceAdjustments,
+    value: number
+): number {
+    if (key === "whiteBalance") {
+        return snapToDefaultValue({
+            value,
+            min: 0,
+            max: 1,
+            defaultValue: smartAdjustmentDefaultValue(key),
+        })
+    }
+
+    return snapToDefaultValue({
+        value,
+        min: -100,
+        max: 100,
+        defaultValue: smartAdjustmentDefaultValue(key),
+    })
+}
 
 const RANGE_CIRCLE_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 134 134">
@@ -354,7 +398,7 @@ function applySaturationToPixel(
     ]
 }
 
-function applyToneShapeToPixel(
+function applyTonalExposureBandsToPixel(
     r: number,
     g: number,
     b: number,
@@ -362,42 +406,38 @@ function applyToneShapeToPixel(
     rawMidtones: number,
     rawHighlights: number
 ): [number, number, number] {
-    const shadows = clamp01(rawShadows / 100)
-    const midtones = clampSignedUnit(rawMidtones / 100)
-    const highlights = clamp01(rawHighlights / 100)
+    const shadows = normalizeExposure(rawShadows)
+    const midtones = normalizeExposure(rawMidtones)
+    const highlights = normalizeExposure(rawHighlights)
 
-    if (shadows <= 1e-6 && Math.abs(midtones) <= 1e-6 && highlights <= 1e-6) {
+    if (
+        Math.abs(shadows) <= 1e-6 &&
+        Math.abs(midtones) <= 1e-6 &&
+        Math.abs(highlights) <= 1e-6
+    ) {
         return [r, g, b]
     }
 
-    let rl = srgbChannelToLinear01(r)
-    let gl = srgbChannelToLinear01(g)
-    let bl = srgbChannelToLinear01(b)
+    const luma =
+        REC709_LUMA[0] * (r / 255) +
+        REC709_LUMA[1] * (g / 255) +
+        REC709_LUMA[2] * (b / 255)
 
-    const luma = REC709_LUMA[0] * rl + REC709_LUMA[1] * gl + REC709_LUMA[2] * bl
+    const shadowMask = 1 - smoothstep(0, 0.3, luma)
+    const midtoneMask =
+        smoothstep(0, 0.3, luma) * (1 - smoothstep(0.75, 1, luma))
+    const highlightMask = smoothstep(0.75, 1, luma)
 
-    const shadowMask = 1 - smoothstep(0.16, 0.42, luma)
-    const highlightMask = smoothstep(0.42, 0.82, luma)
+    const tonalExposure =
+        shadows * shadowMask + midtones * midtoneMask + highlights * highlightMask
 
-    const midLow = smoothstep(0.12, 0.45, luma)
-    const midHigh = 1 - smoothstep(0.55, 0.88, luma)
-    const midtoneMask = clamp01(midLow * midHigh)
+    if (Math.abs(tonalExposure) <= 1e-6) {
+        return [r, g, b]
+    }
 
-    const shadowDelta = shadows * shadowMask * 0.28
-    const midtoneDelta = midtones * midtoneMask * 0.18
-    const highlightDelta = -highlights * highlightMask * 0.34
+    const gain = Math.pow(2, tonalExposure)
 
-    const totalDelta = shadowDelta + midtoneDelta + highlightDelta
-
-    rl = clamp01(rl + totalDelta)
-    gl = clamp01(gl + totalDelta)
-    bl = clamp01(bl + totalDelta)
-
-    return [
-        linearChannel01ToSrgb255(rl),
-        linearChannel01ToSrgb255(gl),
-        linearChannel01ToSrgb255(bl),
-    ]
+    return [clamp255(r * gain), clamp255(g * gain), clamp255(b * gain)]
 }
 
 type Mat3 = readonly [
@@ -429,8 +469,6 @@ type WhiteBalanceTransform = {
     anchorReference: SmartObjectWhitePoint
     targetKelvin: number
 }
-
-type ToneThumbKey = "shadows" | "midtones" | "highlights"
 
 const WB_PERCEPTUAL_GAMMA = 0.68
 const WB_PERCEPTUAL_ROLLOFF = 1.2
@@ -1310,7 +1348,7 @@ export function buildReferenceSnapshot(
     // 2) ZERO adjustments обязаны давать exact copy
     // 3) Contrast = 0 не меняет текущий pixel pipeline
     // 4) Saturation = 0 не меняет текущий pixel pipeline
-    // 5) Tone Shape zeros не меняют текущий pixel pipeline
+    // 5) Tonal exposure band zeros do not change the current pixel pipeline
     if (areZeroSmartAdjustments(adjustments)) {
         return new ImageData(
             new Uint8ClampedArray(base.data),
@@ -1361,7 +1399,7 @@ export function buildReferenceSnapshot(
             adjustments.saturation
         )
 
-        const [toneR, toneG, toneB] = applyToneShapeToPixel(
+        const [toneR, toneG, toneB] = applyTonalExposureBandsToPixel(
             saturatedR,
             saturatedG,
             saturatedB,
@@ -1522,120 +1560,6 @@ const WB_THUMB: React.CSSProperties = buildMaskedThumbStyle(
     },
     "#f3f3f3"
 )
-
-const TONE_PANEL: React.CSSProperties = {
-    width: "100%",
-    border: "1px solid rgba(255,255,255,0.35)",
-    boxSizing: "border-box",
-}
-
-const TONE_TOGGLE: React.CSSProperties = {
-    width: "100%",
-    minHeight: 48,
-    border: "0",
-    background: "transparent",
-    color: "#ffffff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0 16px",
-    boxSizing: "border-box",
-    fontSize: 14,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    cursor: "pointer",
-}
-
-const TONE_TOGGLE_LEFT: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-}
-
-const TONE_CHEVRON: React.CSSProperties = {
-    fontSize: 18,
-    lineHeight: 1,
-    color: "#ffffff",
-}
-
-const TONE_BODY: React.CSSProperties = {
-    padding: "0 16px 14px",
-    boxSizing: "border-box",
-}
-
-const TONE_LABEL_ROW: React.CSSProperties = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: 700,
-    textTransform: "uppercase",
-}
-
-const TONE_TRACK_AREA: React.CSSProperties = {
-    position: "relative",
-    width: "calc(100% - 32px)",
-    marginLeft: 16,
-    marginRight: 16,
-    height: 46,
-    marginBottom: 14,
-}
-
-const TONE_TRACK_LINE: React.CSSProperties = {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: "50%",
-    height: 6,
-    transform: "translateY(-50%)",
-    background: "rgba(255,255,255,0.22)",
-}
-
-const TONE_CENTER_MARK: React.CSSProperties = {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    width: 2,
-    height: 28,
-    background: "#ffffff",
-    transform: "translate(-50%, -50%)",
-    pointerEvents: "none",
-}
-
-const TONE_THUMB: React.CSSProperties = buildMaskedThumbStyle(
-    {
-        position: "absolute",
-        top: "50%",
-        width: 28,
-        height: 28,
-        border: "0",
-        padding: 0,
-        margin: 0,
-        transform: "translate(-50%, -50%)",
-        cursor: "grab",
-        touchAction: "none",
-    },
-    "#f3f3f3"
-)
-
-const TONE_RESET_ROW: React.CSSProperties = {
-    display: "flex",
-    justifyContent: "flex-end",
-}
-
-const TONE_RESET_BUTTON: React.CSSProperties = {
-    border: "0",
-    background: "transparent",
-    color: "#ff244f",
-    fontSize: 13,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    padding: 0,
-    margin: 0,
-    cursor: "pointer",
-}
 
 const BUTTON_ROW: React.CSSProperties = {
     display: "flex",
@@ -1897,13 +1821,9 @@ export function SmartReferenceEditor({
     })
 
     const previewCanvasRef = React.useRef<HTMLCanvasElement | null>(null)
-    const toneTrackRef = React.useRef<HTMLDivElement | null>(null)
     const lastHandledLoadPublishNonceRef = React.useRef(0)
 
     const [fitScale, setFitScale] = React.useState(1)
-
-    const [isToneShapeOpen, setIsToneShapeOpen] = React.useState(false)
-    const activeToneThumbRef = React.useRef<ToneThumbKey | null>(null)
 
     const effectiveAdjustments = smartAdjustments
 
@@ -2060,6 +1980,24 @@ export function SmartReferenceEditor({
 
                 // UI при restore тоже должен синхронизироваться с committed-state.
                 setSmartAdjustments({ ...safeState.adjustments })
+
+                if (onPublishEnvelope) {
+                    const base = smartObjectBaseRef.current
+                    const snapshot = buildReferenceSnapshot(
+                        base,
+                        safeState.adjustments,
+                        deriveEffectiveWhiteBalanceDomainState(
+                            safeState.adjustments.whiteBalance,
+                            whiteBalanceDomainState
+                        )
+                    )
+
+                    onPublishEnvelope({
+                        snapshot,
+                        revision: safeState.revision,
+                        kind: "smart-object-history-restore",
+                    })
+                }
             },
             importBakedBase: (base) => {
                 resetSmartObjectSession(
@@ -2089,7 +2027,12 @@ export function SmartReferenceEditor({
         return () => {
             onSmartObjectCommittedStateBridgeReady(null)
         }
-    }, [onSmartObjectCommittedStateBridgeReady, resetSmartObjectSession])
+    }, [
+        onSmartObjectCommittedStateBridgeReady,
+        onPublishEnvelope,
+        resetSmartObjectSession,
+        whiteBalanceDomainState,
+    ])
 
     React.useEffect(() => {
         if (!onPublishEnvelope) return
@@ -2152,116 +2095,22 @@ export function SmartReferenceEditor({
     const handleAdjustmentChange = React.useCallback(
         (key: keyof SmartReferenceAdjustments) =>
             (e: React.ChangeEvent<HTMLInputElement>) => {
-                const next = Number(e.target.value)
+                const rawNext = Number(e.target.value)
+                const next = Number.isFinite(rawNext)
+                    ? snapSmartAdjustmentValue(key, rawNext)
+                    : smartAdjustmentDefaultValue(key)
 
                 setSmartAdjustments((prev) => ({
                     ...(prev ?? ZERO_SMART_REFERENCE_ADJUSTMENTS),
-                    [key]: Number.isFinite(next) ? next : 0,
+                    [key]: next,
                 }))
             },
-        []
-    )
-
-    const handleToneShapeToggle = React.useCallback(() => {
-        setIsToneShapeOpen((prev) => !prev)
-    }, [])
-
-    const handleToneShapeReset = React.useCallback(() => {
-        setSmartAdjustments((prev) => ({
-            ...(prev ?? ZERO_SMART_REFERENCE_ADJUSTMENTS),
-            shadows: 0,
-            midtones: 0,
-            highlights: 0,
-        }))
-    }, [])
-
-    const updateToneThumbFromClientX = React.useCallback(
-        (key: ToneThumbKey, clientX: number) => {
-            const track = toneTrackRef.current
-            if (!track) return
-
-            const rect = track.getBoundingClientRect()
-            if (rect.width <= 0) return
-
-            const rawT = (clientX - rect.left) / rect.width
-            const t = Math.max(0, Math.min(1, rawT))
-
-            setSmartAdjustments((prev) => {
-                const base = prev ?? ZERO_SMART_REFERENCE_ADJUSTMENTS
-
-                if (key === "shadows") {
-                    const next = Math.round(
-                        Math.max(0, Math.min(1, t * 2)) * 100
-                    )
-                    return { ...base, shadows: next }
-                }
-
-                if (key === "midtones") {
-                    const next = Math.round((t * 2 - 1) * 100)
-                    return {
-                        ...base,
-                        midtones: Math.max(-100, Math.min(100, next)),
-                    }
-                }
-
-                const next = Math.round(
-                    (1 - Math.max(0, Math.min(1, (t - 0.5) * 2))) * 100
-                )
-                return {
-                    ...base,
-                    highlights: Math.max(0, Math.min(100, next)),
-                }
-            })
-        },
-        []
-    )
-
-    const handleToneThumbPointerDown = React.useCallback(
-        (key: ToneThumbKey) => (e: React.PointerEvent<HTMLButtonElement>) => {
-            activeToneThumbRef.current = key
-            e.currentTarget.setPointerCapture(e.pointerId)
-            updateToneThumbFromClientX(key, e.clientX)
-        },
-        [updateToneThumbFromClientX]
-    )
-
-    const handleToneThumbPointerMove = React.useCallback(
-        (key: ToneThumbKey) => (e: React.PointerEvent<HTMLButtonElement>) => {
-            if (activeToneThumbRef.current !== key) return
-            updateToneThumbFromClientX(key, e.clientX)
-        },
-        [updateToneThumbFromClientX]
-    )
-
-    const handleToneThumbPointerEnd = React.useCallback(
-        (key: ToneThumbKey) => (e: React.PointerEvent<HTMLButtonElement>) => {
-            if (activeToneThumbRef.current === key) {
-                activeToneThumbRef.current = null
-            }
-
-            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                e.currentTarget.releasePointerCapture(e.pointerId)
-            }
-        },
         []
     )
 
     const whiteBalancePct = Math.max(
         0,
         Math.min(100, effectiveAdjustments.whiteBalance * 100)
-    )
-
-    const shadowPct = Math.max(
-        0,
-        Math.min(50, (effectiveAdjustments.shadows / 100) * 50)
-    )
-    const midPct = Math.max(
-        0,
-        Math.min(100, 50 + (effectiveAdjustments.midtones / 100) * 50)
-    )
-    const highlightsPct = Math.max(
-        50,
-        Math.min(100, 100 - (effectiveAdjustments.highlights / 100) * 50)
     )
 
     const bottomButtonsCompensationScale = fitScale > 1e-6 ? 1 / fitScale : 1
@@ -2451,7 +2300,7 @@ export function SmartReferenceEditor({
 
                         <div style={CONTROL_BLOCK}>
                             <p style={CONTROL_LABEL}>
-                                CONTRAST: {effectiveAdjustments.contrast}
+                                HIGHLIGHTS: {effectiveAdjustments.highlights}
                             </p>
                             <input
                                 className="soRange"
@@ -2459,8 +2308,40 @@ export function SmartReferenceEditor({
                                 min={-100}
                                 max={100}
                                 step={1}
-                                value={effectiveAdjustments.contrast}
-                                onChange={handleAdjustmentChange("contrast")}
+                                value={effectiveAdjustments.highlights}
+                                onChange={handleAdjustmentChange("highlights")}
+                                style={RANGE_INPUT}
+                            />
+                        </div>
+
+                        <div style={CONTROL_BLOCK}>
+                            <p style={CONTROL_LABEL}>
+                                MIDTONES: {effectiveAdjustments.midtones}
+                            </p>
+                            <input
+                                className="soRange"
+                                type="range"
+                                min={-100}
+                                max={100}
+                                step={1}
+                                value={effectiveAdjustments.midtones}
+                                onChange={handleAdjustmentChange("midtones")}
+                                style={RANGE_INPUT}
+                            />
+                        </div>
+
+                        <div style={CONTROL_BLOCK}>
+                            <p style={CONTROL_LABEL}>
+                                SHADOWS: {effectiveAdjustments.shadows}
+                            </p>
+                            <input
+                                className="soRange"
+                                type="range"
+                                min={-100}
+                                max={100}
+                                step={1}
+                                value={effectiveAdjustments.shadows}
+                                onChange={handleAdjustmentChange("shadows")}
                                 style={RANGE_INPUT}
                             />
                         </div>
@@ -2533,115 +2414,6 @@ export function SmartReferenceEditor({
                             </div>
                         </div>
 
-                        <div style={TONE_PANEL}>
-                            <button
-                                type="button"
-                                onClick={handleToneShapeToggle}
-                                aria-label="Tone Shape"
-                                style={TONE_TOGGLE}
-                            >
-                                <span style={TONE_TOGGLE_LEFT}>
-                                    <span>TONE SHAPE</span>
-                                </span>
-                                <span style={TONE_CHEVRON}>
-                                    {isToneShapeOpen ? "▴" : "▾"}
-                                </span>
-                            </button>
-
-                            {isToneShapeOpen && (
-                                <div style={TONE_BODY}>
-                                    <div style={TONE_LABEL_ROW}>
-                                        <span>SHADOWS</span>
-                                        <span>MID (BALANCE)</span>
-                                        <span>HIGHLIGHTS</span>
-                                    </div>
-
-                                    <div
-                                        ref={toneTrackRef}
-                                        style={TONE_TRACK_AREA}
-                                    >
-                                        <div style={TONE_TRACK_LINE} />
-                                        <div style={TONE_CENTER_MARK} />
-
-                                        <button
-                                            type="button"
-                                            aria-label="Shadows"
-                                            onPointerDown={handleToneThumbPointerDown(
-                                                "shadows"
-                                            )}
-                                            onPointerMove={handleToneThumbPointerMove(
-                                                "shadows"
-                                            )}
-                                            onPointerUp={handleToneThumbPointerEnd(
-                                                "shadows"
-                                            )}
-                                            onPointerCancel={handleToneThumbPointerEnd(
-                                                "shadows"
-                                            )}
-                                            style={{
-                                                ...TONE_THUMB,
-                                                left: `${shadowPct}%`,
-                                                zIndex: 1,
-                                            }}
-                                        />
-
-                                        <button
-                                            type="button"
-                                            aria-label="Midtones"
-                                            onPointerDown={handleToneThumbPointerDown(
-                                                "midtones"
-                                            )}
-                                            onPointerMove={handleToneThumbPointerMove(
-                                                "midtones"
-                                            )}
-                                            onPointerUp={handleToneThumbPointerEnd(
-                                                "midtones"
-                                            )}
-                                            onPointerCancel={handleToneThumbPointerEnd(
-                                                "midtones"
-                                            )}
-                                            style={{
-                                                ...TONE_THUMB,
-                                                left: `${midPct}%`,
-                                                zIndex: 2,
-                                            }}
-                                        />
-
-                                        <button
-                                            type="button"
-                                            aria-label="Highlights"
-                                            onPointerDown={handleToneThumbPointerDown(
-                                                "highlights"
-                                            )}
-                                            onPointerMove={handleToneThumbPointerMove(
-                                                "highlights"
-                                            )}
-                                            onPointerUp={handleToneThumbPointerEnd(
-                                                "highlights"
-                                            )}
-                                            onPointerCancel={handleToneThumbPointerEnd(
-                                                "highlights"
-                                            )}
-                                            style={{
-                                                ...TONE_THUMB,
-                                                left: `${highlightsPct}%`,
-                                                zIndex: 1,
-                                            }}
-                                        />
-                                    </div>
-
-                                    <div style={TONE_RESET_ROW}>
-                                        <button
-                                            type="button"
-                                            onClick={handleToneShapeReset}
-                                            style={TONE_RESET_BUTTON}
-                                        >
-                                            RESET
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
                     </div>
 
                     {/* Smart Object bottom action row:

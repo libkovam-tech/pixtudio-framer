@@ -29,15 +29,18 @@ export type RecorderExportResult = {
 
 const MP4_UPSCALE_FACTOR = 4
 
-function buildConcatManifest(frameNames: string[], frameDurationSec: number) {
-    if (frameNames.length <= 0) return ""
+function buildConcatManifest(
+    frames: Array<{ name: string }>,
+    frameDurationSec: number
+) {
+    if (frames.length <= 0) return ""
     const safeDuration = Math.max(0.001, frameDurationSec)
     const lines: string[] = []
-    for (const name of frameNames) {
-        lines.push(`file '${name}'`)
+    for (const frame of frames) {
+        lines.push(`file '${frame.name}'`)
         lines.push(`duration ${safeDuration.toFixed(6)}`)
     }
-    lines.push(`file '${frameNames[frameNames.length - 1]}'`)
+    lines.push(`file '${frames[frames.length - 1].name}'`)
     return lines.join("\n")
 }
 
@@ -110,12 +113,7 @@ export async function runQuantizationExportPipeline(params: {
     })
     await ffmpeg.writeFile(
         manifestName,
-        textEncoder.encode(
-            buildConcatManifest(
-                pngFrames.map((frame) => frame.name),
-                frameDurationSec
-            )
-        )
+        textEncoder.encode(buildConcatManifest(pngFrames, frameDurationSec))
     )
 
     if (!enableMp4Conversion) {
