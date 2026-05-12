@@ -8,6 +8,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    '.codex-backups/**',
     'tools/ffmpeg-core-custom/upstream/**',
     'tools/ffmpeg-core-custom/output/**',
   ]),
