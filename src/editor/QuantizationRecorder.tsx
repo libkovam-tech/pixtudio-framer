@@ -20,6 +20,7 @@ import {
     buildRecorderSteps,
     type DirectionMode,
 } from "./QuantizationRecorder.steps.ts"
+import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 type FrozenSwatch = {
     id: string
@@ -151,12 +152,12 @@ const SMART_UI_BUTTON_ANIM_CSS = `
 
 .pxUiAnim:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.05);
-    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.22));
+    filter: drop-shadow(0 6px 10px rgba(${PIXTUDIO_INK_RGB}, 0.22));
 }
 
 .pxUiAnim:active:not(:disabled) {
     transform: translateY(1px) scale(0.97);
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18));
+    filter: drop-shadow(0 1px 2px rgba(${PIXTUDIO_INK_RGB}, 0.18));
 }
 
 .pxUiAnim:disabled {
@@ -278,7 +279,7 @@ const SMART_UI_BUTTON_ANIM_CSS = `
     content: "";
     position: absolute;
     inset: 6px;
-    background: #000000;
+    background: var(--pixtudio-ink);
     border-radius: 999px;
 }
 
@@ -286,8 +287,8 @@ const SMART_UI_BUTTON_ANIM_CSS = `
     width: 8px;
     height: 16px;
     background: transparent;
-    border-right: 5px solid #000000;
-    border-bottom: 5px solid #000000;
+    border-right: 5px solid var(--pixtudio-ink);
+    border-bottom: 5px solid var(--pixtudio-ink);
     border-radius: 0;
     inset: auto;
     left: 50%;
@@ -706,7 +707,7 @@ function QuantizationRecorderAlert({
                                     fontWeight: 900,
                                     letterSpacing: 1,
                                     textAlign: "center",
-                                    color: "black",
+                                    color: PIXTUDIO_INK,
                                 }}
                             >
                                 SOMETHING WENT WRONG
@@ -717,7 +718,7 @@ function QuantizationRecorderAlert({
                                     lineHeight: 1,
                                     fontWeight: 400,
                                     textAlign: "center",
-                                    color: "black",
+                                    color: PIXTUDIO_INK,
                                 }}
                             >
                                 Please try again
@@ -2221,7 +2222,7 @@ export default function QuantizationRecorder({
                             padding: "8px 10px",
                             boxSizing: "border-box",
                             border: "1px solid rgba(255,255,255,0.55)",
-                            background: "rgba(0,0,0,0.84)",
+                            background: pixtudioInk(0.84),
                             color: "#ffffff",
                             fontFamily: "Consolas, Menlo, Monaco, monospace",
                             fontSize: 11,

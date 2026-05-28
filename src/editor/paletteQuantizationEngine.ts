@@ -115,6 +115,19 @@ export const GRAYSCALE_32: string[] = [
 
 export const BLACK_WHITE_2: string[] = ["#000000", "#FFFFFF"]
 
+export const SUNSET_10: string[] = [
+    "#001219",
+    "#005F73",
+    "#0A9396",
+    "#94D2BD",
+    "#E9D8A6",
+    "#EE9B00",
+    "#CA6702",
+    "#BB3E03",
+    "#AE2012",
+    "#9B2226",
+]
+
 export const QUANTIZATION_PROFILES = {
     extract: EXTRACT_QUANTIZATION_PROFILE,
     neon: {
@@ -123,6 +136,13 @@ export const QUANTIZATION_PROFILES = {
         name: "NEON",
         source: "builtin",
         colors: NEON_COLD_32,
+    },
+    sunset: {
+        kind: "fixed",
+        id: "sunset-10",
+        name: "SUNSET",
+        source: "builtin",
+        colors: SUNSET_10,
     },
     grayscale: {
         kind: "fixed",
@@ -299,9 +319,10 @@ export function quantizeWithFixedProfile(
 
 export function extractPalette(
     pixels: QuantizationPixel[][],
-    targetColors: number
+    targetColors: number,
+    options: { excludedColors?: string[] } = {}
 ): { pixels: QuantizationPixel[][]; palette: string[] } {
-    return extractPaletteOklabTournament(pixels, targetColors)
+    return extractPaletteOklabTournament(pixels, targetColors, options)
     // RGB baseline rollback: return extractPaletteRgbBaseline(pixels, targetColors)
 }
 
@@ -457,13 +478,16 @@ export function buildDerivedWorld<TPixel extends string | null>(params: {
     previousSwatches: QuantizationSwatch[]
     userSwatches: QuantizationSwatch[]
     paletteCountTarget: number
+    excludedColors?: string[]
     makeAutoSwatchId?: (index: number) => string
 }): DerivedWorld<TPixel> {
     const makeAutoSwatchId =
         params.makeAutoSwatchId ?? ((index: number) => `auto-${index}`)
     const result =
         params.profile.kind === "extract"
-            ? extractPalette(params.sourcePixels, params.paletteCountTarget)
+            ? extractPalette(params.sourcePixels, params.paletteCountTarget, {
+                  excludedColors: params.excludedColors,
+              })
             : {
               pixels: quantizeWithFixedProfile(
                   params.sourcePixels,

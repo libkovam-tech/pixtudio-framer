@@ -48,31 +48,90 @@
       content="PIXTUDIO preview showing photo-to-pixel-art conversion"
     />
 
+    <script>
+      document.documentElement.classList.add("pixtudio-js")
+    </script>
+    <style>
+      html.pixtudio-js body {
+        background: #e9d8a6;
+      }
+
+      html.pixtudio-js #root > #pixtudio-prerender-styles,
+      html.pixtudio-js #root > .prerenderPage {
+        display: none !important;
+      }
+    </style>
+
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "PIXTUDIO",
-        "url": "https://pixtudio.app/",
-        "image": "https://pixtudio.app/og-image.jpg",
-        "description": "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, SVG export, and MP4 process recording.",
-        "applicationCategory": "DesignApplication",
-        "operatingSystem": "Web",
-        "browserRequirements": "Requires a modern web browser.",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        },
-        "featureList": [
-          "Turn photos into pixel art",
-          "Live grid and palette controls",
-          "Manual pixel drawing",
-          "Import palettes from images",
-          "SVG export",
-          "PNG export",
-          "MP4 process recording",
-          "Project saving"
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://pixtudio.app/#organization",
+            "name": "PIXTUDIO",
+            "url": "https://pixtudio.app/",
+            "email": "support@pixtudio.app",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://pixtudio.app/logo-pixtudio.png",
+              "contentUrl": "https://pixtudio.app/logo-pixtudio.png",
+              "width": 4116,
+              "height": 1186
+            },
+            "contactPoint": {
+              "@type": "ContactPoint",
+              "email": "support@pixtudio.app",
+              "contactType": "customer support",
+              "availableLanguage": "en"
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://pixtudio.app/#website",
+            "name": "PIXTUDIO",
+            "url": "https://pixtudio.app/",
+            "inLanguage": "en",
+            "publisher": {
+              "@id": "https://pixtudio.app/#organization"
+            }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://pixtudio.app/#software",
+            "name": "PIXTUDIO",
+            "url": "https://pixtudio.app/",
+            "image": "https://pixtudio.app/og-image.jpg",
+            "description": "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, SVG export, and MP4 process recording.",
+            "applicationCategory": "DesignApplication",
+            "applicationSubCategory": "Pixel art editor",
+            "operatingSystem": "Web",
+            "browserRequirements": "Requires a modern web browser.",
+            "isAccessibleForFree": true,
+            "publisher": {
+              "@id": "https://pixtudio.app/#organization"
+            },
+            "creator": {
+              "@id": "https://pixtudio.app/#organization"
+            },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD",
+              "availability": "https://schema.org/InStock",
+              "url": "https://pixtudio.app/editor"
+            },
+            "featureList": [
+              "Turn photos into pixel art",
+              "Live grid and palette controls",
+              "Manual pixel drawing",
+              "Import palettes from images",
+              "SVG export",
+              "PNG export",
+              "MP4 process recording",
+              "Project saving"
+            ]
+          }
         ]
       }
     </script>

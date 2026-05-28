@@ -6,6 +6,7 @@ import {
     GRAYSCALE_32,
     NEON_COLD_32,
     QUANTIZATION_PROFILES,
+    SUNSET_10,
     buildDerivedWorld,
     extractPalette,
     quantizeWithFixedProfile,
@@ -39,6 +40,25 @@ describe("palette quantization engine", () => {
 
         expect(extractPalette(source, 3)).toEqual(
             extractPaletteOklabTournament(source, 3)
+        )
+    })
+
+    it("keeps deleted auto-palette colors out of extracted palettes", () => {
+        const source = [
+            ["#111111", "#222222", "#333333"],
+            ["#444444", "#555555", "#666666"],
+        ]
+
+        const result = extractPalette(source, 5, {
+            excludedColors: ["#333333"],
+        })
+
+        expect(result.palette).toHaveLength(5)
+        expect(result.palette.map((color) => color.toUpperCase())).not.toContain(
+            "#333333"
+        )
+        expect(new Set(result.pixels.flat().filter(Boolean))).toEqual(
+            new Set(result.palette)
         )
     })
 
@@ -177,6 +197,14 @@ describe("palette quantization engine", () => {
         expect(QUANTIZATION_PROFILES.neon.colors).toEqual(NEON_COLD_32)
         expect(QUANTIZATION_PROFILES.neon.colors).toContain("#F6CAFD")
         expect(QUANTIZATION_PROFILES.neon.colors).not.toContain("#FFF34D")
+    })
+
+    it("registers SUNSET_10 as a built-in fixed profile", () => {
+        expect(QUANTIZATION_PROFILES.sunset.kind).toBe("fixed")
+        expect(QUANTIZATION_PROFILES.sunset.source).toBe("builtin")
+        expect(QUANTIZATION_PROFILES.sunset.colors).toEqual(SUNSET_10)
+        expect(QUANTIZATION_PROFILES.sunset.colors).toContain("#EE9B00")
+        expect(QUANTIZATION_PROFILES.sunset.colors).toContain("#9B2226")
     })
 
     it("registers grayscale and black/white as built-in fixed profiles", () => {

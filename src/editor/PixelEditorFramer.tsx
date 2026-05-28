@@ -1,5 +1,6 @@
 import * as React from "react"
 import * as ReactDOM from "react-dom"
+import { useNavigate } from "react-router-dom"
 
 import { ManualScreen } from "./ManualScreen.tsx"
 
@@ -18,7 +19,16 @@ import QuantizationRecorder, {
 
 import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
+import {
+    extendImportedPaletteProfile,
+    removeImportedPaletteProfileColor,
+} from "./palettePresetExtension.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
+import {
+    type SpaceHandState,
+    startSpaceHandTool,
+    stopSpaceHandTool,
+} from "./spaceHandTool.ts"
 import {
     EXTRACT_QUANTIZATION_PROFILE,
     QUANTIZATION_PROFILES,
@@ -47,6 +57,7 @@ import {
 } from "./rootHistory.ts"
 
 import {
+    SvgHomeButton,
     SvgTopButton3,
     SvgTopButton4,
     SvgManualButton,
@@ -77,10 +88,20 @@ import {
     HandIconOff,
     SvgSmartObject,
     SvgQuantizationRecorderButton,
-    SvgPalettePresetButton,
 } from "./SvgIcons.tsx"
 
 import { track } from "./analytics.ts"
+import {
+    getAnchoredZoomUpdate,
+    getWheelZoomUpdate,
+} from "./viewportWheelZoom.ts"
+import {
+    getCenter,
+    getDistance,
+    getPinchZoomUpdate,
+    type PinchPoint,
+} from "./viewportPinchZoom.ts"
+import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 const CANVAS_SIZE = 512
 const TRANSPARENT_LABEL = "Transparent"
@@ -89,7 +110,7 @@ const TRANSPARENT_PIXEL = "__PX_TRANSPARENT__" as const
 const MODAL_OVERLAY_STYLE: React.CSSProperties = {
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.3)",
+    background: pixtudioInk(0.3),
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
     display: "flex",
@@ -151,6 +172,10 @@ const ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS = false
 const ENABLE_PALETTE_UNDO_TRACE_LOGS = false
 const ENABLE_EDITOR_HISTORY_SHORTCUT_LOGS = false
 const ENABLE_SAVE_PATH_DEBUG_OVERLAY = false
+const ENABLE_DESKTOP_CANVAS_WHEEL_ZOOM = true
+const ENABLE_DESKTOP_SPACE_HAND_TOOL = true
+const ENABLE_MOBILE_CANVAS_PINCH_ZOOM = true
+const SPACE_HAND_SUPPRESS_FOCUS_CLASS = "pxSpaceHandSuppressFocus"
 
 function coreLifecycleLog(stage: string, meta?: Record<string, unknown>) {
     if (!ENABLE_CORE_LIFECYCLE_DEBUG_LOGS) return
@@ -943,16 +968,26 @@ const PIX_UI_BUTTON_ANIM_CSS = `
 
 .pxUiAnim:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.05);
-    filter: drop-shadow(0 4px 0px rgba(0, 0, 0, 0.22));
+    filter: drop-shadow(0 4px 0px rgba(${PIXTUDIO_INK_RGB}, 0.22));
 }
 
 .pxUiAnim:active:not(:disabled) {
     transform: translateY(1px) scale(0.97);
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+    filter: drop-shadow(0 1px 1px rgba(${PIXTUDIO_INK_RGB}, 0.18));
 }
 
 .pxUiAnim:disabled {
     filter: none;
+}
+
+.${SPACE_HAND_SUPPRESS_FOCUS_CLASS} .pxUiAnim:focus,
+.${SPACE_HAND_SUPPRESS_FOCUS_CLASS} .pxUiAnim:focus-visible,
+.${SPACE_HAND_SUPPRESS_FOCUS_CLASS} button:focus,
+.${SPACE_HAND_SUPPRESS_FOCUS_CLASS} button:focus-visible {
+    outline: none !important;
+    outline-color: transparent !important;
+    -webkit-focus-ring-color: transparent !important;
+    box-shadow: none !important;
 }
 
 @media (hover: none) {
@@ -994,12 +1029,12 @@ const okCancelSvgStyle: React.CSSProperties = {
 // =====================================================
 // SWATCH EDIT MODAL LAYOUT
 // Desktop: fixed square-ish modal.
-// Mobile: viewport width minus 30px on each side.
+// Mobile: keep enough picker width for the one-line swatch controls.
 // =====================================================
 
 const SWATCH_EDIT_MODAL_DESKTOP_SIZE = 400
 //const SWATCH_EDIT_MODAL_MAX_WIDTH = "min(92vw, 400px)"
-const SWATCH_EDIT_MODAL_MOBILE_SIDE_GAP = 30
+const SWATCH_EDIT_MODAL_MOBILE_SIDE_GAP = 16
 
 const SWATCH_EDIT_MODAL_INNER_PADDING = 14
 const SWATCH_EDIT_MODAL_CONTENT_GAP = 8
@@ -1009,7 +1044,7 @@ const SWATCH_EDIT_TITLE_LETTER_SPACING = 0.8
 
 const SWATCH_EDIT_HUE_HEIGHT = 14
 
-const SWATCH_EDIT_BORDER = "2px solid rgba(0,0,0,0.75)"
+const SWATCH_EDIT_BORDER = `2px solid ${pixtudioInk(0.75)}`
 
 const SWATCH_EDIT_ROW_GAP = 10
 
@@ -1020,10 +1055,7 @@ const SWATCH_EDIT_LABEL_LETTER_SPACING = 0.4
 
 const SWATCH_EDIT_HEX_FONT = 12
 const SWATCH_EDIT_HEX_INPUT_HEIGHT = 32
-const SWATCH_EDIT_HEX_MAX_WIDTH = 150
 const SWATCH_EDIT_HEX_LETTER_SPACING = 0.4
-
-const SWATCH_EDIT_HEX_BOX_WIDTH = SWATCH_EDIT_HEX_MAX_WIDTH
 
 const SWATCH_EDIT_HELP_FONT = 10
 const SWATCH_EDIT_HELP_LINE_HEIGHT = 1.35
@@ -1898,8 +1930,12 @@ function quantizeToFixedPalette(
 }
 
 // ---- palette quantization ----
-function quantizePixels(pixels: (string | null)[][], targetColors: number) {
-    return extractPalette(pixels, targetColors)
+function quantizePixels(
+    pixels: (string | null)[][],
+    targetColors: number,
+    excludedColors: string[] = []
+) {
+    return extractPalette(pixels, targetColors, { excludedColors })
 }
 
 function generatePalette(count: number) {
@@ -2124,7 +2160,7 @@ const drawTransparentMark = (
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(x0, y0, s, s)
 
-    ctx.strokeStyle = "rgba(0,0,0,0.65)"
+    ctx.strokeStyle = pixtudioInk(0.65)
     ctx.lineWidth = Math.max(1, Math.floor(size * 0.08))
     ctx.strokeRect(x0, y0, s, s)
 
@@ -2260,7 +2296,7 @@ function CameraModal({
                 inset: 0,
                 zIndex: 9999,
 
-                background: "rgba(0,0,0,0.3)",
+                background: pixtudioInk(0.3),
                 backdropFilter: "blur(10px)",
                 WebkitBackdropFilter: "blur(10px)",
 
@@ -2305,7 +2341,7 @@ function CameraModal({
                     style={{
                         width: "min(92vw, 520px)",
                         aspectRatio: "1 / 1",
-                        background: "#000",
+                        background: PIXTUDIO_INK,
                         borderRadius: 14,
                         overflow: "hidden",
                         position: "relative",
@@ -2371,7 +2407,7 @@ function CameraModal({
                         padding: "14px 16px",
                         border: "none",
                         background: "#ffffff",
-                        color: "#000",
+                        color: PIXTUDIO_INK,
                         fontWeight: 700,
                         cursor: !!error || starting ? "not-allowed" : "pointer",
                         fontFamily:
@@ -2392,11 +2428,13 @@ function StartScreen({
     onOpenCamera,
     onOpenDraw,
     onOpenProject,
+    onOpenHome,
 }: {
     onPickImage: () => void
     onOpenCamera: () => void
     onOpenDraw: () => void
     onOpenProject: () => void
+    onOpenHome: () => void
 }) {
     const bg = "#e9d8a6"
 
@@ -2523,6 +2561,15 @@ function StartScreen({
         })
     }, [closeReportCodeModal, reportCode])
 
+    const handleLogoClick = React.useCallback(() => {
+        if (ENABLE_LOGO_REPORT_TRIGGER) {
+            openReportCodeModal()
+            return
+        }
+
+        onOpenHome()
+    }, [ENABLE_LOGO_REPORT_TRIGGER, onOpenHome, openReportCodeModal])
+
     const wrapStyle: React.CSSProperties = {
         height: "100vh",
         minHeight: "100vh",
@@ -2562,6 +2609,12 @@ function StartScreen({
     initial-value: 0px;
 }
 
+@property --px-start-shadow-alpha {
+    syntax: "<number>";
+    inherits: false;
+    initial-value: 0;
+}
+
 @media (max-width: 640px) {
     .pxStartLogoBox {
         width: ${START_BUTTONS_W}px;
@@ -2580,20 +2633,22 @@ function StartScreen({
         scale(var(--px-start-hover-scale));
     filter: drop-shadow(
         0 calc(var(--px-start-wave-shadow-y) + var(--px-start-hover-shadow-y)) 0
-        rgba(0, 0, 0, 0.85)
+        rgba(${PIXTUDIO_INK_RGB}, var(--px-start-shadow-alpha))
     );
 }
 
 .pxStartActions > .pxStartActionButton:hover:not(:disabled) {
     --px-start-hover-y: -4px;
     --px-start-hover-scale: 1.05;
-    --px-start-hover-shadow-y: 5px;
+    --px-start-hover-shadow-y: 3px;
+    --px-start-shadow-alpha: 0.85;
 }
 
 .pxStartActions > .pxStartActionButton:active:not(:disabled) {
     --px-start-hover-y: 1px;
     --px-start-hover-scale: 0.97;
-    --px-start-hover-shadow-y: 1px;
+    --px-start-hover-shadow-y: 0px;
+    --px-start-shadow-alpha: 0.85;
 }
 
 .pxStartActionButton {
@@ -2602,6 +2657,7 @@ function StartScreen({
     --px-start-hover-y: 0px;
     --px-start-hover-scale: 1;
     --px-start-hover-shadow-y: 0px;
+    --px-start-shadow-alpha: 0;
 }
 
 @media (hover: none) {
@@ -2609,12 +2665,14 @@ function StartScreen({
         --px-start-hover-y: 0px;
         --px-start-hover-scale: 1;
         --px-start-hover-shadow-y: 0px;
+        --px-start-shadow-alpha: 0;
     }
 
     .pxStartActions > .pxStartActionButton:active:not(:disabled) {
         --px-start-hover-y: 0px;
         --px-start-hover-scale: 1;
         --px-start-hover-shadow-y: 0px;
+        --px-start-shadow-alpha: 0;
     }
 }
 
@@ -2625,11 +2683,13 @@ function StartScreen({
         100% {
             --px-start-wave-y: 0px;
             --px-start-wave-shadow-y: 0px;
+            --px-start-shadow-alpha: 0;
         }
 
         33.333% {
             --px-start-wave-y: -7px;
-            --px-start-wave-shadow-y: 7px;
+            --px-start-wave-shadow-y: 5px;
+            --px-start-shadow-alpha: 0.85;
         }
     }
 
@@ -2671,7 +2731,7 @@ function StartScreen({
         padding: 0,
         margin: 0,
         display: "block",
-        cursor: "default",
+        cursor: "pointer",
         WebkitTapHighlightColor: "transparent",
     }
 
@@ -2821,7 +2881,7 @@ function StartScreen({
                                       fontWeight: 900,
                                       letterSpacing: 0,
                                       textAlign: "center",
-                                      color: "black",
+                                      color: PIXTUDIO_INK,
                                   }}
                               >
                                   Введите код
@@ -2839,10 +2899,10 @@ function StartScreen({
                                   style={{
                                       width: "100%",
                                       height: 28,
-                                      border: "2px solid rgba(0,0,0,0.75)",
+                                      border: `2px solid ${pixtudioInk(0.75)}`,
                                       borderRadius: 0,
                                       background: "#ffffff",
-                                      color: "#000000",
+                                      color: PIXTUDIO_INK,
                                       fontSize: 16,
                                       lineHeight: "24px",
                                       letterSpacing: 0,
@@ -2911,15 +2971,10 @@ function StartScreen({
                 <div className="pxStartLogoBox" style={logoBox}>
                     <button
                         type="button"
-                        onClick={
-                            ENABLE_LOGO_REPORT_TRIGGER
-                                ? openReportCodeModal
-                                : undefined
-                        }
+                        onClick={handleLogoClick}
                         className="pxStartLogoButton"
                         style={logoButtonStyle}
-                        aria-label="PIXTUDIO"
-                        disabled={!ENABLE_LOGO_REPORT_TRIGGER}
+                        aria-label="PIXTUDIO home"
                     >
                         <SvgLogo style={{ imageRendering: "pixelated" }} />
                     </button>
@@ -3109,7 +3164,9 @@ type EditorCommittedState = {
     userSwatches: Swatch[]
     selectedSwatch: SwatchId | "transparent"
     quantizationProfile?: QuantizationProfile
+    importedPalettePresets?: ImportedPalettePreset[]
     activePaletteTab?: PaletteTab
+    deletedAutoPaletteColors?: string[]
     autoOverrides: Record<
         string,
         {
@@ -3172,10 +3229,24 @@ function areEditorCommittedStatesEqual(
     if (a.showImage !== b.showImage) return false
     if (a.selectedSwatch !== b.selectedSwatch) return false
     if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
+    const aDeleted = [...((a as any).deletedAutoPaletteColors || [])].sort()
+    const bDeleted = [...((b as any).deletedAutoPaletteColors || [])].sort()
+    if (aDeleted.length !== bDeleted.length) return false
+    for (let i = 0; i < aDeleted.length; i++) {
+        if (aDeleted[i] !== bDeleted[i]) return false
+    }
     if (!areCommittedQuantizationProfilesEqual(
         a.quantizationProfile,
         b.quantizationProfile
     )) {
+        return false
+    }
+    if (
+        !areImportedPalettePresetsEqual(
+            a.importedPalettePresets,
+            b.importedPalettePresets
+        )
+    ) {
         return false
     }
 
@@ -3263,6 +3334,26 @@ function areCommittedQuantizationProfilesEqual(
     return true
 }
 
+function areImportedPalettePresetsEqual(
+    a: ImportedPalettePreset[] | undefined,
+    b: ImportedPalettePreset[] | undefined
+): boolean {
+    const aa = a ?? []
+    const bb = b ?? []
+    if (aa.length !== bb.length) return false
+
+    for (let i = 0; i < aa.length; i += 1) {
+        const ap = aa[i]
+        const bp = bb[i]
+        if (!bp || ap.id !== bp.id || ap.name !== bp.name) return false
+        if (!areCommittedQuantizationProfilesEqual(ap.profile, bp.profile)) {
+            return false
+        }
+    }
+
+    return true
+}
+
 function quantizationProfileTraceSummary(
     profile: QuantizationProfile | undefined
 ) {
@@ -3331,6 +3422,11 @@ function areSmartObjectCommittedStatesEqual(
     )
 }
 
+type EditorCanvasCssSize = {
+    w: number
+    h: number
+}
+
 function PixelEditorFramer({
     initialImageData,
     initialImageRouteKind,
@@ -3343,6 +3439,7 @@ function PixelEditorFramer({
     onRequestPickImage,
     onRequestBlankImport,
     onRequestOpenProject,
+    onRequestStartScreen,
     pendingProjectFile,
     onPendingProjectFileConsumed,
     onShowImportError,
@@ -3356,6 +3453,7 @@ function PixelEditorFramer({
     onCoordinatedRedo,
     coordinatedCanUndo,
     coordinatedCanRedo,
+    onEditorCanvasCssSizeChange,
 }: {
     // committed reference snapshot from ROOT gateway
     initialImageData: ImageData | null
@@ -3384,6 +3482,7 @@ function PixelEditorFramer({
     onRequestPickImage?: () => void
     onRequestBlankImport?: () => void
     onRequestOpenProject?: () => void
+    onRequestStartScreen?: () => void
 
     // ✅ NEW: project-open bridge from ROOT
     pendingProjectFile?: File | null
@@ -3419,6 +3518,7 @@ function PixelEditorFramer({
     onCoordinatedRedo?: () => void
     coordinatedCanUndo?: boolean
     coordinatedCanRedo?: boolean
+    onEditorCanvasCssSizeChange?: (size: EditorCanvasCssSize | null) => void
 
     // ✅ NEW: unified import-error bridge (optional)
     onShowImportError?: (message: string) => void
@@ -3704,9 +3804,12 @@ function PixelEditorFramer({
 
     const [autoOverrides, setAutoOverrides] =
         React.useState<AutoSwatchOverridesMap>({})
+    const [deletedAutoPaletteColors, setDeletedAutoPaletteColors] =
+        React.useState<string[]>([])
 
     function resetAutoOverridesForNewImport() {
         setAutoOverrides({})
+        setDeletedAutoPaletteColors([])
     }
 
     function resetPalettePresetsForNewImport() {
@@ -3735,7 +3838,7 @@ function PixelEditorFramer({
             }
         }
 
-        return quantizePixels(pixels, targetColors)
+        return quantizePixels(pixels, targetColors, deletedAutoPaletteColors)
     }
 
     React.useEffect(() => {
@@ -5291,6 +5394,8 @@ function PixelEditorFramer({
             nextAutoSwatches,
             loadedAutoOverrides
         )
+        const resolvedQuantizationProfile =
+            resolveLoadedQuantizationProfile(validated)
 
         const project: ProjectState = {
             gridSize: g,
@@ -5303,6 +5408,19 @@ function PixelEditorFramer({
             autoSwatches: nextAutoEffective,
             userSwatches: nextUserSwatches,
             selectedSwatch: selectedSwatchNext,
+            quantizationProfile:
+                cloneQuantizationProfileForHistory(resolvedQuantizationProfile),
+            importedPalettePresets:
+                resolvedQuantizationProfile.kind === "fixed" &&
+                resolvedQuantizationProfile.source === "imported"
+                    ? [
+                          {
+                              id: resolvedQuantizationProfile.id,
+                              name: resolvedQuantizationProfile.name,
+                              profile: resolvedQuantizationProfile,
+                          },
+                      ]
+                    : [],
             autoOverrides: loadedAutoOverrides,
         }
 
@@ -5310,7 +5428,7 @@ function PixelEditorFramer({
             project,
             smartObjectBaseForRestore: original,
             paletteOrderIds: paletteOrderIds,
-            quantizationProfile: resolveLoadedQuantizationProfile(validated),
+            quantizationProfile: resolvedQuantizationProfile,
         }
     }
 
@@ -6157,14 +6275,25 @@ function PixelEditorFramer({
 
     const [viewportSize, setViewportSize] = React.useState({ w: 0, h: 0 })
 
+    const getViewportSizeUnscaled = React.useCallback(() => {
+        const el = viewportRef.current
+        if (!el) return { w: 0, h: 0 }
+
+        const rect = el.getBoundingClientRect()
+        const fit = Math.max(0.0001, fitScaleRef.current || 1)
+
+        return {
+            w: Math.round(rect.width / fit),
+            h: Math.round(rect.height / fit),
+        }
+    }, [])
+
     React.useLayoutEffect(() => {
         const el = viewportRef.current
         if (!el) return
 
         const apply = () => {
-            const r = el.getBoundingClientRect()
-            const w = Math.round(r.width)
-            const h = Math.round(r.height)
+            const { w, h } = getViewportSizeUnscaled()
             setViewportSize({ w, h })
         }
 
@@ -6172,9 +6301,57 @@ function PixelEditorFramer({
 
         const ro = new ResizeObserver(() => apply())
         ro.observe(el)
+        window.addEventListener("resize", apply)
+        window.visualViewport?.addEventListener("resize", apply)
 
-        return () => ro.disconnect()
-    }, [])
+        return () => {
+            ro.disconnect()
+            window.removeEventListener("resize", apply)
+            window.visualViewport?.removeEventListener("resize", apply)
+        }
+    }, [getViewportSizeUnscaled])
+
+    React.useLayoutEffect(() => {
+        if (!onEditorCanvasCssSizeChange) return
+
+        const el = viewportRef.current
+        if (!el) {
+            onEditorCanvasCssSizeChange(null)
+            return
+        }
+
+        let raf = 0
+        const measure = () => {
+            if (raf) cancelAnimationFrame(raf)
+            raf = requestAnimationFrame(() => {
+                const rect = el.getBoundingClientRect()
+                const w = Math.round(rect.width)
+                const h = Math.round(rect.height)
+
+                if (w <= 0 || h <= 0) return
+                onEditorCanvasCssSizeChange({ w, h })
+            })
+        }
+
+        measure()
+
+        let ro: ResizeObserver | null = null
+        if (typeof ResizeObserver !== "undefined") {
+            ro = new ResizeObserver(measure)
+            ro.observe(el)
+        }
+
+        window.addEventListener("resize", measure)
+        window.visualViewport?.addEventListener("resize", measure)
+
+        return () => {
+            if (raf) cancelAnimationFrame(raf)
+            ro?.disconnect()
+            window.removeEventListener("resize", measure)
+            window.visualViewport?.removeEventListener("resize", measure)
+            onEditorCanvasCssSizeChange(null)
+        }
+    }, [onEditorCanvasCssSizeChange])
 
     // H3:
     // локальный runtime-state editor теперь совпадает
@@ -6293,9 +6470,34 @@ function PixelEditorFramer({
         }
     }
 
+    function cloneImportedPalettePresetsForHistory(
+        presets: ImportedPalettePreset[]
+    ): ImportedPalettePreset[] {
+        return presets.map((preset) => ({
+            ...preset,
+            profile: cloneQuantizationProfileForHistory(
+                preset.profile
+            ) as FixedQuantizationProfile,
+        }))
+    }
+
     function resolveSelectedSwatchForAutoSwatches(
-        nextAuto: Swatch[]
+        nextAuto: Swatch[],
+        preferredSwatch?: SwatchId | "transparent" | null
     ): SwatchId | "transparent" {
+        if (preferredSwatch === "transparent") return preferredSwatch
+        if (
+            preferredSwatch &&
+            userSwatches.some((swatch) => swatch.id === preferredSwatch)
+        ) {
+            return preferredSwatch
+        }
+        if (
+            preferredSwatch &&
+            nextAuto.some((swatch) => swatch.id === preferredSwatch)
+        ) {
+            return preferredSwatch
+        }
         if (selectedSwatch === "transparent") return selectedSwatch
         if (userSwatches.some((swatch) => swatch.id === selectedSwatch)) {
             return selectedSwatch
@@ -6308,7 +6510,9 @@ function PixelEditorFramer({
 
     function makeProjectStateFromDerivedWorld(
         world: DerivedWorld<PixelValue>,
-        activePaletteTab: PaletteTab
+        activePaletteTab: PaletteTab,
+        preferredSwatch?: SwatchId | "transparent" | null,
+        importedPresetRegistry = importedPalettePresets
     ): ProjectState {
         const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
         return {
@@ -6322,11 +6526,19 @@ function PixelEditorFramer({
             referenceSnapshot: originalImageData,
             autoSwatches: nextAuto,
             userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: resolveSelectedSwatchForAutoSwatches(nextAuto),
+            selectedSwatch: resolveSelectedSwatchForAutoSwatches(
+                nextAuto,
+                preferredSwatch
+            ),
             quantizationProfile: cloneQuantizationProfileForHistory(
                 world.profile
             ),
+            // Imported preset swatch edits are session state, so history must carry
+            // the preset registry in lockstep with the active quantization profile.
+            importedPalettePresets:
+                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
             activePaletteTab,
+            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
             autoOverrides: { ...autoOverrides },
         }
     }
@@ -6396,12 +6608,16 @@ function PixelEditorFramer({
         return profile ? buildFixedPresetWorldFromReference(profile) : null
     }
 
-    function applyDerivedWorldSnapshot(world: DerivedWorld<PixelValue>) {
+    function applyDerivedWorldSnapshot(
+        world: DerivedWorld<PixelValue>,
+        preferredSwatch?: SwatchId | "transparent" | null,
+        importedPresetRegistry = importedPalettePresets
+    ) {
         const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
         const nextImage = clonePixelsGrid(world.imagePixels)
         const nextOverlay = clonePixelsGrid(world.overlayPixels)
         const nextSelectedSwatch =
-            resolveSelectedSwatchForAutoSwatches(nextAuto)
+            resolveSelectedSwatchForAutoSwatches(nextAuto, preferredSwatch)
         paletteUndoTrace("applyDerivedWorldSnapshot:before", {
             activeTab: paletteTabsState.activeTab,
             currentProfile: quantizationProfileTraceSummary(quantizationProfile),
@@ -6437,10 +6653,13 @@ function PixelEditorFramer({
             quantizationProfile: cloneQuantizationProfileForHistory(
                 world.profile
             ),
+            importedPalettePresets:
+                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
             activePaletteTab:
                 world.profile.kind === "fixed"
                     ? "presets"
                     : paletteTabsState.activeTab,
+            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
             autoOverrides: { ...autoOverrides },
         }
         paletteUndoTrace("applyDerivedWorldSnapshot:latest-ref-updated", {
@@ -6477,6 +6696,7 @@ function PixelEditorFramer({
             previousSwatches: autoSwatches,
             userSwatches,
             paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            excludedColors: deletedAutoPaletteColors,
         })
         return {
             ...world,
@@ -6630,7 +6850,94 @@ function PixelEditorFramer({
         }
     }
 
-    function applyFixedPalettePreset(profile: FixedQuantizationProfile) {
+    function makeAutoSwatchesFromFixedProfile(
+        profile: FixedQuantizationProfile
+    ): Swatch[] {
+        return profile.colors.map((color, i) => ({
+            id: `auto-${i}`,
+            color,
+            isTransparent: false,
+            isUser: false,
+        }))
+    }
+
+    function applyFixedPaletteAsDrawingPalette(
+        profile: FixedQuantizationProfile,
+        before: ProjectState,
+        preferredSwatch?: SwatchId | "transparent" | null,
+        importedPresetRegistry = importedPalettePresets
+    ) {
+        const nextAuto = makeAutoSwatchesFromFixedProfile(profile)
+        if (nextAuto.length <= 0) return
+
+        const nextSelectedSwatch = resolveSelectedSwatchForAutoSwatches(
+            nextAuto,
+            preferredSwatch
+        )
+        const nextImagePixels = clonePixelsGrid(imagePixels)
+        const nextOverlayPixels = clonePixelsGrid(overlayPixels)
+        const nextCanvasPixels = overlayOverBaseGrid(
+            nextImagePixels,
+            nextOverlayPixels
+        )
+        const nextAutoOverrides: AutoSwatchOverridesMap = {}
+        const nextWorld: DerivedWorld<PixelValue> = {
+            profile,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+            autoSwatches: cloneSwatches(nextAuto),
+            imagePixels: nextImagePixels,
+            overlayPixels: nextOverlayPixels,
+            canvasPixels: nextCanvasPixels,
+        }
+        const afterState: ProjectState = {
+            gridSize,
+            paletteCount,
+            brushSize,
+            imagePixels: clonePixelsGrid(nextImagePixels),
+            overlayPixels: clonePixelsGrid(nextOverlayPixels),
+            showImage,
+            hasOriginalImageData: hasImportContext,
+            referenceSnapshot: originalImageData,
+            autoSwatches: cloneSwatches(nextAuto),
+            userSwatches: cloneSwatches(userSwatches),
+            selectedSwatch: nextSelectedSwatch,
+            quantizationProfile: cloneQuantizationProfileForHistory(profile),
+            importedPalettePresets:
+                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
+            activePaletteTab: "presets",
+            autoOverrides: nextAutoOverrides,
+        }
+
+        beginEditorActionTransaction("editor-action", before)
+        setQuantizationProfile(profile)
+        setActivePresetButton(profile.id)
+        setPaletteTabsState((prev) => ({
+            ...prev,
+            activeTab: "presets",
+            presetsWorld: nextWorld,
+        }))
+        setAutoOverrides(nextAutoOverrides)
+        setAutoSwatches(nextAuto)
+        setSelectedSwatch(nextSelectedSwatch)
+        latestProjectStateRef.current = afterState
+        pushCommit(before, { afterState })
+
+        if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+            console.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
+                profileId: profile.id,
+                source: profile.source,
+                autoSwatches: nextAuto.length,
+                imageNonNull: countNonNullCells(nextImagePixels),
+                overlayNonNull: countNonNullCells(nextOverlayPixels),
+            })
+        }
+    }
+
+    function applyFixedPalettePreset(
+        profile: FixedQuantizationProfile,
+        preferredSwatch?: SwatchId | "transparent" | null,
+        importedPresetRegistry = importedPalettePresets
+    ) {
         const before = latestProjectStateRef.current ?? makeProjectState()
         paletteUndoTrace("applyFixedPalettePreset:start", {
             profile: quantizationProfileTraceSummary(profile),
@@ -6646,6 +6953,16 @@ function PixelEditorFramer({
         const afterReferenceSignature = imageDataSampleSignature(originalImageData)
 
         if (!world) {
+            if (!originalImageData) {
+                applyFixedPaletteAsDrawingPalette(
+                    profile,
+                    before,
+                    preferredSwatch,
+                    importedPresetRegistry
+                )
+                return
+            }
+
             paletteUndoTrace("applyFixedPalettePreset:skipped", {
                 profile: quantizationProfileTraceSummary(profile),
                 reason: "missing-reference",
@@ -6660,7 +6977,12 @@ function PixelEditorFramer({
             return
         }
 
-        const afterState = makeProjectStateFromDerivedWorld(world, "presets")
+        const afterState = makeProjectStateFromDerivedWorld(
+            world,
+            "presets",
+            preferredSwatch,
+            importedPresetRegistry
+        )
         beginEditorActionTransaction("editor-action", before)
         setActivePresetButton(profile.id)
         setPaletteTabsState((prev) => ({
@@ -6674,7 +6996,7 @@ function PixelEditorFramer({
             overlayNonNull: countNonNullCells(world.overlayPixels),
             autoSwatches: world.autoSwatches.length,
         })
-        applyDerivedWorldSnapshot(world)
+        applyDerivedWorldSnapshot(world, preferredSwatch, importedPresetRegistry)
         pushCommit(before, { afterState })
 
         if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
@@ -6841,7 +7163,11 @@ function PixelEditorFramer({
         if (activePresetButton !== profileId) return
 
         setActivePresetButton(null)
-        switchPaletteTab("size")
+        setPaletteTabsState((prev) => ({
+            ...prev,
+            activeTab: "presets",
+            presetsWorld: null,
+        }))
     }
 
     // H0:
@@ -6872,7 +7198,10 @@ function PixelEditorFramer({
             referenceSnapshot: originalImageData,
             quantizationProfile:
                 cloneQuantizationProfileForHistory(quantizationProfile),
+            importedPalettePresets:
+                cloneImportedPalettePresetsForHistory(importedPalettePresets),
             activePaletteTab: paletteTabsState.activeTab,
+            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
 
             autoOverrides: { ...autoOverrides },
         } as ProjectState
@@ -7133,6 +7462,7 @@ function PixelEditorFramer({
         originalImageData,
         autoOverrides,
         quantizationProfile,
+        importedPalettePresets,
         paletteTabsState.activeTab,
         activePresetButton,
     ])
@@ -7187,6 +7517,9 @@ function PixelEditorFramer({
 
         const ao = { ...(state.autoOverrides || {}) }
         setAutoOverrides(ao)
+        setDeletedAutoPaletteColors(
+            ((state as any).deletedAutoPaletteColors || []).slice()
+        )
 
         const autoEffective = applyAutoOverrides(
             cloneSwatches(state.autoSwatches),
@@ -7200,6 +7533,20 @@ function PixelEditorFramer({
 
         const nextProfile =
             state.quantizationProfile ?? EXTRACT_QUANTIZATION_PROFILE
+        const restoredImportedPresets =
+            state.importedPalettePresets ??
+            (nextProfile.kind === "fixed" && nextProfile.source === "imported"
+                ? [
+                      {
+                          id: nextProfile.id,
+                          name: nextProfile.name,
+                          profile: nextProfile,
+                      },
+                  ]
+                : [])
+        setImportedPalettePresets(
+            cloneImportedPalettePresetsForHistory(restoredImportedPresets)
+        )
         const nextActivePaletteTab: PaletteTab =
             nextProfile.kind === "fixed"
                 ? "presets"
@@ -7997,6 +8344,22 @@ function PixelEditorFramer({
     }>({ x: 0, y: 0, inside: false, w: 0, h: 0 })
 
     const brushPreviewRef = React.useRef<HTMLDivElement | null>(null)
+    const touchPointersRef = React.useRef<Map<number, PinchPoint>>(new Map())
+    const pinchZoomSessionRef = React.useRef<{
+        active: boolean
+        startZoom: number
+        startPanX: number
+        startPanY: number
+        startCenter: PinchPoint
+        startDistance: number
+    }>({
+        active: false,
+        startZoom: 1,
+        startPanX: 0,
+        startPanY: 0,
+        startCenter: { x: 0, y: 0 },
+        startDistance: 0,
+    })
     type PipetteHoverCell = { row: number; col: number }
     const [pipetteHoverCell, setPipetteHoverCell] =
         React.useState<PipetteHoverCell | null>(null)
@@ -8005,10 +8368,136 @@ function PixelEditorFramer({
         setPipetteHoverCell((prev) => (prev === null ? prev : null))
     }, [])
 
+    function getViewportPointFromPointerEvent(e: any): PinchPoint | null {
+        const viewport = viewportRef.current
+        if (!viewport) return null
+
+        const rect = viewport.getBoundingClientRect()
+        const fit = Math.max(0.0001, fitScaleRef.current || 1)
+
+        return {
+            x: (e.clientX - rect.left) / fit,
+            y: (e.clientY - rect.top) / fit,
+        }
+    }
+
+    function getFirstTwoTouchPointers(): [PinchPoint, PinchPoint] | null {
+        const points = Array.from(touchPointersRef.current.values())
+        if (points.length < 2) return null
+        return [points[0], points[1]]
+    }
+
+    function abortActiveStrokeForPinchZoom() {
+        if (strokeBeforeRef.current) {
+            setOverlayPixels(clonePixelsGrid(strokeBeforeRef.current.overlayPixels))
+        }
+
+        abortEditorActionTransaction()
+        strokeBeforeRef.current = null
+        strokeDidMutateRef.current = false
+        strokeAfterOverlayRef.current = null
+        lastDrawPointRef.current = null
+        setIsDrawing(false)
+
+        if (busyKindRef.current === "stream") {
+            busyKindRef.current = null
+            drainAfterUnlock()
+        }
+    }
+
+    function beginMobileCanvasPinchZoom() {
+        const points = getFirstTwoTouchPointers()
+        if (!points) return false
+
+        const startDistance = getDistance(points[0], points[1])
+        if (startDistance <= 0) return false
+
+        abortActiveStrokeForPinchZoom()
+        panSessionRef.current.active = false
+        setIsPanning(false)
+        hideBrushPreview()
+        clearPipetteHoverCell()
+
+        const view = viewportViewRef.current
+        pinchZoomSessionRef.current = {
+            active: true,
+            startZoom: view.zoom,
+            startPanX: view.panX,
+            startPanY: view.panY,
+            startCenter: getCenter(points[0], points[1]),
+            startDistance,
+        }
+
+        return true
+    }
+
+    function updateMobileCanvasPinchZoom() {
+        const session = pinchZoomSessionRef.current
+        if (!session.active) return false
+
+        const points = getFirstTwoTouchPointers()
+        if (!points) return false
+
+        const { w: viewportW, h: viewportH } = getViewportSizeUnscaled()
+        const next = getPinchZoomUpdate({
+            startZoom: session.startZoom,
+            startPanX: session.startPanX,
+            startPanY: session.startPanY,
+            startCenter: session.startCenter,
+            startDistance: session.startDistance,
+            currentCenter: getCenter(points[0], points[1]),
+            currentDistance: getDistance(points[0], points[1]),
+            viewportW,
+            viewportH,
+            minZoom: MIN_ZOOM,
+        })
+
+        if (!next) return true
+
+        viewportViewRef.current = {
+            zoom: next.zoom,
+            panX: next.panX,
+            panY: next.panY,
+        }
+        setZoom(next.zoom)
+        setPanX(next.panX)
+        setPanY(next.panY)
+
+        return true
+    }
+
+    function trackMobileTouchPointer(e: any) {
+        if (!ENABLE_MOBILE_CANVAS_PINCH_ZOOM) return false
+        if (!isMobileUI || e.pointerType !== "touch") return false
+
+        const point = getViewportPointFromPointerEvent(e)
+        if (!point) return false
+
+        touchPointersRef.current.set(e.pointerId, point)
+        return true
+    }
+
     function handlePointerDown(e: any) {
         if (overlayMode) return
 
         e.preventDefault()
+        trackMobileTouchPointer(e)
+
+        if (
+            ENABLE_MOBILE_CANVAS_PINCH_ZOOM &&
+            isMobileUI &&
+            e.pointerType === "touch" &&
+            touchPointersRef.current.size >= 2
+        ) {
+            try {
+                ;(e.currentTarget as any)?.setPointerCapture?.(e.pointerId)
+            } catch {
+                // Ignore browsers that do not support pointer capture here.
+            }
+
+            beginMobileCanvasPinchZoom()
+            return
+        }
 
         // обновляем pointerRef + preview-рамку (шаги 1–4)
         updatePointerFromEvent(e, true)
@@ -8163,11 +8652,27 @@ function PixelEditorFramer({
         if (overlayMode) return
 
         e.preventDefault()
+        trackMobileTouchPointer(e)
+
+        if (
+            ENABLE_MOBILE_CANVAS_PINCH_ZOOM &&
+            isMobileUI &&
+            e.pointerType === "touch" &&
+            (pinchZoomSessionRef.current.active ||
+                touchPointersRef.current.size >= 2)
+        ) {
+            if (!pinchZoomSessionRef.current.active) {
+                beginMobileCanvasPinchZoom()
+            }
+            updateMobileCanvasPinchZoom()
+            return
+        }
 
         // --- Step 8: panning ---
         if (panSessionRef.current.active && toolMode === "hand") {
-            const dx = e.clientX - panSessionRef.current.startClientX
-            const dy = e.clientY - panSessionRef.current.startClientY
+            const fit = Math.max(0.0001, fitScaleRef.current || 1)
+            const dx = (e.clientX - panSessionRef.current.startClientX) / fit
+            const dy = (e.clientY - panSessionRef.current.startClientY) / fit
 
             const nextX = panSessionRef.current.startPanX + dx
             const nextY = panSessionRef.current.startPanY + dy
@@ -8220,6 +8725,15 @@ function PixelEditorFramer({
     const [zoom, setZoom] = React.useState(1)
     const [panX, setPanX] = React.useState(0)
     const [panY, setPanY] = React.useState(0)
+    const viewportViewRef = React.useRef({
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+    })
+
+    React.useLayoutEffect(() => {
+        viewportViewRef.current = { zoom, panX, panY }
+    }, [zoom, panX, panY])
 
     // =====================
     // STEP 8: PAN CLAMP (anti "lost canvas")
@@ -8256,16 +8770,13 @@ function PixelEditorFramer({
 
     const clampPan = React.useCallback(
         (nextPanX: number, nextPanY: number, nextZoom: number) => {
-            const vp = viewportRef.current
-            if (!vp) return { x: Math.round(nextPanX), y: Math.round(nextPanY) }
-
-            const rect = vp.getBoundingClientRect()
-            const vw = Math.round(rect.width)
-            const vh = Math.round(rect.height)
+            const { w: vw, h: vh } = getViewportSizeUnscaled()
+            if (!vw || !vh)
+                return { x: Math.round(nextPanX), y: Math.round(nextPanY) }
 
             return clampPanWithSize(nextPanX, nextPanY, nextZoom, vw, vh)
         },
-        [clampPanWithSize]
+        [clampPanWithSize, getViewportSizeUnscaled]
     )
 
     // Поджимать pan, если:
@@ -8288,6 +8799,27 @@ function PixelEditorFramer({
     // --- TOOL MODE (Step 7) ---
     type ToolMode = "brush" | "hand" | "pipette"
     const [toolMode, setToolMode] = React.useState<ToolMode>("brush")
+    const spaceHandStateRef = React.useRef<SpaceHandState>({
+        isHolding: false,
+        previousTool: "brush",
+        activeTool: "brush",
+    })
+
+    React.useLayoutEffect(() => {
+        if (spaceHandStateRef.current.isHolding) {
+            spaceHandStateRef.current = {
+                ...spaceHandStateRef.current,
+                activeTool: toolMode,
+            }
+            return
+        }
+
+        spaceHandStateRef.current = {
+            isHolding: false,
+            previousTool: toolMode,
+            activeTool: toolMode,
+        }
+    }, [toolMode])
 
     // --- PANNING (Step 7) ---
     const [isPanning, setIsPanning] = React.useState(false)
@@ -8324,9 +8856,89 @@ function PixelEditorFramer({
         setPanY(0)
     }, [])
 
+    const resetEditorInteractionStateForNewImport = React.useCallback(() => {
+        resetView()
+        setToolMode("brush")
+        spaceHandStateRef.current = {
+            isHolding: false,
+            previousTool: "brush",
+            activeTool: "brush",
+        }
+        setIsPanning(false)
+        panSessionRef.current = {
+            active: false,
+            startClientX: 0,
+            startClientY: 0,
+            startPanX: 0,
+            startPanY: 0,
+        }
+        pointerRef.current = { ...pointerRef.current, inside: false }
+        brushPreviewPendingRef.current = {
+            show: false,
+            leftPx: 0,
+            topPx: 0,
+            wPx: 0,
+            hPx: 0,
+        }
+        if (brushPreviewRef.current) {
+            brushPreviewRef.current.style.display = "none"
+        }
+        clearPipetteHoverCell()
+        cancelHold(zoomOutHoldRef)
+        zoomOutDidLongPressRef.current = false
+        touchPointersRef.current.clear()
+        pinchZoomSessionRef.current.active = false
+    }, [clearPipetteHoverCell, resetView])
+
+    const applyToolbarZoom = React.useCallback(
+        (direction: 1 | -1) => {
+            const { w: viewportW, h: viewportH } = getViewportSizeUnscaled()
+            const view = viewportViewRef.current
+
+            if (!viewportW || !viewportH) {
+                const nextZoom = Math.max(
+                    MIN_ZOOM,
+                    quantizeZoomStep(view.zoom + direction * ZOOM_STEP)
+                )
+                if (nextZoom === view.zoom) return
+
+                viewportViewRef.current = {
+                    ...view,
+                    zoom: nextZoom,
+                }
+                setZoom(nextZoom)
+                return
+            }
+
+            const next = getAnchoredZoomUpdate({
+                zoom: view.zoom,
+                panX: view.panX,
+                panY: view.panY,
+                nextZoom: view.zoom + direction * ZOOM_STEP,
+                anchorX: viewportW / 2,
+                anchorY: viewportH / 2,
+                viewportW,
+                viewportH,
+                minZoom: MIN_ZOOM,
+            })
+
+            if (!next) return
+
+            viewportViewRef.current = {
+                zoom: next.zoom,
+                panX: next.panX,
+                panY: next.panY,
+            }
+            setZoom(next.zoom)
+            setPanX(next.panX)
+            setPanY(next.panY)
+        },
+        [getViewportSizeUnscaled, quantizeZoomStep]
+    )
+
     const handleZoomIn = React.useCallback(() => {
-        setZoom((z) => quantizeZoomStep(z + ZOOM_STEP))
-    }, [quantizeZoomStep])
+        applyToolbarZoom(1)
+    }, [applyToolbarZoom])
 
     const handleZoomOut = React.useCallback(() => {
         // если только что сработал long-press — не делаем ещё и обычный zoom-out кликом
@@ -8334,8 +8946,8 @@ function PixelEditorFramer({
             zoomOutDidLongPressRef.current = false
             return
         }
-        setZoom((z) => Math.max(MIN_ZOOM, quantizeZoomStep(z - ZOOM_STEP)))
-    }, [quantizeZoomStep])
+        applyToolbarZoom(-1)
+    }, [applyToolbarZoom])
 
     const handleZoomOutPointerDown = React.useCallback(
         (e: any) => {
@@ -8353,6 +8965,142 @@ function PixelEditorFramer({
         cancelHold(zoomOutHoldRef)
     }, [])
 
+    const handleDesktopCanvasWheelZoom = React.useCallback(
+        (event: React.WheelEvent<HTMLDivElement>) => {
+            if (!ENABLE_DESKTOP_CANVAS_WHEEL_ZOOM) return
+            if (isMobileUI) return
+
+            const viewport = viewportRef.current
+            if (!viewport) return
+
+            const rect = viewport.getBoundingClientRect()
+            const fit = Math.max(0.0001, fitScaleRef.current || 1)
+            const viewportW = rect.width / fit
+            const viewportH = rect.height / fit
+            const anchorX = (event.clientX - rect.left) / fit
+            const anchorY = (event.clientY - rect.top) / fit
+            const view = viewportViewRef.current
+
+            const next = getWheelZoomUpdate({
+                deltaY: event.deltaY,
+                zoom: view.zoom,
+                panX: view.panX,
+                panY: view.panY,
+                anchorX,
+                anchorY,
+                viewportW,
+                viewportH,
+                minZoom: MIN_ZOOM,
+                zoomStep: ZOOM_STEP,
+            })
+
+            event.preventDefault()
+            event.stopPropagation()
+
+            if (!next) return
+
+            viewportViewRef.current = {
+                zoom: next.zoom,
+                panX: next.panX,
+                panY: next.panY,
+            }
+            setZoom(next.zoom)
+            setPanX(next.panX)
+            setPanY(next.panY)
+        },
+        [isMobileUI]
+    )
+
+    React.useEffect(() => {
+        if (!ENABLE_DESKTOP_SPACE_HAND_TOOL || isMobileUI) return
+
+        const isEditableTarget = (target: EventTarget | null) => {
+            if (!(target instanceof HTMLElement)) return false
+            const tag = target.tagName.toLowerCase()
+            return (
+                tag === "input" ||
+                tag === "textarea" ||
+                tag === "select" ||
+                target.isContentEditable
+            )
+        }
+
+        const blurFocusedControlForSpaceHand = () => {
+            const active = document.activeElement
+            if (!(active instanceof HTMLElement)) return
+            if (isEditableTarget(active)) return
+            active.blur()
+        }
+
+        const setSpaceHandFocusSuppression = (enabled: boolean) => {
+            document.documentElement.classList.toggle(
+                SPACE_HAND_SUPPRESS_FOCUS_CLASS,
+                enabled
+            )
+            document.body.classList.toggle(
+                SPACE_HAND_SUPPRESS_FOCUS_CLASS,
+                enabled
+            )
+        }
+
+        const handleSpaceDown = (event: KeyboardEvent) => {
+            if (isEditableTarget(event.target)) return
+
+            const next = startSpaceHandTool(spaceHandStateRef.current, {
+                enabled: ENABLE_DESKTOP_SPACE_HAND_TOOL,
+                isMobileUI,
+                pointerInside: pointerRef.current.inside,
+                key: event.key,
+                repeat: event.repeat,
+            })
+
+            if (next === spaceHandStateRef.current) return
+
+            event.preventDefault()
+            blurFocusedControlForSpaceHand()
+            setSpaceHandFocusSuppression(true)
+            spaceHandStateRef.current = next
+            setToolMode(next.activeTool)
+            clearPipetteHoverCell()
+            hideBrushPreview()
+        }
+
+        const handleSpaceUp = (event: KeyboardEvent) => {
+            if (isEditableTarget(event.target)) return
+
+            const next = stopSpaceHandTool(spaceHandStateRef.current, {
+                key: event.key,
+            })
+
+            if (next === spaceHandStateRef.current) return
+
+            event.preventDefault()
+            setSpaceHandFocusSuppression(false)
+            spaceHandStateRef.current = next
+            setToolMode(next.activeTool)
+            setIsPanning(false)
+            panSessionRef.current = {
+                active: false,
+                startClientX: 0,
+                startClientY: 0,
+                startPanX: 0,
+                startPanY: 0,
+            }
+            if (pointerRef.current.inside) {
+                refreshBrushPreviewFromPointerState()
+            }
+        }
+
+        window.addEventListener("keydown", handleSpaceDown)
+        window.addEventListener("keyup", handleSpaceUp)
+
+        return () => {
+            window.removeEventListener("keydown", handleSpaceDown)
+            window.removeEventListener("keyup", handleSpaceUp)
+            setSpaceHandFocusSuppression(false)
+        }
+    }, [clearPipetteHoverCell, isMobileUI])
+
     const startHold = (
         e: any,
         ref: React.MutableRefObject<number | null>,
@@ -8367,11 +9115,15 @@ function PixelEditorFramer({
         }, 550) // long tap threshold
     }
 
+    type ColorModalMode = "edit" | "create-user" | "create-imported-preset"
     const [isColorModalOpen, setIsColorModalOpen] = React.useState(false)
+    const [colorModalMode, setColorModalMode] =
+        React.useState<ColorModalMode>("edit")
     const [editingSwatchId, setEditingSwatchId] =
         React.useState<SwatchId | null>(null)
     const [pendingColor, setPendingColor] = React.useState("#FF0000")
     const [pendingTransparent, setPendingTransparent] = React.useState(false)
+    const [pendingDelete, setPendingDelete] = React.useState(false)
 
     // HEX1: draft текста в инпуте (может быть временно невалидным)
     const [hexDraft, setHexDraft] = React.useState("#FF0000")
@@ -8465,7 +9217,7 @@ function PixelEditorFramer({
     const rows = overlayPixels.length
     const cols = rows > 0 ? overlayPixels[0].length : 0
     const bg = "#e9d8a6"
-    const textColor = "#1b1b1b"
+    const textColor = PIXTUDIO_INK
     const canvasMax = 640
     const editorContentWidth = isMobileUI
         ? Math.min(canvasMax, Math.max(1, mobileViewportWidth))
@@ -8474,7 +9226,7 @@ function PixelEditorFramer({
     const squareButton = (clickable = false): React.CSSProperties => ({
         width: 44,
         height: 44,
-        background: "#000",
+        background: PIXTUDIO_INK,
         color: "#fff",
         border: "1px solid rgba(255,255,255,0.15)",
         display: "grid",
@@ -8523,7 +9275,7 @@ function PixelEditorFramer({
     }
 
     const labelStyle: React.CSSProperties = {
-        fontSize: 13,
+        fontSize: isMobileUI ? 13 : 20,
         fontWeight: 800,
         letterSpacing: 0.4,
         color: textColor,
@@ -8531,11 +9283,31 @@ function PixelEditorFramer({
         marginBottom: 3,
     }
 
+    const brushSizeLabelStyle: React.CSSProperties = {
+        ...labelStyle,
+        fontSize: isMobileUI ? 13 : 20,
+    }
+
+    const gridSizeLabelStyle: React.CSSProperties = {
+        ...labelStyle,
+        fontSize: isMobileUI ? 13 : 20,
+    }
+
     const subLabelStyle: React.CSSProperties = {
-        fontSize: 14,
+        fontSize: isMobileUI ? 14 : 20,
         fontWeight: 500,
         color: textColor,
         marginLeft: 6,
+    }
+
+    const brushSizeSubLabelStyle: React.CSSProperties = {
+        ...subLabelStyle,
+        fontSize: isMobileUI ? 14 : 20,
+    }
+
+    const gridSizeSubLabelStyle: React.CSSProperties = {
+        ...subLabelStyle,
+        fontSize: isMobileUI ? 14 : 20,
     }
 
     const trackWrap: React.CSSProperties = {
@@ -8733,6 +9505,7 @@ function PixelEditorFramer({
             setGridSize(nextGridSize)
             setPaletteCount(nextPaletteCount)
             setBrushSize(DEFAULT_BRUSH_SIZE)
+            resetEditorInteractionStateForNewImport()
 
             abortEditorActionTransaction()
 
@@ -8847,7 +9620,11 @@ function PixelEditorFramer({
         setOriginalImageData(initialImageData)
         setShowImage(true)
         setHasImportContext(true)
-    }, [initialImageData, initialImageRouteKind])
+    }, [
+        initialImageData,
+        initialImageRouteKind,
+        resetEditorInteractionStateForNewImport,
+    ])
 
     React.useEffect(() => {
         if (!onEditorCommittedStateSettled) return
@@ -9370,7 +10147,7 @@ function PixelEditorFramer({
         const SHOW_GRID_R0 = true
 
         if (SHOW_GRID_R0 && showGrid) {
-            ctx.strokeStyle = "rgba(0,0,0,0.15)"
+            ctx.strokeStyle = pixtudioInk(0.15)
             ctx.lineWidth = 1
 
             for (let y = 0; y <= CANVAS_SIZE; y += cellH) {
@@ -9766,6 +10543,21 @@ function PixelEditorFramer({
             e.preventDefault()
         }
 
+        if (
+            ENABLE_MOBILE_CANVAS_PINCH_ZOOM &&
+            isMobileUI &&
+            e?.pointerType === "touch"
+        ) {
+            touchPointersRef.current.delete(e.pointerId)
+
+            if (pinchZoomSessionRef.current.active) {
+                if (touchPointersRef.current.size < 2) {
+                    pinchZoomSessionRef.current.active = false
+                }
+                return
+            }
+        }
+
         // --- Step 7: stop panning ---
         if (panSessionRef.current.active) {
             panSessionRef.current.active = false
@@ -9912,8 +10704,10 @@ function PixelEditorFramer({
         const { r, g, b } = rgb
         const hsv = rgbToHsv(r, g, b)
 
+        setColorModalMode("edit")
         setEditingSwatchId(swatchId)
         setPendingTransparent(!!sw.isTransparent)
+        setPendingDelete(false)
         setPendingColor(hex)
 
         setPickerHue(hsv.h)
@@ -9921,6 +10715,33 @@ function PixelEditorFramer({
 
         setHexDraft((hex || "#FF0000").toUpperCase())
 
+        setIsColorModalOpen(true)
+    }
+
+    function getDefaultNewSwatchColor() {
+        if (selectedSwatch !== "transparent") {
+            const sw = swatchById.get(selectedSwatch)
+            if (sw && !sw.isTransparent) {
+                return cssColorToHex(sw.color).toUpperCase()
+            }
+        }
+
+        return "#FFFFFF"
+    }
+
+    function openCreateSwatchModal(mode: Exclude<ColorModalMode, "edit">) {
+        const hex = getDefaultNewSwatchColor()
+        const rgb = hexToRgb(hex) ?? { r: 255, g: 255, b: 255 }
+        const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
+
+        setColorModalMode(mode)
+        setEditingSwatchId(null)
+        setPendingTransparent(false)
+        setPendingDelete(false)
+        setPendingColor(hex)
+        setPickerHue(hsv.h)
+        setPickerSV({ s: hsv.s, v: hsv.v })
+        setHexDraft(hex)
         setIsColorModalOpen(true)
     }
 
@@ -9960,6 +10781,26 @@ function PixelEditorFramer({
                     return idMap[v] as any
                 }
                 return v
+            })
+            if (rowChanged) changed = true
+            return rowChanged ? nextRow : row
+        })
+        return changed ? out : grid
+    }
+
+    function removePixelValueFromGrid(
+        grid: PixelValue[][],
+        swatchId: SwatchId
+    ): PixelValue[][] {
+        let changed = false
+        const out = grid.map((row) => {
+            let rowChanged = false
+            const nextRow = row.map((value) => {
+                if (value === swatchId) {
+                    rowChanged = true
+                    return null
+                }
+                return value
             })
             if (rowChanged) changed = true
             return rowChanged ? nextRow : row
@@ -10065,13 +10906,190 @@ function PixelEditorFramer({
         }
     }
 
-    function handleModalApply() {
+    function getAutoSwatchIndex(swatchId: SwatchId): number | null {
+        const match = /^auto-(\d+)$/.exec(String(swatchId))
+        if (!match) return null
+        const index = Number(match[1])
+        return Number.isInteger(index) ? index : null
+    }
+
+    function appendDeletedAutoPaletteColor(color: string): string[] {
+        const nextColor = cssColorToHex(color).toUpperCase()
+        if (deletedAutoPaletteColors.includes(nextColor)) {
+            return deletedAutoPaletteColors.slice()
+        }
+        return [...deletedAutoPaletteColors, nextColor]
+    }
+
+    function handleDeleteSwatchFromModal() {
         if (!editingSwatchId) {
-            setIsColorModalOpen(false)
+            handleModalCancel()
+            return
+        }
+
+        const swatch = swatchById.get(editingSwatchId)
+        if (!swatch) {
+            handleModalCancel()
+            return
+        }
+
+        if (
+            quantizationProfile.kind === "fixed" &&
+            quantizationProfile.source === "imported" &&
+            editingSwatchId.startsWith("auto-")
+        ) {
+            const colorIndex = getAutoSwatchIndex(editingSwatchId)
+            if (colorIndex == null) {
+                handleModalCancel()
+                return
+            }
+            const result = removeImportedPaletteProfileColor(
+                quantizationProfile as FixedQuantizationProfile & {
+                    source: "imported"
+                },
+                colorIndex
+            )
+            if (!result.removed) {
+                handleModalCancel()
+                return
+            }
+
+            const preferred =
+                selectedSwatch === editingSwatchId
+                    ? (`auto-${Math.max(0, colorIndex - 1)}` as SwatchId)
+                    : selectedSwatch
+            const nextImportedPalettePresets = importedPalettePresets.map(
+                (preset) =>
+                    preset.id === result.profile.id
+                        ? { ...preset, profile: result.profile }
+                        : preset
+            )
+            setImportedPalettePresets(nextImportedPalettePresets)
+            applyFixedPalettePreset(
+                result.profile,
+                preferred,
+                nextImportedPalettePresets
+            )
+            closeColorModalAfterCreate()
             return
         }
 
         const before = latestProjectStateRef.current ?? makeProjectState()
+
+        if (
+            quantizationProfile.kind === "extract" &&
+            editingSwatchId.startsWith("auto-") &&
+            originalImageData
+        ) {
+            const nextDeletedColors = appendDeletedAutoPaletteColor(swatch.color)
+            const sourcePixels = pixelizeFromImageDominant(
+                originalImageData,
+                gridSize,
+                16
+            )
+            const world = buildDerivedWorld<PixelValue>({
+                profile: EXTRACT_QUANTIZATION_PROFILE,
+                sourcePixels,
+                overlayPixels,
+                previousSwatches: autoSwatches,
+                userSwatches,
+                paletteCountTarget: clamp(
+                    paletteCount,
+                    PALETTE_MIN,
+                    PALETTE_MAX
+                ),
+                excludedColors: nextDeletedColors,
+            })
+            const preferred =
+                selectedSwatch === editingSwatchId ? null : selectedSwatch
+            const afterState: ProjectState = {
+                ...makeProjectStateFromDerivedWorld(world, "size", preferred),
+                deletedAutoPaletteColors: nextDeletedColors,
+            }
+
+            beginEditorActionTransaction("editor-action", before)
+            setDeletedAutoPaletteColors(nextDeletedColors)
+            setPaletteTabsState((prev) => ({
+                ...prev,
+                activeTab: "size",
+                sizeWorld: {
+                    ...world,
+                    referenceSignature:
+                        imageDataSampleSignature(originalImageData),
+                },
+            }))
+            applyDerivedWorldSnapshot(world, preferred)
+            latestProjectStateRef.current = afterState
+            pushCommit(before, { afterState })
+            closeColorModalAfterCreate()
+            return
+        }
+
+        const nextAuto = autoSwatches.filter(
+            (item) => item.id !== editingSwatchId
+        )
+        const nextUser = userSwatches.filter(
+            (item) => item.id !== editingSwatchId
+        )
+        if (
+            nextAuto.length === autoSwatches.length &&
+            nextUser.length === userSwatches.length
+        ) {
+            handleModalCancel()
+            return
+        }
+
+        const nextImage = removePixelValueFromGrid(imagePixels, editingSwatchId)
+        const nextOverlay = removePixelValueFromGrid(
+            overlayPixels,
+            editingSwatchId
+        )
+        const nextDeletedColors = editingSwatchId.startsWith("auto-")
+            ? appendDeletedAutoPaletteColor(swatch.color)
+            : deletedAutoPaletteColors.slice()
+        const nextSelected =
+            selectedSwatch === editingSwatchId
+                ? nextAuto[0]?.id ?? nextUser[0]?.id ?? "transparent"
+                : selectedSwatch
+        const nextAutoOverrides = { ...(autoOverrides || {}) }
+        delete nextAutoOverrides[editingSwatchId]
+        const afterState: ProjectState = {
+            ...(latestProjectStateRef.current ?? makeProjectState()),
+            imagePixels: clonePixelsGrid(nextImage),
+            overlayPixels: clonePixelsGrid(nextOverlay),
+            autoSwatches: cloneSwatches(nextAuto),
+            userSwatches: cloneSwatches(nextUser),
+            selectedSwatch: nextSelected,
+            deletedAutoPaletteColors: nextDeletedColors,
+            autoOverrides: pruneAutoOverridesForCurrentAuto(
+                nextAuto,
+                nextAutoOverrides
+            ),
+        }
+
+        beginEditorActionTransaction("editor-action", before)
+        setImagePixels(nextImage)
+        setOverlayPixels(nextOverlay)
+        setAutoSwatches(nextAuto)
+        setUserSwatches(nextUser)
+        setSelectedSwatch(nextSelected)
+        setDeletedAutoPaletteColors(nextDeletedColors)
+        setAutoOverrides(afterState.autoOverrides)
+        latestProjectStateRef.current = afterState
+        pushCommit(before, { afterState })
+        closeColorModalAfterCreate()
+    }
+
+    function handleModalApply() {
+        if (!editingSwatchId && colorModalMode === "edit") {
+            setIsColorModalOpen(false)
+            return
+        }
+
+        if (colorModalMode === "edit" && pendingDelete) {
+            handleDeleteSwatchFromModal()
+            return
+        }
 
         // 1) вычисляем “истинный” цвет для применения:
         //    - если прозрачный: цвет неважен, но оставим pendingColor
@@ -10086,6 +11104,25 @@ function PixelEditorFramer({
         }
 
         // 2) готовим next swatches (локально, синхронно)
+        if (colorModalMode === "create-user") {
+            createUserSwatchFromModal(colorUpper, !!pendingTransparent)
+            return
+        }
+
+        if (colorModalMode === "create-imported-preset") {
+            if (!pendingTransparent) {
+                createImportedPresetSwatchFromModal(colorUpper)
+            }
+            return
+        }
+
+        if (!editingSwatchId) {
+            setIsColorModalOpen(false)
+            return
+        }
+
+        const before = latestProjectStateRef.current ?? makeProjectState()
+
         const currentSwatch = swatchById.get(editingSwatchId)
         if (currentSwatch) {
             const currentTransparent = !!currentSwatch.isTransparent
@@ -10098,6 +11135,8 @@ function PixelEditorFramer({
             if (sameVisualValue) {
                 setIsColorModalOpen(false)
                 setEditingSwatchId(null)
+                setColorModalMode("edit")
+                setPendingDelete(false)
                 return
             }
         }
@@ -10162,6 +11201,8 @@ function PixelEditorFramer({
         if (isSameProjectState(before, afterState)) {
             setIsColorModalOpen(false)
             setEditingSwatchId(null)
+            setColorModalMode("edit")
+            setPendingDelete(false)
             return
         }
 
@@ -10190,16 +11231,30 @@ function PixelEditorFramer({
 
         setIsColorModalOpen(false)
         setEditingSwatchId(null)
+        setColorModalMode("edit")
+        setPendingDelete(false)
     }
 
     function handleModalCancel() {
         setIsColorModalOpen(false)
         setEditingSwatchId(null)
+        setColorModalMode("edit")
+        setPendingDelete(false)
     }
 
     // ------------------- ADD SWATCH -------------------
 
-    function addUserSwatch() {
+    function closeColorModalAfterCreate() {
+        setIsColorModalOpen(false)
+        setEditingSwatchId(null)
+        setColorModalMode("edit")
+        setPendingDelete(false)
+    }
+
+    function createUserSwatchFromModal(
+        colorUpper: string,
+        transparent: boolean
+    ) {
         const before = latestProjectStateRef.current ?? makeProjectState()
         beginEditorActionTransaction("editor-action", before)
 
@@ -10209,8 +11264,8 @@ function PixelEditorFramer({
 
         const newSwatch: Swatch = {
             id,
-            color: bg,
-            isTransparent: false,
+            color: colorUpper,
+            isTransparent: transparent,
             isUser: true,
         }
 
@@ -10232,6 +11287,61 @@ function PixelEditorFramer({
         pushCommit(before, {
             afterState,
         })
+
+        closeColorModalAfterCreate()
+    }
+
+    function createImportedPresetSwatchFromModal(colorUpper: string) {
+        if (
+            quantizationProfile.kind !== "fixed" ||
+            quantizationProfile.source !== "imported"
+        ) {
+            closeColorModalAfterCreate()
+            return
+        }
+
+        const importedProfile = quantizationProfile as FixedQuantizationProfile & {
+            source: "imported"
+        }
+        const extension = extendImportedPaletteProfile(importedProfile, colorUpper)
+        if (!extension) {
+            closeColorModalAfterCreate()
+            return
+        }
+
+        const selectedPresetSwatch = `auto-${extension.colorIndex}` as SwatchId
+
+        if (extension.added) {
+            const nextImportedPalettePresets = importedPalettePresets.map(
+                (preset) =>
+                    preset.id === extension.profile.id
+                        ? { ...preset, profile: extension.profile }
+                        : preset
+            )
+            setImportedPalettePresets(nextImportedPalettePresets)
+            applyFixedPalettePreset(
+                extension.profile,
+                selectedPresetSwatch,
+                nextImportedPalettePresets
+            )
+        } else {
+            setSelectedSwatch(selectedPresetSwatch)
+        }
+
+        closeColorModalAfterCreate()
+    }
+
+    function handleAddSwatchClick() {
+        if (
+            paletteTabsState.activeTab === "presets" &&
+            quantizationProfile.kind === "fixed" &&
+            quantizationProfile.source === "imported"
+        ) {
+            openCreateSwatchModal("create-imported-preset")
+            return
+        }
+
+        openCreateSwatchModal("create-user")
     }
 
     // ------------------- EXPORT -------------------
@@ -10641,6 +11751,12 @@ function PixelEditorFramer({
         setManualOpen(false)
     }
 
+    const openStartScreen = () => {
+        closeOverlay()
+        setManualOpen(false)
+        onRequestStartScreen?.()
+    }
+
     const runExport = async (kind: "png" | "svg") => {
         // Enterprise: ignore re-entry (no toasts, no alerts)
         if (isExporting) return
@@ -10859,8 +11975,8 @@ function PixelEditorFramer({
                     justifyContent: "center",
                     boxSizing: "border-box",
                     border: isActive
-                        ? "2px solid rgba(0,0,0,0.95)"
-                        : "1px solid rgba(0,0,0,0.25)",
+                        ? `2px solid ${pixtudioInk(0.95)}`
+                        : `1px solid ${pixtudioInk(0.25)}`,
                     transform: isPipetteSwatchLifted
                         ? "scale(1.15)"
                         : "scale(1)",
@@ -10875,7 +11991,7 @@ function PixelEditorFramer({
     }
 
     const builtinPresetProfiles: FixedQuantizationProfile[] = [
-        QUANTIZATION_PROFILES.neon,
+        QUANTIZATION_PROFILES.sunset,
         QUANTIZATION_PROFILES.grayscale,
         QUANTIZATION_PROFILES.bw,
     ]
@@ -10886,14 +12002,16 @@ function PixelEditorFramer({
     const shouldShowImportedPresetSwatches =
         paletteTabsState.activeTab === "presets" &&
         quantizationProfile.kind === "fixed" &&
-        quantizationProfile.source === "imported"
+        quantizationProfile.source === "imported" &&
+        activePresetButton === quantizationProfile.id
 
     const getPresetButtonLabel = (profile: FixedQuantizationProfile) =>
         profile.id === "black-white-2" ? "BLACK/WHITE" : profile.name
 
     const presetButtonStyle = (
         label: string,
-        secondary = false
+        secondary = false,
+        active = false
     ): React.CSSProperties => {
         const wide = label.length >= 10
         return {
@@ -10910,9 +12028,15 @@ function PixelEditorFramer({
                     ? 168
                     : 147,
             height: isMobileUI ? 35 : 43,
-            border: "none",
-            background: "transparent",
-            color: "#001219",
+            border: `2px solid ${PIXTUDIO_INK}`,
+            borderRadius: 0,
+            background: secondary ? PIXTUDIO_INK : active ? "#FFFFFF" : bg,
+            backgroundColor: secondary
+                ? PIXTUDIO_INK
+                : active
+                  ? "#FFFFFF"
+                  : bg,
+            color: secondary ? "#FFFFFF" : PIXTUDIO_INK,
             fontWeight: 900,
             fontSize: isMobileUI ? 12 : 15,
             letterSpacing: 0,
@@ -10949,8 +12073,15 @@ function PixelEditorFramer({
         height: "100%",
         border: "none",
         background: "transparent",
+        color: PIXTUDIO_INK,
         cursor: "pointer",
         padding: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: isMobileUI ? 13 : 16,
+        fontWeight: 900,
+        lineHeight: 1,
     }
 
     const renderPresetButton = (profile: FixedQuantizationProfile) => {
@@ -10964,13 +12095,8 @@ function PixelEditorFramer({
                 onClick={() => applyFixedPalettePreset(profile)}
                 className="pxUiAnim"
                 title={profile.name}
-                style={presetButtonStyle(label)}
+                style={presetButtonStyle(label, false, active)}
             >
-                <SvgPalettePresetButton
-                    active={active}
-                    fill={bg}
-                    style={{ position: "absolute", inset: 0 }}
-                />
                 <span style={presetButtonTextStyle(true)}>{label}</span>
                 <span
                     role="button"
@@ -10983,7 +12109,9 @@ function PixelEditorFramer({
                         deletePalettePreset(profile.id)
                     }}
                     style={presetDeleteButtonStyle}
-                />
+                >
+                    {"\u00d7"}
+                </span>
             </button>
         )
     }
@@ -10998,13 +12126,14 @@ function PixelEditorFramer({
                 className="pxUiAnim"
                 style={presetButtonStyle(label, true)}
             >
-                <SvgPalettePresetButton
-                    active={false}
-                    fill={bg}
-                    showDeleteMark={false}
-                    style={{ position: "absolute", inset: 0 }}
-                />
-                <span style={presetButtonTextStyle(false)}>{label}</span>
+                <span
+                    style={{
+                        ...presetButtonTextStyle(false),
+                        color: "#FFFFFF",
+                    }}
+                >
+                    {label}
+                </span>
             </button>
         )
     }
@@ -11036,7 +12165,7 @@ function PixelEditorFramer({
                     height: `${100 / rows}%`,
                     background: color ?? checkerBackground,
                     border: "2px solid rgba(255,255,255,0.95)",
-                    boxShadow: "0 3px 8px rgba(0,0,0,0.3)",
+                    boxShadow: `0 3px 8px ${pixtudioInk(0.3)}`,
                     boxSizing: "border-box",
                     pointerEvents: "none",
                     transform: "scale(1.15)",
@@ -11048,6 +12177,12 @@ function PixelEditorFramer({
             />
         )
     }
+
+    const swatchEditControlGap = isMobileUI ? 6 : SWATCH_EDIT_ROW_GAP
+    const swatchEditCheckSize = isMobileUI ? 18 : SWATCH_EDIT_CHECK_SIZE
+    const swatchEditPreviewSize = isMobileUI ? 22 : SWATCH_EDIT_PREVIEW_SIZE
+    const swatchEditLabelFont = isMobileUI ? 10 : SWATCH_EDIT_LABEL_FONT
+    const swatchEditHexFont = isMobileUI ? 11 : SWATCH_EDIT_HEX_FONT
 
     return (
         <FitToViewport
@@ -11112,6 +12247,26 @@ function PixelEditorFramer({
                         minWidth: 0,
                     }}
                 >
+                    {/* Home */}
+                    <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            onClick={openStartScreen}
+                            aria-label="Home"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <SvgHomeButton
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    display: "block",
+                                    transform: "translateY(0px)",
+                                }}
+                            />
+                        </button>
+                    </div>
+
                     {/* Block 0: Save / Load */}
                     <div style={{ display: "contents" }}>
                         <button
@@ -11319,7 +12474,7 @@ function PixelEditorFramer({
                         width: "100%",
                         maxWidth: canvasMax,
                         aspectRatio: "1 / 1",
-                        border: "2px solid rgba(0,0,0,0.55)",
+                        border: `2px solid ${pixtudioInk(0.55)}`,
                         background: "#ffffff",
                         backgroundClip: "padding-box",
                         display: "flex",
@@ -11331,6 +12486,7 @@ function PixelEditorFramer({
                     {/* ✅ ZOOM STEP 1: Viewport wrapper + Content layer (no transform yet) */}
                     <div
                         ref={viewportRef}
+                        onWheel={handleDesktopCanvasWheelZoom}
                         style={{
                             position: "relative",
                             width: "100%",
@@ -11463,8 +12619,10 @@ function PixelEditorFramer({
                                         marginBottom: 8,
                                     }}
                                 >
-                                    <div style={labelStyle}>BRUSH SIZE:</div>
-                                    <div style={subLabelStyle}>
+                                    <div style={brushSizeLabelStyle}>
+                                        BRUSH SIZE:
+                                    </div>
+                                    <div style={brushSizeSubLabelStyle}>
                                         {brushSize} × {brushSize}
                                     </div>
                                 </div>
@@ -11493,8 +12651,8 @@ function PixelEditorFramer({
     border-radius: 0px;
     background: linear-gradient(
       to right,
-      var(--px-track-fill, rgba(0,0,0,0.25)) 0%,
-      var(--px-track-fill, rgba(0,0,0,0.25)) var(--px-track-pct, 0%),
+      var(--px-track-fill, rgba(var(--pixtudio-ink-rgb), 0.25)) 0%,
+      var(--px-track-fill, rgba(var(--pixtudio-ink-rgb), 0.25)) var(--px-track-pct, 0%),
       var(--px-track-rest, rgba(255,255,255,0.25)) var(--px-track-pct, 0%),
       var(--px-track-rest, rgba(255,255,255,0.25)) 100%
     );
@@ -11506,8 +12664,8 @@ function PixelEditorFramer({
     border: none;
     background: linear-gradient(
       to right,
-      var(--px-track-fill, rgba(0,0,0,0.25)) 0%,
-      var(--px-track-fill, rgba(0,0,0,0.25)) var(--px-track-pct, 0%),
+      var(--px-track-fill, rgba(var(--pixtudio-ink-rgb), 0.25)) 0%,
+      var(--px-track-fill, rgba(var(--pixtudio-ink-rgb), 0.25)) var(--px-track-pct, 0%),
       var(--px-track-rest, rgba(255,255,255,0.25)) var(--px-track-pct, 0%),
       var(--px-track-rest, rgba(255,255,255,0.25)) 100%
     );
@@ -11778,8 +12936,8 @@ function PixelEditorFramer({
                                     alignItems: "baseline",
                                 }}
                             >
-                                <div style={labelStyle}>GRID SIZE:</div>
-                                <div style={subLabelStyle}>
+                                <div style={gridSizeLabelStyle}>GRID SIZE:</div>
+                                <div style={gridSizeSubLabelStyle}>
                                     {rows} × {cols}
                                 </div>
                             </div>
@@ -11894,7 +13052,7 @@ function PixelEditorFramer({
                                     display: "grid",
                                     gridTemplateColumns: "1fr 1fr",
                                     alignItems: "center",
-                                    height: 22,
+                                    height: isMobileUI ? 22 : 30,
                                 }}
                             >
                                 <div
@@ -11919,13 +13077,14 @@ function PixelEditorFramer({
                                         color:
                                             paletteTabsState.activeTab ===
                                             "size"
-                                                ? "#001219"
+                                                ? PIXTUDIO_INK
                                                 : "rgba(30, 43, 47, 0.32)",
                                         fontWeight: 800,
-                                        fontSize: 13,
+                                        fontSize: isMobileUI ? 13 : 20,
+                                        lineHeight: 1,
                                         letterSpacing: 0.4,
                                         textAlign: "left",
-                                        padding: isMobileUI ? "0 10px" : 0,
+                                        padding: 0,
                                         cursor: "pointer",
                                         boxSizing: "border-box",
                                     }}
@@ -11946,10 +13105,11 @@ function PixelEditorFramer({
                                         color:
                                             paletteTabsState.activeTab ===
                                             "presets"
-                                                ? "#001219"
+                                                ? PIXTUDIO_INK
                                                 : "rgba(30, 43, 47, 0.32)",
                                         fontWeight: 800,
-                                        fontSize: 13,
+                                        fontSize: isMobileUI ? 13 : 20,
+                                        lineHeight: 1,
                                         letterSpacing: 0.4,
                                         textAlign: "left",
                                         padding: isMobileUI
@@ -12125,8 +13285,8 @@ function PixelEditorFramer({
                                                 : "2px solid rgba(255,255,255,0.25)",
                                         boxShadow:
                                             selectedSwatch === "transparent"
-                                                ? "0 0 0 2px rgba(0,0,0,0.6)"
-                                                : "0 0 0 2px rgba(0,0,0,0.35)",
+                                                ? `0 0 0 2px ${pixtudioInk(0.6)}`
+                                                : `0 0 0 2px ${pixtudioInk(0.35)}`,
                                         boxSizing: "border-box",
                                         transform:
                                             toolMode === "pipette" &&
@@ -12150,7 +13310,7 @@ function PixelEditorFramer({
                                 {/* 3) add button INSIDE grid (после прозрачности) */}
                                 <button
                                     type="button"
-                                    onClick={addUserSwatch}
+                                    onClick={handleAddSwatchClick}
                                     className="pxUiAnim"
                                     title="Add swatch"
                                     style={{
@@ -12231,6 +13391,30 @@ function PixelEditorFramer({
                                                 {sortedAutoSwatchesForUI.map(
                                                     renderSwatchButton
                                                 )}
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddSwatchClick}
+                                                    className="pxUiAnim"
+                                                    title="Add swatch"
+                                                    style={{
+                                                        width: SWATCH_PX,
+                                                        height: SWATCH_PX,
+                                                        padding: 0,
+                                                        border: "none",
+                                                        background:
+                                                            "transparent",
+                                                        display: "inline-flex",
+                                                        alignItems: "center",
+                                                        justifyContent:
+                                                            "center",
+                                                        userSelect: "none",
+                                                        cursor: "pointer",
+                                                    }}
+                                                >
+                                                    <AddNewSwatch
+                                                        size={SWATCH_PX}
+                                                    />
+                                                </button>
                                             </div>
                                         )}
                                     </div>
@@ -12285,7 +13469,7 @@ function PixelEditorFramer({
                                 inset: 0,
 
                                 // ✅ Одинаковая подложка для Import и Export
-                                background: "rgba(0,0,0,0.3)",
+                                background: pixtudioInk(0.3),
                                 backdropFilter: "blur(10px)",
                                 WebkitBackdropFilter: "blur(10px)",
 
@@ -12349,7 +13533,7 @@ function PixelEditorFramer({
                                     lineHeight: "30px",
                                     textAlign: "center",
                                     userSelect: "none",
-                                    textShadow: "0 2px 6px rgba(0,0,0,0.45)",
+                                    textShadow: `0 2px 6px ${pixtudioInk(0.45)}`,
                                 }
 
                                 return (
@@ -12563,7 +13747,7 @@ function PixelEditorFramer({
                                                                 textAlign:
                                                                     "left",
                                                                 textShadow:
-                                                                    "0 2px 6px rgba(0,0,0,0.45)",
+                                                                    `0 2px 6px ${pixtudioInk(0.45)}`,
                                                             }}
                                                         >
                                                             <span
@@ -12666,7 +13850,7 @@ function PixelEditorFramer({
                                                                 textAlign:
                                                                     "left",
                                                                 textShadow:
-                                                                    "0 2px 6px rgba(0,0,0,0.45)",
+                                                                    `0 2px 6px ${pixtudioInk(0.45)}`,
                                                             }}
                                                         >
                                                             <span
@@ -12708,7 +13892,7 @@ function PixelEditorFramer({
                                                             color: "rgba(255,255,255,1)",
                                                             textAlign: "left",
                                                             textShadow:
-                                                                "0 2px 6px rgba(0,0,0,0.45)",
+                                                                `0 2px 6px ${pixtudioInk(0.45)}`,
                                                             display: "flex",
                                                             flexDirection:
                                                                 "column",
@@ -12838,7 +14022,9 @@ function PixelEditorFramer({
                                             flex: "0 0 auto",
                                         }}
                                     >
-                                        SWATCH EDIT
+                                        {colorModalMode === "edit"
+                                            ? "SWATCH EDIT"
+                                            : "CREATE SWATCH"}
                                     </div>
 
                                     <div
@@ -12853,7 +14039,11 @@ function PixelEditorFramer({
                                         <div
                                             ref={svRef}
                                             onPointerDown={(e) => {
-                                                if (pendingTransparent) return
+                                                if (
+                                                    pendingTransparent ||
+                                                    pendingDelete
+                                                )
+                                                    return
                                                 setDragSV(true)
                                                 onSVAt(e.clientX, e.clientY)
                                             }}
@@ -12862,16 +14052,19 @@ function PixelEditorFramer({
                                                 flex: "1 1 auto",
                                                 minHeight: 0,
                                                 border: SWATCH_EDIT_BORDER,
-                                                background: pendingTransparent
-                                                    ? checkerBackground
-                                                    : `linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, ${hueColor} 100%)`,
+                                                background: pendingDelete
+                                                    ? `linear-gradient(to top right, transparent calc(50% - 1px), ${PIXTUDIO_INK} 50%, transparent calc(50% + 1px)), linear-gradient(to bottom right, transparent calc(50% - 1px), ${PIXTUDIO_INK} 50%, transparent calc(50% + 1px)), #fff`
+                                                    : pendingTransparent
+                                                      ? checkerBackground
+                                                      : `linear-gradient(to top, #000 0%, transparent 100%), linear-gradient(to right, #fff 0%, ${hueColor} 100%)`,
                                                 touchAction: "none",
                                                 userSelect: "none",
                                                 overflow: "hidden",
                                             }}
                                             aria-label="SV Picker"
                                         >
-                                            {!pendingTransparent && (
+                                            {!pendingTransparent &&
+                                                !pendingDelete && (
                                                 <div
                                                     style={{
                                                         position: "absolute",
@@ -12898,7 +14091,11 @@ function PixelEditorFramer({
                                         <div
                                             ref={hueRef}
                                             onPointerDown={(e) => {
-                                                if (pendingTransparent) return
+                                                if (
+                                                    pendingTransparent ||
+                                                    pendingDelete
+                                                )
+                                                    return
                                                 setDragHue(true)
                                                 onHueAt(e.clientX)
                                             }}
@@ -12914,7 +14111,8 @@ function PixelEditorFramer({
                                             }}
                                             aria-label="Hue Picker"
                                         >
-                                            {!pendingTransparent && (
+                                            {!pendingTransparent &&
+                                                !pendingDelete && (
                                                 <div
                                                     style={{
                                                         position: "absolute",
@@ -12929,7 +14127,7 @@ function PixelEditorFramer({
                                                         height: SWATCH_EDIT_HUE_CURSOR_HEIGHT,
                                                         background: "#fff",
                                                         boxShadow:
-                                                            "0 0 0 1px rgba(0,0,0,0.6)",
+                                                            `0 0 0 1px ${pixtudioInk(0.6)}`,
                                                     }}
                                                 />
                                             )}
@@ -12938,10 +14136,15 @@ function PixelEditorFramer({
 
                                     <div
                                         style={{
-                                            display: "flex",
+                                            display: "grid",
                                             alignItems: "center",
-                                            gap: SWATCH_EDIT_ROW_GAP,
+                                            gridTemplateColumns:
+                                                colorModalMode === "edit"
+                                                    ? "max-content max-content minmax(0, 1fr) max-content"
+                                                    : "max-content max-content minmax(0, 1fr)",
+                                            gap: swatchEditControlGap,
                                             marginTop: "auto",
+                                            width: "100%",
                                             minWidth: 0,
                                             flex: "0 0 auto",
                                         }}
@@ -12950,21 +14153,22 @@ function PixelEditorFramer({
                                             style={{
                                                 display: "flex",
                                                 alignItems: "center",
-                                                gap: 10,
+                                                gap: swatchEditControlGap,
                                                 fontSize:
-                                                    SWATCH_EDIT_LABEL_FONT,
+                                                    swatchEditLabelFont,
                                                 fontWeight: 900,
                                                 letterSpacing:
                                                     SWATCH_EDIT_LABEL_LETTER_SPACING,
-                                                color: "#001219",
+                                                color: PIXTUDIO_INK,
                                                 userSelect: "none",
                                                 cursor: "pointer",
+                                                minWidth: 0,
                                             }}
                                         >
                                             <div
                                                 style={{
-                                                    width: SWATCH_EDIT_CHECK_SIZE,
-                                                    height: SWATCH_EDIT_CHECK_SIZE,
+                                                    width: swatchEditCheckSize,
+                                                    height: swatchEditCheckSize,
                                                     position: "relative",
                                                     flex: "0 0 auto",
                                                 }}
@@ -12972,6 +14176,10 @@ function PixelEditorFramer({
                                                 <input
                                                     type="checkbox"
                                                     checked={pendingTransparent}
+                                                    disabled={
+                                                        colorModalMode ===
+                                                        "create-imported-preset"
+                                                    }
                                                     onChange={(e) =>
                                                         setPendingTransparent(
                                                             e.target.checked
@@ -12989,8 +14197,8 @@ function PixelEditorFramer({
 
                                                 <div
                                                     style={{
-                                                        width: SWATCH_EDIT_CHECK_SIZE,
-                                                        height: SWATCH_EDIT_CHECK_SIZE,
+                                                        width: swatchEditCheckSize,
+                                                        height: swatchEditCheckSize,
                                                         display: "grid",
                                                         placeItems: "center",
                                                         pointerEvents: "none",
@@ -13001,7 +14209,7 @@ function PixelEditorFramer({
                                                             pendingTransparent
                                                         }
                                                         size={
-                                                            SWATCH_EDIT_CHECK_SIZE
+                                                            swatchEditCheckSize
                                                         }
                                                     />
                                                 </div>
@@ -13010,10 +14218,10 @@ function PixelEditorFramer({
                                             <div
                                                 style={{
                                                     fontSize:
-                                                        SWATCH_EDIT_LABEL_FONT,
+                                                        swatchEditLabelFont,
                                                     fontWeight: 400,
                                                     letterSpacing: 0.2,
-                                                    color: "#001219",
+                                                    color: PIXTUDIO_INK,
                                                     textTransform: "uppercase",
                                                     whiteSpace: "nowrap",
                                                 }}
@@ -13024,22 +14232,13 @@ function PixelEditorFramer({
 
                                         <div
                                             style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 12,
-                                                minWidth: 0,
-                                                flex: "0 0 auto",
-                                                width:
-                                                    SWATCH_EDIT_PREVIEW_SIZE +
-                                                    12 +
-                                                    SWATCH_EDIT_HEX_BOX_WIDTH,
-                                                justifyContent: "flex-end",
+                                                display: "contents",
                                             }}
                                         >
                                             <div
                                                 style={{
-                                                    width: SWATCH_EDIT_PREVIEW_SIZE,
-                                                    height: SWATCH_EDIT_PREVIEW_SIZE,
+                                                    width: swatchEditPreviewSize,
+                                                    height: swatchEditPreviewSize,
                                                     border: SWATCH_EDIT_BORDER,
                                                     boxSizing: "border-box",
                                                     background:
@@ -13053,16 +14252,12 @@ function PixelEditorFramer({
 
                                             <div
                                                 style={{
-                                                    width: SWATCH_EDIT_HEX_BOX_WIDTH,
-                                                    minWidth:
-                                                        SWATCH_EDIT_HEX_BOX_WIDTH,
-                                                    maxWidth:
-                                                        SWATCH_EDIT_HEX_BOX_WIDTH,
+                                                    width: "100%",
+                                                    minWidth: 0,
                                                     height: SWATCH_EDIT_HEX_INPUT_HEIGHT,
-                                                    flex: "0 0 auto",
+                                                    flex: "1 1 auto",
                                                     display: "flex",
                                                     alignItems: "center",
-                                                    justifyContent: "flex-end",
                                                 }}
                                                 aria-label="HEX value"
                                             >
@@ -13082,14 +14277,15 @@ function PixelEditorFramer({
                                                             justifyContent:
                                                                 "center",
                                                             fontSize:
-                                                                SWATCH_EDIT_HEX_FONT,
+                                                                swatchEditHexFont,
                                                             fontWeight: 800,
                                                             letterSpacing: 3,
-                                                            color: "#001219",
+                                                            color: PIXTUDIO_INK,
                                                             fontFamily:
                                                                 "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                                                             whiteSpace:
                                                                 "nowrap",
+                                                            overflow: "hidden",
                                                         }}
                                                     >
                                                         — — — —
@@ -13129,19 +14325,19 @@ function PixelEditorFramer({
                                                         style={{
                                                             width: "100%",
                                                             minWidth: 0,
-                                                            maxWidth:
-                                                                SWATCH_EDIT_HEX_BOX_WIDTH,
                                                             height: SWATCH_EDIT_HEX_INPUT_HEIGHT,
                                                             border: SWATCH_EDIT_BORDER,
                                                             background:
                                                                 "rgba(255,255,255,0.9)",
-                                                            color: "#001219",
+                                                            color: PIXTUDIO_INK,
                                                             fontSize:
-                                                                SWATCH_EDIT_HEX_FONT,
+                                                                swatchEditHexFont,
                                                             fontWeight: 900,
                                                             letterSpacing:
                                                                 SWATCH_EDIT_HEX_LETTER_SPACING,
-                                                            padding: "0 8px",
+                                                            padding: isMobileUI
+                                                                ? "0 6px"
+                                                                : "0 8px",
                                                             boxSizing:
                                                                 "border-box",
                                                             outline: "none",
@@ -13154,6 +14350,91 @@ function PixelEditorFramer({
                                                 )}
                                             </div>
                                         </div>
+
+                                        {colorModalMode === "edit" && (
+                                            <label
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "flex-end",
+                                                    gap: swatchEditControlGap,
+                                                    fontSize:
+                                                        swatchEditLabelFont,
+                                                    fontWeight: 900,
+                                                    letterSpacing:
+                                                        SWATCH_EDIT_LABEL_LETTER_SPACING,
+                                                    color: PIXTUDIO_INK,
+                                                    userSelect: "none",
+                                                    cursor: "pointer",
+                                                    flex: "0 0 auto",
+                                                    minWidth: 0,
+                                                }}
+                                            >
+                                                <div
+                                                    style={{
+                                                        width: swatchEditCheckSize,
+                                                        height: swatchEditCheckSize,
+                                                        position: "relative",
+                                                        flex: "0 0 auto",
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={pendingDelete}
+                                                        onChange={(e) =>
+                                                            setPendingDelete(
+                                                                e.target.checked
+                                                            )
+                                                        }
+                                                        aria-label="Delete swatch"
+                                                        style={{
+                                                            position:
+                                                                "absolute",
+                                                            inset: 0,
+                                                            opacity: 0,
+                                                            margin: 0,
+                                                            cursor: "pointer",
+                                                        }}
+                                                    />
+
+                                                    <div
+                                                        style={{
+                                                            width: swatchEditCheckSize,
+                                                            height: swatchEditCheckSize,
+                                                            display: "grid",
+                                                            placeItems:
+                                                                "center",
+                                                            pointerEvents:
+                                                                "none",
+                                                        }}
+                                                    >
+                                                        <ExportCheckboxIcon
+                                                            checked={
+                                                                pendingDelete
+                                                            }
+                                                            size={
+                                                                swatchEditCheckSize
+                                                            }
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div
+                                                    style={{
+                                                        fontSize:
+                                                            swatchEditLabelFont,
+                                                        fontWeight: 400,
+                                                        letterSpacing: 0.2,
+                                                        color: PIXTUDIO_INK,
+                                                        textTransform:
+                                                            "uppercase",
+                                                        whiteSpace: "nowrap",
+                                                    }}
+                                                >
+                                                    DELETE
+                                                </div>
+                                            </label>
+                                        )}
                                     </div>
 
                                     <div
@@ -13163,7 +14444,7 @@ function PixelEditorFramer({
                                             fontSize: SWATCH_EDIT_HELP_FONT,
                                             lineHeight:
                                                 SWATCH_EDIT_HELP_LINE_HEIGHT,
-                                            color: "rgba(0,0,0,0.75)",
+                                            color: pixtudioInk(0.75),
                                             flex: "0 0 auto",
                                         }}
                                     >
@@ -13242,7 +14523,7 @@ function PixelEditorFramer({
                                 padding: "8px 10px",
                                 boxSizing: "border-box",
                                 border: "1px solid rgba(255,255,255,0.55)",
-                                background: "rgba(0,0,0,0.82)",
+                                background: pixtudioInk(0.82),
                                 color: "#ffffff",
                                 fontFamily:
                                     "Consolas, Menlo, Monaco, monospace",
@@ -13316,6 +14597,7 @@ function commitImportTxn(
 // ------------------- ROOT MVP -------------------
 
 export default function PIXTUDIO_Mobile_MVP() {
+    const navigate = useNavigate()
     const [screen, setScreen] = React.useState<
         "start" | "editor" | "smart-reference"
     >("start")
@@ -13323,6 +14605,27 @@ export default function PIXTUDIO_Mobile_MVP() {
         React.useState<File | null>(null)
 
     const pendingProjectOpenFromStartRef = React.useRef(false)
+    const [editorCanvasCssSize, setEditorCanvasCssSize] =
+        React.useState<EditorCanvasCssSize | null>(null)
+
+    const handleEditorCanvasCssSizeChange = React.useCallback(
+        (size: EditorCanvasCssSize | null) => {
+            setEditorCanvasCssSize((prev) => {
+                if (!size) return prev === null ? prev : null
+                if (prev?.w === size.w && prev?.h === size.h) return prev
+                return size
+            })
+        },
+        []
+    )
+
+    const openPromoHome = React.useCallback(() => {
+        navigate("/")
+    }, [navigate])
+
+    const openEditorStartScreen = React.useCallback(() => {
+        setScreen("start")
+    }, [])
 
     // =====================
     // ROOT / GATEWAY — S1 PASS-THROUGH CUT
@@ -14108,7 +15411,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                           fontWeight: 900,
                                           letterSpacing: 1,
                                           textAlign: "center",
-                                          color: "black",
+                                          color: PIXTUDIO_INK,
                                       }}
                                   >
                                       IMPORT ERROR
@@ -14121,7 +15424,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                           wordBreak: "break-word",
                                           fontWeight: 400,
                                           textAlign: "center",
-                                          color: "black",
+                                          color: PIXTUDIO_INK,
                                           opacity: 1,
                                       }}
                                   >
@@ -14594,8 +15897,8 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
 
     // === ImportPrep Step 2: viewport + ears ===
-    const IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP = 0.22
-    const IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE = 0.18
+    const IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP = 0.08
+    const IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE = 0.12
 
     const IMPORT_PREVIEW_EARS_OPACITY = 0.3
     const IMPORT_PREVIEW_DECODE_MAX_SIDE = 2048 // чтобы не держать гигантские исходники в памяти
@@ -14641,6 +15944,16 @@ export default function PIXTUDIO_Mobile_MVP() {
     }, [])
 
     // активные pointers для pinch
+    const cropPreviewFrameTargetPx = isMobileUI
+        ? 640
+        : Math.max(1, Math.min(640, Math.round(editorCanvasCssSize?.w ?? 420)))
+    const cropPreviewInsetFrac = isMobileUI
+        ? IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE
+        : IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP
+    const cropPreviewCssTargetPx = Math.round(
+        cropPreviewFrameTargetPx / Math.max(0.01, 1 - cropPreviewInsetFrac * 2)
+    )
+
     const cropPointersRef = React.useRef<Map<number, { x: number; y: number }>>(
         new Map()
     )
@@ -14889,7 +16202,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             }
             window.removeEventListener("resize", measure)
         }
-    }, [cropPending])
+    }, [cropPending, cropPreviewCssTargetPx])
 
     React.useEffect(() => {
         if (!cropPending) return
@@ -15642,6 +16955,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 onOpenCamera={openCamera}
                 onOpenDraw={openDraw}
                 onOpenProject={openProjectPicker}
+                onOpenHome={openPromoHome}
             />
         ) : (
             <>
@@ -15671,6 +16985,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                     onRequestPickImage={openImagePicker}
                     onRequestBlankImport={openDraw}
                     onRequestOpenProject={openProjectPicker}
+                    onRequestStartScreen={openEditorStartScreen}
                     onShowImportError={failImport}
                     onOpenSmartReferenceTest={
                         smartObjectHasBase
@@ -15696,6 +17011,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                     onCoordinatedRedo={redo}
                     coordinatedCanUndo={rootCanUndo}
                     coordinatedCanRedo={rootCanRedo}
+                    onEditorCanvasCssSizeChange={
+                        handleEditorCanvasCssSizeChange
+                    }
                     pendingProjectFile={pendingProjectFile}
                     onPendingProjectFileConsumed={() =>
                         setPendingProjectFile(null)
@@ -15784,7 +17102,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                 fontFamily:
                                     "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
                                 fontSize: 12,
-                                color: "rgba(0,0,0,0.85)",
+                                color: pixtudioInk(0.85),
                                 letterSpacing: 0.2,
                                 pointerEvents: "auto",
                             }}
@@ -15838,7 +17156,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                     xmlns="http://www.w3.org/2000/svg"
                                 >
                                     <polygon
-                                        fill="#001219"
+                                        fill={PIXTUDIO_INK}
                                         points="45.2,103.2 45.2,96.8 25.8,96.8 25.8,90.3 19.4,90.3 19.4,83.9 12.9,83.9 12.9,77.4 6.5,77.4 
 		6.5,58.1 0,58.1 0,45.2 6.5,45.2 6.5,25.8 12.9,25.8 12.9,19.4 19.4,19.4 19.4,12.9 25.8,12.9 25.8,6.5 45.2,6.5 45.2,0 58.1,0 
 		58.1,6.5 77.4,6.5 77.4,12.9 83.9,12.9 83.9,19.4 90.3,19.4 90.3,25.8 96.8,25.8 96.8,45.2 103.2,45.2 103.2,58.1 96.8,58.1 
@@ -15908,7 +17226,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                 >
                                     <g>
                                         <polygon
-                                            fill="#001219"
+                                            fill={PIXTUDIO_INK}
                                             points="45.2,103.2 45.2,96.8 25.8,96.8 25.8,90.3 19.4,90.3 19.4,83.9 12.9,83.9 12.9,77.4 6.5,77.4 
                 6.5,58.1 0,58.1 0,45.2 6.5,45.2 6.5,25.8 12.9,25.8 12.9,19.4 19.4,19.4 19.4,12.9 25.8,12.9 25.8,6.5 45.2,6.5 45.2,0 58.1,0 
                 58.1,6.5 77.4,6.5 77.4,12.9 83.9,12.9 83.9,19.4 90.3,19.4 90.3,25.8 96.8,25.8 96.8,45.2 103.2,45.2 103.2,58.1 96.8,58.1 
@@ -15981,24 +17299,28 @@ export default function PIXTUDIO_Mobile_MVP() {
                 >
                     <div
                         style={{
-                            width: "100%",
-                            maxWidth: 420,
-                            height: "min(86vh, 820px)",
+                            width: isMobileUI ? "100vw" : cropPreviewCssTargetPx,
+                            maxWidth: isMobileUI
+                                ? "100vw"
+                                : cropPreviewCssTargetPx,
+                            height: isMobileUI
+                                ? "min(88vh, 820px)"
+                                : "min(92vh, 880px)",
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "center",
-                            justifyContent: "space-between",
-                            //gap: 16,
+                            justifyContent: "center",
+                            gap: isMobileUI ? 44 : 36,
                         }}
                     >
                         {/* ВЕРХНЯЯ ПОЛОВИНА: Crop preview */}
                         <div
                             style={{
                                 width: "100%",
-                                flex: "1 1 0",
+                                flex: "0 0 auto",
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "flex-start",
+                                justifyContent: "center",
                                 //paddingTop: "1vh",
                             }}
                         >
@@ -16156,8 +17478,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                         <div
                             style={{
                                 width: "100%",
-                                flex: "1 1 0",
-                                display: "flex",
+                                flex: "0 0 0",
+                                display: "none",
                                 alignItems: "center",
                                 justifyContent: "center",
                             }}
@@ -16185,6 +17507,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                         <div
                             style={{
                                 width: "100%",
+                                flex: "0 0 auto",
                                 display: "flex",
                                 flexDirection: "column",
                                 alignItems: "center",
@@ -16203,7 +17526,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                         color:
                                             importStatus === "applying"
                                                 ? "#04E762"
-                                                : "#001219",
+                                                : PIXTUDIO_INK,
                                         maxWidth: 280,
                                     }}
                                 >

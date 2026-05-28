@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /editor
 
 Sitemap: https://pixtudio.app/sitemap.xml

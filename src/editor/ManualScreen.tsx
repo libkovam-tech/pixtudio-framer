@@ -1,4 +1,9 @@
 import * as React from "react"
+import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
+import googleSansFlex400Url from "../assets/fonts/GoogleSansFlex-400.ttf?url"
+import googleSansFlex500Url from "../assets/fonts/GoogleSansFlex-500.ttf?url"
+import googleSansFlex700Url from "../assets/fonts/GoogleSansFlex-700.ttf?url"
+import googleSansFlex800Url from "../assets/fonts/GoogleSansFlex-800.ttf?url"
 
 import {
     SvgTopButton3,
@@ -18,19 +23,94 @@ import {
 } from "./SvgIcons.tsx"
 
 const FONT_FAMILY =
-    "Roboto, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif"
+    '"Google Sans Flex", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif'
 
-const BG = "#FAF6E9"
-const PANEL_BG = "rgba(255,255,255,0.94)"
-const BORDER = "1.5px solid rgba(0,0,0,0.72)"
-const TEXT = "rgba(0,0,0,0.88)"
-const MUTED = "rgba(0,0,0,0.74)"
+const BG = "#031219"
+const EDITOR_SURFACE_BG = "#e9d8a6"
+const PANEL_BG = "rgba(255,255,255,0.98)"
+const TEXT = PIXTUDIO_INK
+const MUTED = pixtudioInk(0.74)
 const RADIUS = 12
 const PANEL_RADIUS_STYLE: React.CSSProperties = {
     borderRadius: RADIUS,
 }
 
+const SITE_H1: React.CSSProperties = {
+    margin: 0,
+    color: "#ffffff",
+    fontFamily: FONT_FAMILY,
+    fontSize: "clamp(46px, 4.35vw, 74px)",
+    lineHeight: 0.98,
+    fontWeight: 800,
+    letterSpacing: 0,
+    textTransform: "none",
+}
+
+const SITE_CARD_TITLE: React.CSSProperties = {
+    fontFamily: FONT_FAMILY,
+    fontSize: "clamp(32px, 2.45vw, 52px)",
+    lineHeight: "calc(0.92em + 3pt)",
+    fontWeight: 700,
+    letterSpacing: 0,
+    textTransform: "uppercase",
+}
+
+const SITE_CARD_TEXT: React.CSSProperties = {
+    fontFamily: FONT_FAMILY,
+    fontSize: "clamp(14px, 1vw, 20px)",
+    lineHeight: 1.24,
+    fontWeight: 500,
+}
+
+const SITE_TOC_TEXT: React.CSSProperties = {
+    fontFamily: FONT_FAMILY,
+    fontSize: "calc(clamp(14px, 1vw, 20px) * 0.75)",
+    lineHeight: 1.24,
+    fontWeight: 500,
+    letterSpacing: 0,
+}
+
+const BACK_LINK_TEXT: React.CSSProperties = {
+    fontFamily: FONT_FAMILY,
+    fontSize: "clamp(18px, 1.35vw, 28px)",
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: 0,
+}
+
 const PIX_UI_BUTTON_ANIM_CSS = `
+@font-face {
+    font-family: "Google Sans Flex";
+    src: url("${googleSansFlex400Url}") format("truetype");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Google Sans Flex";
+    src: url("${googleSansFlex500Url}") format("truetype");
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Google Sans Flex";
+    src: url("${googleSansFlex700Url}") format("truetype");
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Google Sans Flex";
+    src: url("${googleSansFlex800Url}") format("truetype");
+    font-style: normal;
+    font-weight: 800;
+    font-display: swap;
+}
+
 .pxUiAnim {
     transition:
         transform 120ms ease,
@@ -41,12 +121,12 @@ const PIX_UI_BUTTON_ANIM_CSS = `
 
 .pxUiAnim:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.05);
-    filter: drop-shadow(0 4px 0px rgba(0, 0, 0, 0.22));
+    filter: drop-shadow(0 4px 0px rgba(${PIXTUDIO_INK_RGB}, 0.22));
 }
 
 .pxUiAnim:active:not(:disabled) {
     transform: translateY(1px) scale(0.97);
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+    filter: drop-shadow(0 1px 1px rgba(${PIXTUDIO_INK_RGB}, 0.18));
 }
 
 .pxUiAnim:disabled {
@@ -210,10 +290,7 @@ function SectionCopy({
             style={{
                 margin: 0,
                 color: muted ? MUTED : TEXT,
-                fontFamily: FONT_FAMILY,
-                fontSize: 15,
-                lineHeight: 1.45,
-                fontWeight: 400,
+                ...SITE_CARD_TEXT,
             }}
         >
             {children}
@@ -234,9 +311,7 @@ function BulletList({
                 display: "grid",
                 gap: 6,
                 color: TEXT,
-                fontFamily: FONT_FAMILY,
-                fontSize: 15,
-                lineHeight: 1.42,
+                ...SITE_CARD_TEXT,
             }}
         >
             {items.map((item, idx) => (
@@ -259,9 +334,7 @@ function OrderedList({
                 display: "grid",
                 gap: 6,
                 color: TEXT,
-                fontFamily: FONT_FAMILY,
-                fontSize: 15,
-                lineHeight: 1.42,
+                ...SITE_CARD_TEXT,
             }}
         >
             {items.map((item, idx) => (
@@ -328,7 +401,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     <SectionStack>
                         <SectionCopy>
                             PIXTUDIO is an editor that transforms ordinary
-                            images into pixel art.
+                            images into editable pixel art.
                         </SectionCopy>
                         <SectionCopy>
                             You can:
@@ -344,14 +417,17 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Once an image appears on the canvas, it is
                             automatically simplified and converted into a pixel
-                            grid. The colors of those pixels form the project
-                            palette.
+                            grid. The image keeps a reference source behind the
+                            scenes, so grid size, palette size, palette
+                            presets, and Smart Object adjustments can rebuild
+                            the pixel result without destroying the source.
                         </SectionCopy>
                         <SectionCopy muted>
                             <b style={{ color: TEXT }}>Important:</b> every
-                            pixel on the canvas is always linked to a color in
-                            the palette. Changing a palette color updates all
-                            pixels associated with it.
+                            visible pixel is linked to a palette color. Editing
+                            a palette swatch updates every pixel associated with
+                            it, while brush strokes stay editable as their own
+                            layer.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -370,14 +446,20 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     the image / camera icon.
                                 </>,
                                 "Choose an image source or create a blank canvas.",
-                                "If needed, adjust scale and rotation on the preparation screen and select a preset.",
+                                "If needed, crop, move, rotate, or scale the image on the preparation screen.",
                                 "After the image appears on the canvas, adjust grid size and palette size.",
-                                "Edit colors or draw using the brush tool.",
+                                "Edit colors, apply a palette preset, refine the source image, or draw using the brush tool.",
                             ]}
                         />
+                        <SectionCopy>
+                            A new import starts a fresh editor session: the view
+                            returns to fit-to-canvas, the default brush tool is
+                            restored, and temporary tool states such as Hand or
+                            Eyedropper are cleared.
+                        </SectionCopy>
                         <SectionCopy muted>
-                            Changing the grid size or the number of palette
-                            colors rebuilds the image.
+                            Palette presets are applied after import from the
+                            Palette Presets tab. The crop screen stays neutral.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -396,12 +478,24 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                 "Top toolbar",
                                 "Canvas",
                                 "Canvas settings panel",
-                                "Palette",
+                                "Auto Palette / Palette Presets",
                             ]}
                         />
                         <SectionCopy>
                             The canvas displays the image and every change made
                             to it.
+                        </SectionCopy>
+                        <SectionCopy>
+                            The brush is the default drawing tool. On desktop,
+                            you can zoom with the mouse wheel when the cursor is
+                            over the canvas. On mobile, use a two-finger pinch
+                            gesture to zoom. In both cases, zoom cannot go below
+                            fit-to-canvas.
+                        </SectionCopy>
+                        <SectionCopy>
+                            On desktop, holding the Space key temporarily turns
+                            on the Hand tool while the cursor is over the
+                            canvas. Releasing Space returns to the brush.
                         </SectionCopy>
                         <SectionCopy>
                             When working on a white or transparent canvas, a
@@ -425,12 +519,12 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             items={[
                                 "Brush size",
                                 "Grid size (2-128 cells horizontally and vertically)",
-                                "Palette size (2-32 colors)",
+                                "Auto Palette size (2-32 colors)",
                             ]}
                         />
                         <SectionCopy>
-                            Changing the grid or palette size rebuilds the
-                            image.
+                            Changing the grid size rebuilds the image. Changing
+                            the palette size rebuilds the Auto Palette world.
                         </SectionCopy>
                         <SectionCopy>
                             A smaller grid results in larger pixels and a more
@@ -448,7 +542,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            The palette is located at the bottom of the screen.
+                            The palette area is located at the bottom of the
+                            screen and has two tabs: Auto Palette and Palette
+                            Presets.
                         </SectionCopy>
                         <SectionCopy>
                             All canvas pixels are linked to palette colors.
@@ -465,9 +561,10 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             Size slider, from 2 to 32 colors.
                         </SectionCopy>
                         <SectionCopy>
-                            In Auto Palette, you can edit palette colors and add
-                            new swatches. Long press or right-click a swatch to
-                            open Swatch Edit.
+                            In Auto Palette, you can edit palette colors, make a
+                            swatch transparent, and add custom user swatches.
+                            Long press or right-click a swatch to open Swatch
+                            Edit.
                         </SectionCopy>
                         <BulletList
                             items={[
@@ -477,21 +574,21 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             ]}
                         />
                         <SectionCopy>
-                            When you apply the change, every canvas pixel linked
-                            to that swatch changes with it.
+                            When you edit an Auto Palette swatch, every canvas
+                            pixel linked to that swatch changes with it.
                         </SectionCopy>
                         <SectionCopy>
                             <b>Palette Presets</b> let you apply a different
                             color palette to the image. Built-in presets, such
-                            as Neon, Gray, and Black/White, work as ready-made
-                            styles and do not have extra settings.
+                            as Sunset, Gray, and Black/White, work as ready-made
+                            styles and do not show their internal swatches.
                         </SectionCopy>
                         <SectionCopy>
                             Palettes loaded from images or saved project files
-                            can be edited just like an Auto Palette. Any image
-                            can be used as a palette source, including palette
-                            images from color websites, for example popular
-                            palette images from{" "}
+                            become temporary preset buttons. Any image can be
+                            used as a palette source, including palette images
+                            from color websites, for example popular palette
+                            images from{" "}
                             <a
                                 href="https://coolors.co/palettes/trending"
                                 target="_blank"
@@ -503,10 +600,21 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             .
                         </SectionCopy>
                         <SectionCopy>
-                            An imported palette becomes a button named after the
-                            file and exists only during the current session. You
-                            can remove an imported or built-in palette button by
-                            pressing the cross on the right side of the button.
+                            When an imported preset is active, its swatches are
+                            shown below the preset buttons. You can edit those
+                            swatches, delete a swatch from the active imported
+                            palette, and add a custom color with the same Add
+                            Swatch button used in Auto Palette. Added colors
+                            participate in quantization, so the image can be
+                            rebuilt with the imported palette plus your new
+                            color.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Imported palette presets exist only during the
+                            current session unless they are active when you save
+                            the project. You can remove an imported or built-in
+                            palette button by pressing the cross on the right
+                            side of the button.
                         </SectionCopy>
                         <SectionCopy>
                             When you save a project, PIXTUDIO stores only the
@@ -530,7 +638,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Saving creates a <code>.pixtudio</code> file
                             containing all project data: image, palette,
-                            drawing, and editor settings.
+                            drawing, Smart Object state, active palette world,
+                            and editor settings.
                         </SectionCopy>
                         <SectionCopy>
                             Use it when you want to continue working later
@@ -541,6 +650,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             palette source. In the Palette Presets tab, choose{" "}
                             <b>Load Palette</b> and select a saved project file
                             to import its palette into the current project.
+                        </SectionCopy>
+                        <SectionCopy muted>
+                            Save Project is different from Export: it saves an
+                            editable project, not a final PNG, SVG, or video
+                            file.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -556,6 +670,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             Loading a project completely replaces the current
                             editor state with the contents of a saved{" "}
                             <code>.pixtudio</code> file.
+                        </SectionCopy>
+                        <SectionCopy>
+                            The saved grid, palette, drawings, imported palette
+                            state, and Smart Object adjustments are restored
+                            together.
                         </SectionCopy>
                         <SectionCopy muted>
                             The undo history is cleared after loading.
@@ -616,16 +735,18 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Before the image reaches the canvas, a preparation
                             screen appears where you can adjust scale, rotate
-                            the image, and choose a preset.
+                            the image, and crop it to the square working area.
                         </SectionCopy>
-                        <BulletList
-                            items={[
-                                "Default",
-                                "Neon",
-                                "Grayscale",
-                                "Black & White",
-                            ]}
-                        />
+                        <SectionCopy>
+                            Drag inside the crop area to position the image. Use
+                            the rotate and scale controls, the mouse wheel on
+                            desktop, or two fingers on touch devices to refine
+                            the crop before applying it.
+                        </SectionCopy>
+                        <SectionCopy muted>
+                            Import does not apply a color preset. Use Palette
+                            Presets after the image reaches the editor.
+                        </SectionCopy>
                     </SectionStack>
                 ),
             },
@@ -640,15 +761,19 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             You can export your work as PNG or SVG.
                         </SectionCopy>
                         <SectionCopy>
-                            You can also choose what to export:
+                            Before exporting, choose which layers to include:
                         </SectionCopy>
                         <BulletList
                             items={[
-                                "brush strokes only,",
-                                "the pixelized base image only,",
-                                "or both together.",
+                                "Stroke layer: only what was painted with the brush, including transparency.",
+                                "Image layer: only the quantized base image, without brush strokes.",
+                                "Both layers: brush strokes composited over the image.",
                             ]}
                         />
+                        <SectionCopy muted>
+                            A transparent brush stroke creates holes in the
+                            exported composite.
+                        </SectionCopy>
                     </SectionStack>
                 ),
             },
@@ -662,6 +787,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Zoom Out decreases magnification so you can see a
                             larger portion of the image.
+                        </SectionCopy>
+                        <SectionCopy>
+                            On desktop, the mouse wheel also zooms in and out
+                            when the cursor is inside the canvas. Zoom Out never
+                            makes the image smaller than fit-to-canvas.
                         </SectionCopy>
                         <SectionCopy muted>
                             Long press or right-click on Zoom Out resets the
@@ -680,6 +810,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Zoom In increases magnification for more precise
                             work on individual pixels.
+                        </SectionCopy>
+                        <SectionCopy>
+                            On mobile, use a two-finger pinch gesture on the
+                            canvas to zoom in or out. Brush drawing is blocked
+                            while the two-finger gesture is active.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -710,6 +845,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Hand tool allows panning when the canvas is zoomed
                             in.
+                        </SectionCopy>
+                        <SectionCopy>
+                            On desktop, you can also hold Space while the cursor
+                            is inside the canvas to use the Hand tool
+                            temporarily. Releasing Space returns to the brush.
                         </SectionCopy>
                         <SectionCopy>
                             Drawing is disabled while this tool is active.
@@ -747,9 +887,15 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             image pixelation process.
                         </SectionCopy>
                         <SectionCopy>
-                            Here you can configure and create a video of the
-                            pixelation process, and also add an audio track to
-                            the clip.
+                            It is available when the project has an imported
+                            image source. In the recorder, you can animate grid
+                            size, palette size, or both. You can also lock one
+                            value and animate only the other.
+                        </SectionCopy>
+                        <SectionCopy>
+                            The recorder lets you set the duration, preview the
+                            sequence, add an optional audio track, and export
+                            the result as a video file.
                         </SectionCopy>
                         <SectionCopy>
                             <span
@@ -806,7 +952,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            This button opens the reference image editor.
+                            This button opens the Smart Object / reference image
+                            editor.
                         </SectionCopy>
                         <SectionCopy>
                             Here you can adjust exposure and contrast, increase
@@ -815,8 +962,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             midtones, and highlights.
                         </SectionCopy>
                         <SectionCopy>
-                            All changes are saved, so you can return anytime and
-                            continue from where you left off.
+                            These changes are non-destructive. Apply publishes
+                            the adjusted reference back to the pixel editor,
+                            Cancel leaves the previous reference unchanged, and
+                            the saved project keeps the applied Smart Object
+                            state.
                         </SectionCopy>
                         <SectionCopy>
                             <span
@@ -949,10 +1099,19 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
             return
         }
 
+        const navInner = navInnerRef.current
+        const rawLeft = isNarrow ? item.offsetLeft - 6 : item.offsetLeft - 9
+        const rawWidth = isNarrow ? item.offsetWidth + 12 : item.offsetWidth + 18
+        const safeLeft = Math.max(0, rawLeft)
+        const maxWidth =
+            isNarrow && navInner
+                ? Math.max(0, navInner.clientWidth - safeLeft - 6)
+                : rawWidth
+
         const next = {
             top: item.offsetTop - 5,
-            left: item.offsetLeft - 9,
-            width: item.offsetWidth + 18,
+            left: safeLeft,
+            width: Math.min(rawWidth, maxWidth),
             height: item.offsetHeight + 10,
         }
 
@@ -992,13 +1151,14 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
     const desktopBackLeft = Math.max(40, Math.round(desktopGutter * 0.22))
     const navViewportHeight =
         navBox.height > 0 ? Math.round(navBox.height * navScale) : 0
+    const desktopNavColumnWidth = 236
 
     const navBase: React.CSSProperties = {
         display: "grid",
         gap: isNarrow ? 10 : 12,
-        padding: isNarrow ? "14px 18px 14px 12px" : "26px 20px",
+        padding: isNarrow ? "14px 12px" : "26px 20px",
         boxSizing: "border-box",
-        width: "max-content",
+        width: isNarrow ? "100%" : "max-content",
     }
 
     return (
@@ -1011,7 +1171,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     inset: 0,
                     zIndex: 9999,
                     background: BG,
-                    color: TEXT,
+                    color: "#ffffff",
                     overflow: "hidden",
                     fontFamily: FONT_FAMILY,
                 }}
@@ -1037,11 +1197,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             padding: 0,
                             margin: 0,
                             cursor: "pointer",
-                            color: TEXT,
-                            fontFamily: FONT_FAMILY,
-                            fontSize: 17,
-                            lineHeight: 1.1,
-                            fontWeight: 800,
+                            color: EDITOR_SURFACE_BG,
+                            ...BACK_LINK_TEXT,
                             textDecoration: "underline",
                             textUnderlineOffset: 2,
                             textAlign: "left",
@@ -1092,11 +1249,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     padding: 0,
                                     margin: 0,
                                     cursor: "pointer",
-                                    color: TEXT,
-                                    fontFamily: FONT_FAMILY,
-                                    fontSize: 16,
-                                    lineHeight: 1.1,
-                                    fontWeight: 800,
+                                    color: EDITOR_SURFACE_BG,
+                                    ...BACK_LINK_TEXT,
                                     textDecoration: "underline",
                                     textUnderlineOffset: 2,
                                     justifySelf: "start",
@@ -1108,19 +1262,18 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             </button>
                         ) : null}
 
-                        <div
+                        <h1
                             style={{
-                                fontSize: isNarrow ? 20 : 34,
-                                lineHeight: 1,
-                                fontWeight: 900,
-                                letterSpacing: 0,
-                                textTransform: "uppercase",
+                                ...SITE_H1,
+                                fontSize: isNarrow
+                                    ? "clamp(32px, 9vw, 48px)"
+                                    : SITE_H1.fontSize,
                                 textAlign: "left",
                                 minWidth: 0,
                             }}
                         >
                             PIXTUDIO - User Guide
-                        </div>
+                        </h1>
                     </div>
 
                     <div
@@ -1129,8 +1282,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             minHeight: 0,
                             display: "grid",
                             gridTemplateColumns: isNarrow
-                                ? "minmax(0, 2fr) minmax(0, 3fr)"
-                                : "max-content minmax(0, 1fr)",
+                                ? "minmax(0, 1fr)"
+                                : `${desktopNavColumnWidth}px minmax(0, 1fr)`,
                             gap: isNarrow ? 14 : 36,
                             alignItems: "start",
                             height:
@@ -1139,148 +1292,127 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     : navViewportHeight,
                         }}
                     >
-                        <aside
-                            style={{
-                                position: "sticky",
-                                top: 0,
-                                alignSelf: "start",
-                                background: PANEL_BG,
-                                border: BORDER,
-                                ...PANEL_RADIUS_STYLE,
-                                width: isNarrow
-                                    ? "100%"
-                                    : navBox.width > 0
-                                      ? navBox.width * navScale
-                                      : "auto",
-                                height: isNarrow
-                                    ? "100%"
-                                    : navBox.height > 0
-                                      ? navBox.height * navScale
-                                      : "auto",
-                                overflow: "visible",
-                            }}
-                        >
-                            <div
-                                ref={navInnerRef}
+                        {!isNarrow ? (
+                            <aside
                                 style={{
-                                    ...navBase,
-                                    position: "relative",
-                                    transform: `scale(${navScale})`,
-                                    transformOrigin: "top left",
+                                    position: "sticky",
+                                    top: 0,
+                                    alignSelf: "start",
+                                    background: "transparent",
+                                    border: 0,
+                                    borderRadius: 0,
+                                    width: desktopNavColumnWidth,
+                                    height:
+                                        navBox.height > 0
+                                            ? navBox.height * navScale
+                                            : "auto",
+                                    overflow: "visible",
                                 }}
                             >
-                                {navHighlight ? (
-                                    <div
-                                        aria-hidden="true"
-                                        style={{
-                                            position: "absolute",
-                                            left: 0,
-                                            top: 0,
-                                            width: navHighlight.width,
-                                            height: navHighlight.height,
-                                            transform: `translate(${navHighlight.left}px, ${navHighlight.top}px)`,
-                                            background:
-                                                "rgba(0, 0, 0, 0.075)",
-                                            borderRadius: 4,
-                                            transition:
-                                                "transform 180ms ease, width 180ms ease, height 180ms ease",
-                                            pointerEvents: "none",
-                                            zIndex: 0,
-                                        }}
-                                    />
-                                ) : null}
-
-                                {isNarrow ? (
-                                    <div
-                                        style={{
-                                            fontSize: 11,
-                                            lineHeight: 1,
-                                            fontWeight: 900,
-                                            textTransform: "uppercase",
-                                            marginBottom: 2,
-                                        }}
-                                    >
-                                        Contents
-                                    </div>
-                                ) : null}
-
-                                {sections.map((section, idx) => {
-                                    const active = section.id === activeId
-                                    const isIconRow = !!section.icon
-                                    const addTopGap = idx === 5 || idx === 16
-
-                                    return (
-                                        <a
-                                            key={section.id}
-                                            ref={(node) => {
-                                                navItemRefs.current[
-                                                    section.id
-                                                ] = node
-                                            }}
-                                            href={`#manual-${section.id}`}
-                                            onClick={(e) => {
-                                                e.preventDefault()
-                                                scrollToSection(section.id)
-                                            }}
+                                <div
+                                    ref={navInnerRef}
+                                    style={{
+                                        ...navBase,
+                                        position: "relative",
+                                        transform: `scale(${navScale})`,
+                                        transformOrigin: "top left",
+                                    }}
+                                >
+                                    {navHighlight ? (
+                                        <div
+                                            aria-hidden="true"
                                             style={{
-                                                display: "flex",
-                                                position: "relative",
-                                                zIndex: 1,
-                                                alignItems: "center",
-                                                gap: isIconRow ? 10 : 0,
-                                                marginTop: addTopGap ? 8 : 0,
-                                                color: TEXT,
-                                                textDecoration: "underline",
-                                                textUnderlineOffset: 2,
-                                                fontFamily: FONT_FAMILY,
-                                                fontSize: isNarrow ? 10.5 : 14,
-                                                lineHeight: 1.15,
-                                                fontWeight: active ? 800 : 700,
-                                                opacity: active ? 1 : 0.92,
+                                                position: "absolute",
+                                                left: 0,
+                                                top: 0,
+                                                width: navHighlight.width,
+                                                height: navHighlight.height,
+                                                transform: `translate(${navHighlight.left}px, ${navHighlight.top}px)`,
+                                                background: "#ffffff",
+                                                borderRadius: 0,
+                                                transition:
+                                                    "transform 180ms ease, width 180ms ease, height 180ms ease",
+                                                pointerEvents: "none",
+                                                zIndex: 0,
                                             }}
-                                        >
-                                            {section.icon ? (
-                                                <span
-                                                    style={{
-                                                        width: 30,
-                                                        minWidth: 30,
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent:
-                                                            "center",
-                                                    }}
-                                                >
-                                                    {section.icon}
-                                                </span>
-                                            ) : null}
-                                            <span
+                                        />
+                                    ) : null}
+
+                                    {sections.map((section, idx) => {
+                                        const active = section.id === activeId
+                                        const isIconRow = !!section.icon
+                                        const addTopGap =
+                                            idx === 5 || idx === 16
+
+                                        return (
+                                            <a
+                                                key={section.id}
+                                                ref={(node) => {
+                                                    navItemRefs.current[
+                                                        section.id
+                                                    ] = node
+                                                }}
+                                                href={`#manual-${section.id}`}
+                                                onClick={(e) => {
+                                                    e.preventDefault()
+                                                    scrollToSection(section.id)
+                                                }}
                                                 style={{
-                                                    display: "block",
-                                                    whiteSpace:
-                                                        isNarrow &&
-                                                        section.id ===
-                                                            "reference-edit-screen"
-                                                            ? "normal"
-                                                            : "nowrap",
+                                                    display: "flex",
+                                                    position: "relative",
+                                                    zIndex: 1,
+                                                    alignItems: "center",
+                                                    gap: isIconRow ? 10 : 0,
+                                                    marginTop: addTopGap
+                                                        ? 8
+                                                        : 0,
+                                                    minWidth: 0,
+                                                    maxWidth: "100%",
+                                                    boxSizing: "border-box",
+                                                    color: active
+                                                        ? TEXT
+                                                        : "#ffffff",
+                                                    textDecoration: "none",
+                                                    ...SITE_TOC_TEXT,
+                                                    fontWeight: active
+                                                        ? 800
+                                                        : 500,
+                                                    opacity: active ? 1 : 0.9,
                                                 }}
                                             >
-                                                {isNarrow &&
-                                                section.id ===
-                                                    "reference-edit-screen" ? (
-                                                    <>
-                                                        Reference
-                                                        <br />
-                                                        Edit Screen
-                                                    </>
-                                                ) : (
-                                                    section.navLabel
-                                                )}
-                                            </span>
-                                        </a>
-                                    )
-                                })}
-                            </div>
-                        </aside>
+                                                {section.icon ? (
+                                                    <span
+                                                        style={{
+                                                            width: 30,
+                                                            minWidth: 30,
+                                                            display: "flex",
+                                                            alignItems:
+                                                                "center",
+                                                            justifyContent:
+                                                                "center",
+                                                        }}
+                                                    >
+                                                        {section.icon}
+                                                    </span>
+                                                ) : null}
+                                                <span
+                                                    style={{
+                                                        display: "block",
+                                                        minWidth: 0,
+                                                        flex: "1 1 auto",
+                                                        whiteSpace: "nowrap",
+                                                        overflowWrap:
+                                                            "break-word",
+                                                    }}
+                                                >
+                                                    {section.navLabel}
+                                                </span>
+                                            </a>
+                                        )
+                                    })}
+                                </div>
+                            </aside>
+                        ) : null}
 
                         <main
                             style={{
@@ -1319,7 +1451,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                         }}
                                         style={{
                                             background: PANEL_BG,
-                                            border: BORDER,
+                                            border: 0,
                                             ...PANEL_RADIUS_STYLE,
                                         padding: isNarrow
                                             ? "18px 16px"
@@ -1353,12 +1485,12 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                             ) : null}
                                             <div
                                                 style={{
+                                                    ...SITE_CARD_TITLE,
                                                     fontSize: isNarrow
-                                                        ? 17
-                                                        : 18,
-                                                    lineHeight: 1.1,
-                                                    fontWeight: 900,
+                                                        ? "clamp(28px, 8.6vw, 42px)"
+                                                        : SITE_CARD_TITLE.fontSize,
                                                     minWidth: 0,
+                                                    color: TEXT,
                                                 }}
                                             >
                                                 {section.title}

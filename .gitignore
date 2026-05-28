@@ -25,3 +25,5 @@ wrangler.analytics-reporter.toml
 *.sw?
 tools/ffmpeg-core-custom/upstream/
 tools/ffmpeg-core-custom/output/
+tmp-edge-profile/
+tmp-home-align-edge.png

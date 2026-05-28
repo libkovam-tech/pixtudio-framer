@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { SvgCancelButton, SvgOkButton, SvgExportSOButton } from "./SvgIcons.tsx"
+import { PIXTUDIO_INK, PIXTUDIO_INK_RGB } from "../theme.ts"
 
 export type SmartReferenceAdjustments = {
     exposure: number
@@ -97,7 +98,7 @@ const okCancelButtonStyle: React.CSSProperties = {
     background: "transparent",
     padding: 0,
 
-    marginTop: 35,
+    marginTop: 18,
     marginLeft: 14,
     marginRight: 14,
 
@@ -124,12 +125,12 @@ const SMART_UI_BUTTON_ANIM_CSS = `
 
 .pxUiAnim:hover:not(:disabled) {
     transform: translateY(-2px) scale(1.05);
-    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.22));
+    filter: drop-shadow(0 6px 10px rgba(${PIXTUDIO_INK_RGB}, 0.22));
 }
 
 .pxUiAnim:active:not(:disabled) {
     transform: translateY(1px) scale(0.97);
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18));
+    filter: drop-shadow(0 1px 2px rgba(${PIXTUDIO_INK_RGB}, 0.18));
 }
 
 .pxUiAnim:disabled {
@@ -1475,25 +1476,31 @@ const PREVIEW_CANVAS: React.CSSProperties = {
     height: "auto",
     display: "block",
     imageRendering: "pixelated",
-    background: "#000000",
+    background: PIXTUDIO_INK,
 }
+
+const SMART_CONTROL_FONT_SIZE = 20
+const SMART_CONTROL_STACK_GAP = 27
+const SMART_LABEL_SLIDER_GAP = 8
+const PX_RANGE_THUMB_SIZE = 42
+const PX_RANGE_TRACK_H = 9
 
 const CONTROLS_STACK: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
-    gap: 18,
+    gap: SMART_CONTROL_STACK_GAP,
     width: "100%",
 }
 
 const CONTROL_BLOCK: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: SMART_LABEL_SLIDER_GAP,
     width: "100%",
 }
 
 const CONTROL_LABEL: React.CSSProperties = {
-    fontSize: 14,
+    fontSize: SMART_CONTROL_FONT_SIZE,
     fontWeight: 700,
     lineHeight: 1.1,
     textTransform: "uppercase",
@@ -1506,18 +1513,16 @@ const CONTROL_LABEL: React.CSSProperties = {
 
 const RANGE_INPUT: React.CSSProperties = {
     width: "100%",
+    height: PX_RANGE_THUMB_SIZE,
     margin: 0,
     //accentColor: DIAG_SMART_TRACK_SOLID,
     accentColor: "#ffffff",
 }
 
-const PX_RANGE_THUMB_SIZE = 28
-const PX_RANGE_TRACK_H = 6
-
 const WB_TRACK_AREA: React.CSSProperties = {
     position: "relative",
     width: "100%",
-    height: 32,
+    height: PX_RANGE_THUMB_SIZE,
 }
 
 const WB_TRACK_LINE: React.CSSProperties = {
@@ -1525,7 +1530,7 @@ const WB_TRACK_LINE: React.CSSProperties = {
     left: 0,
     right: 0,
     top: "50%",
-    height: 6,
+    height: PX_RANGE_TRACK_H,
     transform: "translateY(-50%)",
     background: "linear-gradient(to right, #3A7BD5, #FFE082)",
 }
@@ -1535,7 +1540,7 @@ const WB_CENTER_MARK: React.CSSProperties = {
     left: "50%",
     top: "50%",
     width: 2,
-    height: 24,
+    height: 36,
     background: "#ffffff",
     transform: "translate(-50%, -50%)",
     pointerEvents: "none",
@@ -1553,8 +1558,8 @@ const WB_THUMB: React.CSSProperties = buildMaskedThumbStyle(
     {
         position: "absolute",
         top: "50%",
-        width: 28,
-        height: 28,
+        width: PX_RANGE_THUMB_SIZE,
+        height: PX_RANGE_THUMB_SIZE,
         transform: "translate(-50%, -50%)",
         pointerEvents: "none",
     },
@@ -2119,7 +2124,7 @@ export function SmartReferenceEditor({
         ...okCancelButtonStyle,
         width: 50 * bottomButtonsCompensationScale,
         height: 50 * bottomButtonsCompensationScale,
-        marginTop: 35 * bottomButtonsCompensationScale,
+        marginTop: 18 * bottomButtonsCompensationScale,
         marginLeft: 14 * bottomButtonsCompensationScale,
         marginRight: 14 * bottomButtonsCompensationScale,
     }

@@ -1,14 +1,23 @@
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { SvgLogo } from "../editor/SvgIcons"
+import {
+  DESKTOP_EDITOR_URL,
+  SiteFloatingCta,
+  SiteFooter,
+  SiteShell,
+  SiteTopNav,
+} from "./SiteShell"
+import {
+  JsonLd,
+  SITE_ROUTE_SEO,
+  SITE_SCHEMA_IDS,
+  toAbsoluteSiteUrl,
+  usePageSeo,
+} from "./structuredData"
 import "./hub.css"
 
 const DESKTOP_LANDING_VIDEO_SRC = "/media/landing-preview.mp4?v=20260511-hero43"
 const LANDING_VIDEO_ORIGINAL_SRC = "/media/landing-preview.mp4?v=20260511-hero43"
 const LANDING_VIDEO_POSTER_SRC = "/media/landing-video-poster.jpg"
-const DESKTOP_EDITOR_URL = "/editor"
-const SITE_SHARE_URL = "https://pixtudio.app"
-const SUPPORT_EMAIL = "support@pixtudio.app"
 const DESKTOP_HINT_TEXT =
   "* To scroll the info cards please use a mouse wheel, arrow keys, or swipe"
 const HEADLINE_FIT_TEXT = "INTO PIXEL ART"
@@ -17,10 +26,21 @@ const DESKTOP_ORBIT_AUTOPLAY_RESUME_MS = 180000
 const DESKTOP_ORBIT_QUALITY_STORAGE_KEY = "pixtudio:orbit-quality"
 const DESKTOP_ORBIT_RUNTIME_SAMPLES = 3
 const DESKTOP_ORBIT_MAX_QUEUED_STEPS = 8
+const DESKTOP_LAYOUT_MIN_WIDTH = 761
 const MOBILE_SEO_SECOND_SCREEN_ENABLED = true
 const TEMP_VIDEO_COMPARISON_ENABLED = false
 const HERO_VIDEO_ACCESSIBLE_LABEL =
   "Photo-to-pixel-art conversion preview showing PIXTUDIO turning images into pixel art"
+const HERO_VIDEO_TRANSCRIPT_PARAGRAPHS = [
+  "Watch ordinary images transform into structured pixel art in real time.",
+  "This preview shows the PIXTUDIO editor turning simple shapes, symbols, photos, and colorful compositions into editable pixel-based visuals directly on the canvas.",
+  "As the video progresses, different images evolve through changing grid resolutions, limited color palettes, and stylized pixel forms. The result is intentional pixel art, not just a simple filter effect.",
+  "PIXTUDIO lets users experiment with pixel grids, reduce and control color palettes, refine shapes, and create unique pixel art from images in seconds. Every transformation happens live and remains editable.",
+  "Whether you want to turn a photo into pixel art, experiment with palette-based visuals, or explore a creative image-to-pixel workflow, PIXTUDIO makes the process fast, visual, and easy to control.",
+]
+const HERO_VIDEO_TRANSCRIPT_TEXT = HERO_VIDEO_TRANSCRIPT_PARAGRAPHS.join("\n\n")
+const HERO_VIDEO_SCHEMA_DESCRIPTION =
+  "Watch ordinary images transform into structured pixel art in real time. This preview shows PIXTUDIO turning simple shapes, symbols, photos, and colorful compositions into editable pixel-based visuals directly on the canvas."
 
 const MOBILE_HERO_ROWS = [
   "aabbbccddeeebbaa",
@@ -40,21 +60,6 @@ const MOBILE_HERO_ROWS = [
   "abbkhhhhhhhdcbaa",
   "aabbbbccccbbbbaa",
 ] as const
-
-const MOBILE_HERO_COLORS: Record<string, string> = {
-  a: "#a8564d",
-  b: "#c88e46",
-  c: "#b14d42",
-  d: "#d09a59",
-  e: "#d4a17d",
-  f: "#e9eff0",
-  g: "#cbd8d8",
-  h: "#214f77",
-  i: "#e8edef",
-  j: "#8d3131",
-  k: "#71848b",
-  l: "#b9564c",
-}
 
 const MOBILE_INFO_CARDS = [
   {
@@ -82,7 +87,7 @@ const MOBILE_INFO_CARDS = [
     body: "SVG export and precise color control for professional merch. Lower printing costs.",
   },
   {
-    title: ["PALETTE", "CONTROLS EVERYTHING"],
+    title: ["PALETTE CONTROLS", "EVERYTHING"],
     body: "Change one color – the whole image updates instantly. Import palettes from any photo.",
   },
   {
@@ -119,29 +124,6 @@ const DESKTOP_SEO_COPY = [
       "Export as PNG or SVG, or record the live process as MP4 for social media.",
     text:
       "No installation needed – everything works in your browser.",
-  },
-]
-
-const DESKTOP_FAQ_COPY = [
-  {
-    question: "Can I export SVG?",
-    answer: "Yes – export PNG or SVG.",
-  },
-  {
-    question: "Can I use my own palette?",
-    answer: "Yes – import one from any photo.",
-  },
-  {
-    question: "Can I save MP4?",
-    answer: "Yes – record the live process with music.",
-  },
-  {
-    question: "Is it for game assets?",
-    answer: "Yes – use exact grids and palettes.",
-  },
-  {
-    question: "Does it work on mobile?",
-    answer: "Yes – in a modern browser.",
   },
 ]
 
@@ -311,7 +293,7 @@ function MobileHeroMosaic() {
         Array.from(row).map((key, columnIndex) => (
           <span
             key={`${rowIndex}-${columnIndex}`}
-            style={{ background: MOBILE_HERO_COLORS[key] ?? "#c88e46" }}
+            className={`hubMobileHeroMosaicCell hubMobileHeroMosaicCell${key}`}
           />
         ))
       )}
@@ -322,9 +304,11 @@ function MobileHeroMosaic() {
 function MobileVideoHero({
   src,
   posterSrc,
+  descriptionId,
 }: {
   src: string
   posterSrc: string
+  descriptionId: string
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -406,7 +390,11 @@ function MobileVideoHero({
   }
 
   return (
-    <div className="hubMobileVideoHero" aria-label={HERO_VIDEO_ACCESSIBLE_LABEL}>
+    <div
+      className="hubMobileVideoHero"
+      aria-label={HERO_VIDEO_ACCESSIBLE_LABEL}
+      aria-describedby={descriptionId}
+    >
       <MobileHeroMosaic />
       <img
         className="hubMobileVideoPoster"
@@ -424,6 +412,7 @@ function MobileVideoHero({
           playsInline
           autoPlay
           preload="metadata"
+          aria-describedby={descriptionId}
           onLoadedData={() => {
             setVideoReady(true)
             tryPlay()
@@ -436,6 +425,11 @@ function MobileVideoHero({
         className={`hubMobileVideoCanvas${videoReady ? " hubMobileVideoCanvasReady" : ""}`}
         aria-hidden="true"
       />
+      <div id={descriptionId} className="siteVisuallyHidden">
+        {HERO_VIDEO_TRANSCRIPT_PARAGRAPHS.map((paragraph) => (
+          <p key={paragraph}>{paragraph}</p>
+        ))}
+      </div>
     </div>
   )
 }
@@ -489,20 +483,50 @@ function DesktopOrbitCard({
   phase,
   direction = 1,
   card,
-  style,
+  runtimeStyle,
   isDragging = false,
 }: {
   side: DesktopOrbitSide
   phase: "landed" | "enter" | "leave"
   direction?: DesktopOrbitDirection
   card: (typeof MOBILE_INFO_CARDS)[number]
-  style?: CSSProperties
+  runtimeStyle?: CSSProperties
   isDragging?: boolean
 }) {
+  const cardRef = useRef<HTMLElement | null>(null)
+
+  useLayoutEffect(() => {
+    const node = cardRef.current
+    if (!node) return undefined
+
+    if (!runtimeStyle) {
+      node.style.removeProperty("opacity")
+      node.style.removeProperty("filter")
+      node.style.removeProperty("transform")
+      return undefined
+    }
+
+    if (runtimeStyle.opacity != null) {
+      node.style.opacity = String(runtimeStyle.opacity)
+    }
+    if (runtimeStyle.filter != null) {
+      node.style.filter = String(runtimeStyle.filter)
+    }
+    if (runtimeStyle.transform != null) {
+      node.style.transform = String(runtimeStyle.transform)
+    }
+
+    return () => {
+      node.style.removeProperty("opacity")
+      node.style.removeProperty("filter")
+      node.style.removeProperty("transform")
+    }
+  }, [runtimeStyle])
+
   return (
     <article
+      ref={cardRef}
       className={`hubDesktopOrbitCard hubDesktopOrbitCard${side === "left" ? "Left" : "Right"} hubDesktopOrbitCard${phase === "landed" ? "Landed" : phase === "enter" ? "Enter" : "Leave"} hubDesktopOrbitCard${direction === 1 ? "Down" : "Up"}${isDragging ? " hubDesktopOrbitCardDragging" : ""}`}
-      style={style}
       aria-hidden="true"
     >
       <h2>
@@ -547,7 +571,11 @@ function DesktopOrbitCards({
           phase="landed"
           direction={drag.direction}
           card={getCard(enteringItem.index)}
-          style={getDesktopOrbitDragStyle("enter", drag.direction, drag.progress)}
+          runtimeStyle={getDesktopOrbitDragStyle(
+            "enter",
+            drag.direction,
+            drag.progress
+          )}
           isDragging={isAnimating}
         />
         <DesktopOrbitCard
@@ -555,7 +583,11 @@ function DesktopOrbitCards({
           phase="landed"
           direction={drag.direction}
           card={getCard(leavingItem.index)}
-          style={getDesktopOrbitDragStyle("leave", drag.direction, drag.progress)}
+          runtimeStyle={getDesktopOrbitDragStyle(
+            "leave",
+            drag.direction,
+            drag.progress
+          )}
           isDragging={isAnimating}
         />
       </div>
@@ -607,78 +639,16 @@ function DesktopOrbitCards({
   )
 }
 
-function FooterEmailIcon() {
-  return (
-    <svg
-      viewBox="0 0 103.2 103.2"
-      width="33"
-      height="33"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <polygon
-        fill="#ffffff"
-        points="45.2,103.2 45.2,96.8 25.8,96.8 25.8,90.3 19.4,90.3 19.4,83.9 12.9,83.9 12.9,77.4 6.5,77.4
-6.5,58.1 0,58.1 0,45.2 6.5,45.2 6.5,25.8 12.9,25.8 12.9,19.4 19.4,19.4 19.4,12.9 25.8,12.9 25.8,6.5 45.2,6.5 45.2,0 58.1,0
-58.1,6.5 77.4,6.5 77.4,12.9 83.9,12.9 83.9,19.4 90.3,19.4 90.3,25.8 96.8,25.8 96.8,45.2 103.2,45.2 103.2,58.1 96.8,58.1
-96.8,77.4 90.3,77.4 90.3,83.9 83.9,83.9 83.9,90.3 77.4,90.3 77.4,96.8 58.1,96.8 58.1,103.2"
-      />
-      <path
-        fill="#001219"
-        d="M69.6,31.1h-36c-4.3,0-7.7,3.5-7.7,7.7v25.7c0,4.3,3.5,7.7,7.7,7.7h36c4.3,0,7.7-3.5,7.7-7.7V38.8
-C77.3,34.5,73.8,31.1,69.6,31.1z M33.6,36.2h36c0.2,0,0.4,0,0.6,0.1L51.6,50L33,36.3C33.2,36.2,33.4,36.2,33.6,36.2z M72.2,64.5
-c0,1.4-1.2,2.6-2.6,2.6h-36c-1.4,0-2.6-1.2-2.6-2.6V41.2l19,14c0.5,0.3,1,0.5,1.5,0.5c0.5,0,1.1-0.2,1.5-0.5l19-14V64.5z"
-      />
-    </svg>
-  )
-}
-
-function FooterShareIcon() {
-  return (
-    <svg
-      version="1.1"
-      viewBox="0 0 103.2 103.2"
-      width="33"
-      height="33"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <g>
-        <polygon
-          fill="#ffffff"
-          points="45.2,103.2 45.2,96.8 25.8,96.8 25.8,90.3 19.4,90.3 19.4,83.9 12.9,83.9 12.9,77.4 6.5,77.4
-6.5,58.1 0,58.1 0,45.2 6.5,45.2 6.5,25.8 12.9,25.8 12.9,19.4 19.4,19.4 19.4,12.9 25.8,12.9 25.8,6.5 45.2,6.5 45.2,0 58.1,0
-58.1,6.5 77.4,6.5 77.4,12.9 83.9,12.9 83.9,19.4 90.3,19.4 90.3,25.8 96.8,25.8 96.8,45.2 103.2,45.2 103.2,58.1 96.8,58.1
-96.8,77.4 90.3,77.4 90.3,83.9 83.9,83.9 83.9,90.3 77.4,90.3 77.4,96.8 58.1,96.8 58.1,103.2"
-        />
-      </g>
-      <g transform="translate(-380 -3319)">
-        <g transform="translate(56 160)">
-          <path
-            fill="#001219"
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M357,3206.2c2.6,0,4.7,2.1,4.7,4.7s-2.1,4.7-4.7,4.7c-2.6,0-4.7-2.1-4.7-4.7
-S354.4,3206.2,357,3206.2 M384.9,3192c2.6,0,4.7,2.1,4.7,4.7c0,2.6-2.1,4.7-4.7,4.7C378.8,3201.3,378.8,3192,384.9,3192
-M384.9,3219.9c2.6,0,4.7,2.1,4.7,4.7s-2.1,4.7-4.7,4.7C378.8,3229.3,378.8,3219.9,384.9,3219.9 M357,3220.2
-c2.8,0,5.4-1.3,7.1-3.3l11.7,6.7c-0.6,5.8,3.9,10.3,9.2,10.3c5.1,0,9.3-4.2,9.3-9.3c0-5.1-4.2-9.3-9.3-9.3
-c-3.1,0-5.9,1.6-7.6,3.9l-11.2-6.5c0.3-1.3,0.2-2.5,0-3.8l11.5-6.6c1.7,2.2,4.3,3.6,7.3,3.6c5.1,0,9.3-4.2,9.3-9.3
-c0-5.1-4.2-9.3-9.3-9.3c-5.5,0-10.1,4.8-9.2,10.7l-11.8,6.8c-1.7-2-4.2-3.2-7-3.2c-5.1,0-9.3,4.2-9.3,9.3
-S351.8,3220.2,357,3220.2"
-          />
-        </g>
-      </g>
-    </svg>
-  )
-}
-
 export default function Hub() {
-  const nav = useNavigate()
+  usePageSeo(SITE_ROUTE_SEO.home)
+
   const desktopRootRef = useRef<HTMLDivElement | null>(null)
   const pixelateRef = useRef<HTMLHeadingElement | null>(null)
   const importRef = useRef<HTMLHeadingElement | null>(null)
   const desktopHintRef = useRef<HTMLParagraphElement | null>(null)
   const desktopHintTextRef = useRef<HTMLSpanElement | null>(null)
+  const desktopOrbitCardMeasureRef = useRef<HTMLDivElement | null>(null)
+  const desktopOrbitTitleMeasureRef = useRef<HTMLSpanElement | null>(null)
   const mobileSwipeStartXRef = useRef<number | null>(null)
   const mobileSwipeStartYRef = useRef<number | null>(null)
   const mobileSwipeStartOffsetXRef = useRef(0)
@@ -686,6 +656,7 @@ export default function Hub() {
   const mobileCarouselCycleWidthRef = useRef(0)
   const mobileHeadlineRef = useRef<HTMLHeadingElement | null>(null)
   const mobileCardsRef = useRef<HTMLElement | null>(null)
+  const mobileCardRailRef = useRef<HTMLDivElement | null>(null)
   const desktopOrbitTimeoutsRef = useRef<number[]>([])
   const desktopOrbitAutoplayResumeRef = useRef(0)
   const desktopOrbitQueuedDirectionsRef = useRef<DesktopOrbitDirection[]>([])
@@ -703,6 +674,8 @@ export default function Hub() {
   const desktopOrbitPerformanceSamplingRef = useRef(false)
   const [desktopWordFontSize, setDesktopWordFontSize] = useState(120)
   const [desktopHintFontSize, setDesktopHintFontSize] = useState(16)
+  const [desktopOrbitTitleFontSize, setDesktopOrbitTitleFontSize] =
+    useState(40)
   const [desktopOrbitQuality, setDesktopOrbitQuality] =
     useState<DesktopOrbitQuality>(
       () => readStoredDesktopOrbitQuality() ?? "measuring"
@@ -722,10 +695,77 @@ export default function Hub() {
   const [desktopOrbitDrag, setDesktopOrbitDrag] =
     useState<DesktopOrbitDrag | null>(null)
   const [mobileCardTitleFontSize, setMobileCardTitleFontSize] = useState(34)
+  const [mobileCardBodyFontSize, setMobileCardBodyFontSize] = useState(14)
   const [mobileHeadlineFontSize, setMobileHeadlineFontSize] = useState(36)
   const [mobileCarouselAnchorX, setMobileCarouselAnchorX] = useState(0)
   const [mobileCarouselCenterX, setMobileCarouselCenterX] = useState(0)
   const [mobileCarouselOffsetX, setMobileCarouselOffsetX] = useState(0)
+
+  useEffect(() => {
+    const desktopRoot = desktopRootRef.current
+    if (!desktopRoot) return undefined
+
+    desktopRoot.style.setProperty(
+      "--hub-desktop-word-font-size",
+      `${desktopWordFontSize}px`
+    )
+    desktopRoot.style.setProperty(
+      "--hub-desktop-hint-font-size",
+      `${desktopHintFontSize}px`
+    )
+    desktopRoot.style.setProperty(
+      "--hub-orbit-title-font-size",
+      `${desktopOrbitTitleFontSize}px`
+    )
+
+    return () => {
+      desktopRoot.style.removeProperty("--hub-desktop-word-font-size")
+      desktopRoot.style.removeProperty("--hub-desktop-hint-font-size")
+      desktopRoot.style.removeProperty("--hub-orbit-title-font-size")
+    }
+  }, [desktopHintFontSize, desktopOrbitTitleFontSize, desktopWordFontSize])
+
+  useEffect(() => {
+    const headline = mobileHeadlineRef.current
+    if (!headline) return undefined
+
+    headline.style.setProperty(
+      "--hub-mobile-headline-font-size",
+      `${mobileHeadlineFontSize}px`
+    )
+
+    return () => {
+      headline.style.removeProperty("--hub-mobile-headline-font-size")
+    }
+  }, [mobileHeadlineFontSize])
+
+  useEffect(() => {
+    const cards = mobileCardsRef.current
+    if (!cards) return undefined
+
+    cards.style.setProperty(
+      "--hub-mobile-card-title-font-size",
+      `${mobileCardTitleFontSize}px`
+    )
+    cards.style.setProperty(
+      "--hub-mobile-card-body-font-size",
+      `${mobileCardBodyFontSize}px`
+    )
+
+    return () => {
+      cards.style.removeProperty("--hub-mobile-card-title-font-size")
+      cards.style.removeProperty("--hub-mobile-card-body-font-size")
+    }
+  }, [mobileCardBodyFontSize, mobileCardTitleFontSize])
+
+  useLayoutEffect(() => {
+    const rail = mobileCardRailRef.current
+    if (!rail) return
+
+    rail.style.transform = `translateX(${
+      mobileCarouselCenterX - mobileCarouselAnchorX + mobileCarouselOffsetX
+    }px)`
+  }, [mobileCarouselAnchorX, mobileCarouselCenterX, mobileCarouselOffsetX])
 
   useEffect(() => {
     desktopOrbitStepRef.current = desktopOrbitStep
@@ -843,7 +883,7 @@ export default function Hub() {
       const importNode = importRef.current
 
       if (!importNode) return
-      if (window.innerWidth < 901) return
+      if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
 
       const targetWidth = Math.round(importNode.getBoundingClientRect().width)
       if (!targetWidth) return
@@ -915,6 +955,7 @@ export default function Hub() {
       if (!disposed) {
         setDesktopHintFontSize(fitted)
       }
+      hintText.style.removeProperty("font-size")
     }
 
     const resizeObserver = new ResizeObserver(fitDesktopHint)
@@ -930,6 +971,64 @@ export default function Hub() {
       disposed = true
       resizeObserver.disconnect()
       window.removeEventListener("resize", fitDesktopHint)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return
+
+    let disposed = false
+
+    const fitDesktopOrbitTitle = () => {
+      const cardMeasure = desktopOrbitCardMeasureRef.current
+      const titleMeasure = desktopOrbitTitleMeasureRef.current
+      if (!cardMeasure || !titleMeasure) return
+      if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
+
+      const cardRect = cardMeasure.getBoundingClientRect()
+      const styles = window.getComputedStyle(cardMeasure)
+      const targetWidth =
+        cardRect.width -
+        parseFloat(styles.paddingLeft || "0") -
+        parseFloat(styles.paddingRight || "0")
+
+      if (!targetWidth || targetWidth <= 0) return
+
+      let low = 10
+      let high = 96
+      let fitted = low
+
+      for (let i = 0; i < 18; i += 1) {
+        const mid = (low + high) / 2
+        titleMeasure.style.fontSize = `${mid}px`
+        const measuredWidth = titleMeasure.getBoundingClientRect().width
+
+        if (measuredWidth <= targetWidth * 0.995) {
+          fitted = mid
+          low = mid
+        } else {
+          high = mid
+        }
+      }
+
+      if (!disposed) {
+        setDesktopOrbitTitleFontSize(fitted)
+      }
+    }
+
+    const resizeObserver = new ResizeObserver(fitDesktopOrbitTitle)
+    if (desktopOrbitCardMeasureRef.current) {
+      resizeObserver.observe(desktopOrbitCardMeasureRef.current)
+    }
+
+    window.addEventListener("resize", fitDesktopOrbitTitle)
+    fitDesktopOrbitTitle()
+    void document.fonts?.ready.then(fitDesktopOrbitTitle)
+
+    return () => {
+      disposed = true
+      resizeObserver.disconnect()
+      window.removeEventListener("resize", fitDesktopOrbitTitle)
     }
   }, [])
 
@@ -965,7 +1064,7 @@ export default function Hub() {
   }
 
   const sampleDesktopOrbitPerformance = () => {
-    if (window.innerWidth < 901) return
+    if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
     if (document.hidden) return
     if (desktopOrbitQuality === "lite") return
     if (desktopOrbitPerformanceSamplingRef.current) return
@@ -1055,7 +1154,7 @@ export default function Hub() {
 
     const intervalId = window.setInterval(() => {
       if (document.hidden) return
-      if (window.innerWidth < 901) return
+      if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
       advanceDesktopOrbit(1)
     }, DESKTOP_ORBIT_AUTOPLAY_INTERVAL_MS)
 
@@ -1064,7 +1163,7 @@ export default function Hub() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (window.innerWidth < 901) return
+      if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
 
       event.preventDefault()
@@ -1113,7 +1212,7 @@ export default function Hub() {
     }
 
     const handleTouchStart = (event: TouchEvent) => {
-      if (window.innerWidth < 901) return
+      if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
       if (desktopOrbitAnimation) return
       if (event.touches.length !== 1) {
         resetSwipe()
@@ -1351,8 +1450,7 @@ export default function Hub() {
         parseFloat(styles.paddingRight)
       const maxTitleHeight = Math.max(58, window.innerHeight * 0.088)
 
-      context.font =
-        '100px "Pathway Gothic One", "Arial Narrow", "Google Sans Flex", sans-serif'
+      context.font = '700 100px "Google Sans Flex", system-ui, Arial, sans-serif'
       const widestLine = Math.max(
         ...MOBILE_CARD_TITLE_LINES.map((line) =>
           context.measureText(line).width
@@ -1384,55 +1482,91 @@ export default function Hub() {
     }
   }, [])
 
-  const openSupportEmail = () => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return
 
-    const isMobile =
-      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-    const mailtoHref = `mailto:${SUPPORT_EMAIL}?subject=PIXTUDIO%20support`
-    const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${SUPPORT_EMAIL}&su=PIXTUDIO%20support`
+    let disposed = false
 
-    if (isMobile) {
-      window.location.href = mailtoHref
-      return
-    }
+    const fitCardBodies = () => {
+      const cards = mobileCardsRef.current
+      if (!cards) return
 
-    window.open(gmailComposeUrl, "_blank", "noopener,noreferrer")
-  }
+      const bodyNodes = Array.from(
+        cards.querySelectorAll<HTMLParagraphElement>(".hubMobileInfoCard p")
+      )
+      if (!bodyNodes.length) return
 
-  const shareSite = async () => {
-    if (typeof window === "undefined") return
-
-    const shareData = {
-      title: "PIXTUDIO",
-      text: "Import. Pixelate. Export.",
-      url: SITE_SHARE_URL,
-    }
-
-    try {
-      if (
-        navigator.share &&
-        (!navigator.canShare || navigator.canShare(shareData))
-      ) {
-        await navigator.share(shareData)
-        return
+      const previousBodyFontSize = cards.style.getPropertyValue(
+        "--hub-mobile-card-body-font-size"
+      )
+      cards.style.removeProperty("--hub-mobile-card-body-font-size")
+      const baseFontSize = Number.parseFloat(
+        window.getComputedStyle(bodyNodes[0]).fontSize || "14"
+      )
+      if (previousBodyFontSize) {
+        cards.style.setProperty(
+          "--hub-mobile-card-body-font-size",
+          previousBodyFontSize
+        )
       }
-    } catch {
-      // user cancel / unsupported / runtime issue
-    }
 
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(SITE_SHARE_URL)
-        alert("Link copied")
-        return
+      let high = Number.isFinite(baseFontSize) ? baseFontSize : 14
+      let low = 8
+      let fitted = low
+
+      const fitsInThreeLines = (fontSize: number) => {
+        let fits = true
+
+        for (const node of bodyNodes) {
+          node.style.fontSize = `${fontSize}px`
+          const styles = window.getComputedStyle(node)
+          const lineHeight = Number.parseFloat(styles.lineHeight || "0")
+          const maxHeight = lineHeight > 0 ? lineHeight * 3 : node.clientHeight
+
+          if (node.scrollHeight > maxHeight + 1) {
+            fits = false
+            break
+          }
+        }
+
+        for (const node of bodyNodes) {
+          node.style.removeProperty("font-size")
+        }
+
+        return fits
       }
-    } catch {
-      // Fall back to the prompt.
+
+      for (let i = 0; i < 18; i += 1) {
+        const mid = (low + high) / 2
+
+        if (fitsInThreeLines(mid)) {
+          fitted = mid
+          low = mid
+        } else {
+          high = mid
+        }
+      }
+
+      if (!disposed) {
+        setMobileCardBodyFontSize(Math.max(8, fitted))
+      }
     }
 
-    window.prompt("Copy this link:", SITE_SHARE_URL)
-  }
+    const resizeObserver = new ResizeObserver(fitCardBodies)
+    if (mobileCardsRef.current) {
+      resizeObserver.observe(mobileCardsRef.current)
+    }
+
+    window.addEventListener("resize", fitCardBodies)
+    fitCardBodies()
+    void document.fonts?.ready.then(fitCardBodies)
+
+    return () => {
+      disposed = true
+      resizeObserver.disconnect()
+      window.removeEventListener("resize", fitCardBodies)
+    }
+  }, [])
 
   const normalizeMobileCarouselOffset = (offset: number) => {
     const cycleWidth = mobileCarouselCycleWidthRef.current
@@ -1479,7 +1613,12 @@ export default function Hub() {
   }
 
   const handleDesktopWheel = (event: React.WheelEvent) => {
-    if (window.innerWidth < 901) return
+    if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
+    const desktopRoot = desktopRootRef.current
+    if (!desktopRoot) return
+    const rootRect = desktopRoot.getBoundingClientRect()
+    const leftColumnRight = rootRect.left + (rootRect.width * 4) / 13
+    if (event.clientX < rootRect.left || event.clientX > leftColumnRight) return
     if (
       TEMP_VIDEO_COMPARISON_ENABLED &&
       event.target instanceof Element &&
@@ -1494,10 +1633,26 @@ export default function Hub() {
     advanceDesktopOrbit(event.deltaY < 0 ? -1 : 1)
   }
 
+  const heroVideoStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    "@id": `${toAbsoluteSiteUrl("/")}#hero-video`,
+    name: "PIXTUDIO photo to pixel art preview",
+    description: HERO_VIDEO_SCHEMA_DESCRIPTION,
+    transcript: HERO_VIDEO_TRANSCRIPT_TEXT,
+    thumbnailUrl: [toAbsoluteSiteUrl(LANDING_VIDEO_POSTER_SRC)],
+    uploadDate: "2026-05-11",
+    contentUrl: toAbsoluteSiteUrl(DESKTOP_LANDING_VIDEO_SRC),
+    embedUrl: `${toAbsoluteSiteUrl("/")}#hero-video`,
+    isPartOf: { "@id": SITE_SCHEMA_IDS.website },
+    publisher: { "@id": SITE_SCHEMA_IDS.organization },
+  }
+
   return (
     <div
       className={`hubPage${MOBILE_SEO_SECOND_SCREEN_ENABLED ? " hubPageMobileSeoSecondScreenEnabled" : ""}${TEMP_VIDEO_COMPARISON_ENABLED ? " hubPageVideoCompareEnabled" : ""}`}
     >
+      <JsonLd id="pixtudio-hero-video-jsonld" data={heroVideoStructuredData} />
       <div
         ref={desktopRootRef}
         className={`hubDesktop hubOrbit${desktopOrbitQuality === "lite" ? "Lite" : desktopOrbitQuality === "measuring" ? "Measuring" : "Full"}`}
@@ -1505,7 +1660,16 @@ export default function Hub() {
         onWheel={handleDesktopWheel}
       >
         <div className="hubDesktopShell">
-          <section className="hubDesktopScene">
+          <section
+            className="hubDesktopScene"
+          >
+            <div
+              ref={desktopOrbitCardMeasureRef}
+              className="hubDesktopOrbitMeasure"
+              aria-hidden="true"
+            >
+              <span ref={desktopOrbitTitleMeasureRef}>TRANSFORMATION</span>
+            </div>
             <DesktopOrbitCards
               activeStep={desktopOrbitStep}
               animation={desktopOrbitAnimation}
@@ -1525,9 +1689,7 @@ export default function Hub() {
             </section>
 
             <div className="hubDesktopSceneCell hubDesktopLogoCell">
-              <div className="hubDesktopLogoWrap" aria-label="PIXTUDIO">
-                <SvgLogo style={{ width: "100%", height: "100%" }} />
-              </div>
+              <SiteTopNav activePage="home" />
             </div>
 
             <div className="hubDesktopSceneCell hubDesktopImportCell">
@@ -1535,7 +1697,6 @@ export default function Hub() {
                 <h2
                   ref={importRef}
                   className="hubDesktopWord hubDesktopWordImport"
-                  style={{ fontSize: desktopWordFontSize }}
                 >
                   <span>TURN PHOTOS</span>
                   <span>INTO PIXEL ART</span>
@@ -1549,6 +1710,7 @@ export default function Hub() {
                 <MobileVideoHero
                   src={DESKTOP_LANDING_VIDEO_SRC}
                   posterSrc={LANDING_VIDEO_POSTER_SRC}
+                  descriptionId="pixtudio-desktop-hero-video-description"
                 />
               </div>
             </div>
@@ -1563,32 +1725,18 @@ export default function Hub() {
                     <strong>{paragraph.accent}</strong> {paragraph.text}
                   </p>
                 ))}
-                <div className="hubDesktopFaqCopy" aria-label="PIXTUDIO quick FAQ">
-                  {DESKTOP_FAQ_COPY.map((item) => (
-                    <p key={item.question}>
-                      <strong>{item.question}</strong> {item.answer}
-                    </p>
-                  ))}
-                </div>
               </section>
-              <a
-                className="hubMobileCta hubDesktopCta"
-                href={DESKTOP_EDITOR_URL}
-                target="_self"
-                rel="noreferrer"
-              >
-                <span className="hubCtaText">Try PIXTUDIO Now</span>
-              </a>
             </div>
+
+            <SiteFloatingCta />
 
             <div className="hubDesktopSceneCell hubDesktopHintCell">
               <p
                 ref={desktopHintRef}
-                className="hubDesktopHint"
+                className="hubDesktopHint siteDisclaimerText"
               >
                 <span
                   ref={desktopHintTextRef}
-                  style={{ fontSize: desktopHintFontSize }}
                 >
                   {DESKTOP_HINT_TEXT}
                 </span>
@@ -1599,34 +1747,13 @@ export default function Hub() {
               <h2
                 ref={pixelateRef}
                 className="hubDesktopWord hubDesktopWordPixelate"
-                style={{ fontSize: desktopWordFontSize }}
               >
                 PIXELATE
               </h2>
             </div>
 
             <div className="hubDesktopSceneCell hubDesktopFooterCell">
-              <div className="hubDesktopFooter">
-                <span className="hubDesktopFooterText">PIXTUDIO {"\u00a9"}2026</span>
-                <div className="hubDesktopFooterActions">
-                  <button
-                    type="button"
-                    onClick={openSupportEmail}
-                    aria-label="Email"
-                    className="hubDesktopFooterButton"
-                  >
-                    <FooterEmailIcon />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={shareSite}
-                    aria-label="Share"
-                    className="hubDesktopFooterButton"
-                  >
-                    <FooterShareIcon />
-                  </button>
-                </div>
-              </div>
+              <SiteFooter className="hubDesktopFooter" />
             </div>
           </section>
         </div>
@@ -1634,21 +1761,20 @@ export default function Hub() {
       </div>
 
       <div className="hubMobile">
-        <div
+        <SiteShell
+          activePage="home"
           className={`hubMobileDesign${MOBILE_SEO_SECOND_SCREEN_ENABLED ? " hubMobileSeoSecondScreenEnabled" : ""}`}
+          mainClassName="hubMobileScrollArea"
+          mainAriaLabel="PIXTUDIO mobile landing"
+          footerClassName="hubMobileFooter"
+          showCta={false}
         >
-          <div className="hubMobileScrollArea">
-          <main className="hubMobileMain">
-            <header className="hubMobileHeader hubMobileBlockLogo">
-              <div className="hubMobileLogo" aria-label="PIXTUDIO">
-                <SvgLogo style={{ width: "100%", height: "100%" }} />
-              </div>
-            </header>
-
+          <div className="hubMobileMain">
             <div className="hubMobileBlockVideo">
               <MobileVideoHero
                 src={DESKTOP_LANDING_VIDEO_SRC}
                 posterSrc={LANDING_VIDEO_POSTER_SRC}
+                descriptionId="pixtudio-mobile-hero-video-description"
               />
             </div>
 
@@ -1656,7 +1782,6 @@ export default function Hub() {
               <h1
                 ref={mobileHeadlineRef}
                 className="hubMobileHeadline"
-                style={{ fontSize: mobileHeadlineFontSize }}
               >
                 <span className="hubMobileHeadlineJustified">
                   <b>TURN</b>
@@ -1668,13 +1793,14 @@ export default function Hub() {
             </div>
 
             <div className="hubMobileBlockCta">
-              <button
-                type="button"
-                className="hubMobileCta"
-                onClick={() => nav("/editor")}
+              <a
+                className="hubMobileCta hubMobileHomeCta"
+                href={DESKTOP_EDITOR_URL}
+                target="_self"
+                rel="noreferrer"
               >
                 <span className="hubCtaText">Try PIXTUDIO Now</span>
-              </button>
+              </a>
             </div>
 
             <section
@@ -1691,14 +1817,8 @@ export default function Hub() {
               }}
             >
               <div
+                ref={mobileCardRailRef}
                 className="hubMobileCardRail"
-                style={{
-                  transform: `translateX(${
-                    mobileCarouselCenterX -
-                    mobileCarouselAnchorX +
-                    mobileCarouselOffsetX
-                  }px)`,
-                }}
               >
                 {MOBILE_CAROUSEL_ITEMS.map(({ itemIndex, cardIndex }) => {
                   const card = MOBILE_INFO_CARDS[cardIndex]
@@ -1708,7 +1828,7 @@ export default function Hub() {
                       data-carousel-item={itemIndex}
                       className="hubMobileInfoCard"
                     >
-                      <h2 style={{ fontSize: mobileCardTitleFontSize }}>
+                      <h2>
                         {card.title.map((line) => (
                           <span key={line}>{line}</span>
                         ))}
@@ -1725,7 +1845,7 @@ export default function Hub() {
                 })}
               </div>
             </section>
-          </main>
+          </div>
 
           {MOBILE_SEO_SECOND_SCREEN_ENABLED && (
             <section className="hubMobileSeoScreen" aria-label="About PIXTUDIO">
@@ -1735,43 +1855,11 @@ export default function Hub() {
                     <strong>{paragraph.accent}</strong> {paragraph.text}
                   </p>
                 ))}
-                <div className="hubMobileFaqCopy" aria-label="PIXTUDIO quick FAQ">
-                  {DESKTOP_FAQ_COPY.map((item) => (
-                    <p key={item.question}>
-                      <strong>{item.question}</strong> {item.answer}
-                    </p>
-                  ))}
-                </div>
               </div>
             </section>
           )}
           <TemporaryVideoComparison />
-          </div>
-
-          <footer className="hubMobileFooter">
-            <div className="hubMobileFooterContent">
-              <span>PIXTUDIO {"\u00a9"}2026</span>
-              <div className="hubMobileFooterActions">
-                <button
-                  type="button"
-                  onClick={openSupportEmail}
-                  aria-label="Email"
-                  className="hubMobileFooterButton"
-                >
-                  <FooterEmailIcon />
-                </button>
-                <button
-                  type="button"
-                  onClick={shareSite}
-                  aria-label="Share"
-                  className="hubMobileFooterButton"
-                >
-                  <FooterShareIcon />
-                </button>
-              </div>
-            </div>
-          </footer>
-        </div>
+        </SiteShell>
       </div>
     </div>
   )

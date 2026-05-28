@@ -94,6 +94,31 @@ describe("ProjectSnapshotV2 invariants", () => {
         })
     })
 
+    it("preserves edited imported preset colors when present", () => {
+        const snapshot: ProjectSnapshotV2 = {
+            ...canonicalProject(),
+            quantizationProfile: {
+                kind: "fixed",
+                source: "imported",
+                id: "imported-demo",
+                name: "Demo",
+                colors: ["#001219", "#FFDD00"],
+            },
+        }
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(true)
+        if (!parsed.ok) return
+        expect(parsed.canonical.quantizationProfile).toEqual({
+            kind: "fixed",
+            source: "imported",
+            id: "imported-demo",
+            name: "Demo",
+            colors: ["#001219", "#FFDD00"],
+        })
+    })
+
     it("rejects malformed saved payloads without accepting partial state", () => {
         const malformed = {
             ...canonicalProject(),

@@ -32,6 +32,16 @@ function rgbToCss({ r, g, b }: Rgb): string {
     return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`
 }
 
+function rgbToHex({ r, g, b }: Rgb): string {
+    const toHex = (value: number) =>
+        Math.round(clamp(value, 0, 255)).toString(16).padStart(2, "0")
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase()
+}
+
+function colorKey(color: string): string {
+    return rgbToHex(parseColor(color))
+}
+
 function srgbToLinear(value: number): number {
     const n = value / 255
     return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
@@ -83,7 +93,8 @@ function oklabDistanceSq(a: Oklab, b: Oklab): number {
 
 export function extractPaletteOklabTournament(
     pixels: (string | null)[][],
-    targetColors: number
+    targetColors: number,
+    options: { excludedColors?: string[] } = {}
 ): { pixels: (string | null)[][]; palette: string[] } {
     const height = pixels.length
     const width = height > 0 ? pixels[0].length : 0
@@ -104,12 +115,40 @@ export function extractPaletteOklabTournament(
         }
     }
 
-    const uniqueColors = Array.from(map.values())
+    const excluded = new Set(
+        (options.excludedColors || []).map((color) => colorKey(color))
+    )
+    const allColors = Array.from(map.values())
+    const uniqueColors = allColors.filter(
+        (entry) => !excluded.has(colorKey(entry.color))
+    )
     if (uniqueColors.length === 0) return { pixels, palette: [] }
 
     const k = clamp(targetColors, 1, uniqueColors.length)
     if (uniqueColors.length <= k) {
-        return { pixels, palette: uniqueColors.map((c) => c.color) }
+        const palette = uniqueColors.map((c) => c.color)
+        const paletteLabs = palette.map((color) => rgbToOklab(parseColor(color)))
+        const mapping = new Map<string, string>()
+
+        for (const color of allColors) {
+            let bestIndex = 0
+            let bestDistance = Number.POSITIVE_INFINITY
+            for (let i = 0; i < paletteLabs.length; i++) {
+                const distance = oklabDistanceSq(color.lab, paletteLabs[i])
+                if (distance < bestDistance) {
+                    bestDistance = distance
+                    bestIndex = i
+                }
+            }
+            mapping.set(color.color, palette[bestIndex])
+        }
+
+        return {
+            pixels: pixels.map((row) =>
+                row.map((color) => (color == null ? null : mapping.get(color) || color))
+            ),
+            palette,
+        }
     }
 
     const centroids = uniqueColors
@@ -158,7 +197,7 @@ export function extractPaletteOklabTournament(
     const paletteLabs = palette.map((color) => rgbToOklab(parseColor(color)))
     const mapping = new Map<string, string>()
 
-    for (const color of uniqueColors) {
+    for (const color of allColors) {
         let bestIndex = 0
         let bestDistance = Number.POSITIVE_INFINITY
         for (let i = 0; i < paletteLabs.length; i++) {
