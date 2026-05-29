@@ -18,6 +18,10 @@ import QuantizationRecorder, {
 } from "./QuantizationRecorder.tsx"
 
 import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
+import {
+    isLikelyRasterImageFile,
+    routeOpenFile,
+} from "./openFileRouter.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendImportedPaletteProfile,
@@ -59,7 +63,6 @@ import {
 
 import {
     SvgHomeButton,
-    SvgTopButton3,
     SvgTopButton4,
     SvgManualButton,
     SvgModalBacking,
@@ -68,10 +71,6 @@ import {
     SvgOkButton,
     SvgPickerThumb,
     SvgCircle,
-    SvgImageWhite,
-    SvgImage,
-    SvgCameraWhite,
-    SvgBlankCanvasWhite,
     SvgFolder,
     SvgCamera,
     SvgPencil,
@@ -130,12 +129,8 @@ export type SourceImage = ImageBitmap
 
 export async function decodeToSourceImage(file: File): Promise<SourceImage> {
     // Fail-closed: images only
-    if (
-        !file ||
-        typeof file.type !== "string" ||
-        !file.type.startsWith("image/")
-    ) {
-        throw new Error("decodeToSourceImage: only image/* files are allowed")
+    if (!file || !isLikelyRasterImageFile(file)) {
+        throw new Error("decodeToSourceImage: only image files are allowed")
     }
 
     // We standardize on ImageBitmap as SourceImage.
@@ -168,6 +163,7 @@ const ENABLE_ROUTE_LOGS = false
 const ENABLE_ROOT_HISTORY_LOGS = false
 
 const ENABLE_CORE_LIFECYCLE_DEBUG_LOGS = false
+const USE_LEGACY_IMAGE_IMPORT_PICKER = false
 
 const ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS = false
 const ENABLE_PALETTE_UNDO_TRACE_LOGS = false
@@ -2428,13 +2424,11 @@ function StartScreen({
     onPickImage,
     onOpenCamera,
     onOpenDraw,
-    onOpenProject,
     onOpenHome,
 }: {
     onPickImage: () => void
     onOpenCamera: () => void
     onOpenDraw: () => void
-    onOpenProject: () => void
     onOpenHome: () => void
 }) {
     const bg = "#e9d8a6"
@@ -2994,13 +2988,18 @@ function StartScreen({
                         onClick={onPickImage}
                         className="pxUiAnim pxStartActionButton"
                         style={circleButton}
-                        aria-label="Image"
+                        aria-label="Open File"
                     >
                         <div style={circleInner}>
                             <SvgCircle style={circleSvgStyle} />
                             <div style={iconStyle}>
-                                <SvgImage
-                                    style={{ imageRendering: "pixelated" }}
+                                <SvgFolder
+                                    style={{
+                                        width: 51,
+                                        imageRendering: "pixelated",
+                                        paddingTop: 5,
+                                        paddingLeft: 2,
+                                    }}
                                 />
                             </div>
                         </div>
@@ -3040,27 +3039,6 @@ function StartScreen({
                         </div>
                     </button>
 
-                    <button
-                        type="button"
-                        onClick={onOpenProject}
-                        className="pxUiAnim pxStartActionButton"
-                        style={circleButton}
-                        aria-label="Open Project"
-                    >
-                        <div style={circleInner}>
-                            <SvgCircle style={circleSvgStyle} />
-                            <div style={iconStyle}>
-                                <SvgFolder
-                                    style={{
-                                        width: 51,
-                                        imageRendering: "pixelated",
-                                        paddingTop: 5,
-                                        paddingLeft: 2,
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    </button>
                 </div>
 
                 <div style={{ flex: 1 }} />
@@ -3072,7 +3050,7 @@ function StartScreen({
 
 // ------------------- EDITOR -------------------
 
-type OverlayMode = null | "import" | "export"
+type OverlayMode = null | "export"
 
 type BusyKind = "stream" | "txn" | null
 
@@ -3442,10 +3420,7 @@ function PixelEditorFramer({
     onCaptureSmartReferenceBaseForSave,
     onCaptureSmartObjectCommittedStateForSave,
     onRestoreSmartObjectFromLoad,
-    onRequestCamera,
     onRequestCropFromFile,
-    onRequestPickImage,
-    onRequestBlankImport,
     onRequestOpenProject,
     onRequestStartScreen,
     pendingProjectFile,
@@ -3485,10 +3460,7 @@ function PixelEditorFramer({
         adjustments: SmartReferenceAdjustments
     }) => boolean
     startWithImageVisible: boolean
-    onRequestCamera: () => void
     onRequestCropFromFile: (p: { file: File }) => void
-    onRequestPickImage?: () => void
-    onRequestBlankImport?: () => void
     onRequestOpenProject?: () => void
     onRequestStartScreen?: () => void
 
@@ -7217,7 +7189,7 @@ function PixelEditorFramer({
     function handlePalettePresetFilePicked(
         event: React.ChangeEvent<HTMLInputElement>
     ) {
-        const file = event.target.files?.[0]
+        const file = event.target.files?.[0] ?? null
         event.target.value = ""
         if (!file) return
 
@@ -9412,27 +9384,6 @@ function PixelEditorFramer({
         appearance: "none",
     }
 
-    const overlayButtonStyle: React.CSSProperties = {
-        background: "transparent",
-        border: "none",
-        outline: "none",
-        boxShadow: "none",
-        appearance: "none",
-        WebkitAppearance: "none",
-        WebkitTapHighlightColor: "transparent",
-        padding: 0,
-        width: 180,
-        height: 64,
-        fontWeight: 900,
-        letterSpacing: 0.8,
-        display: "grid",
-        placeItems: "center",
-        cursor: "pointer",
-        userSelect: "none",
-        fontFamily:
-            "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-    }
-
     const transparentToolSelected = selectedSwatch === "transparent"
 
     const currentPaintValue: PixelValue = transparentToolSelected
@@ -9527,7 +9478,6 @@ function PixelEditorFramer({
         [swatchById]
     )
 
-    const importBtnRef = React.useRef<HTMLButtonElement | null>(null)
     const exportBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
     const [overlayAnchorRect, setOverlayAnchorRect] =
@@ -10775,8 +10725,9 @@ function PixelEditorFramer({
 
     function openFileDialog() {
         // единая точка: ROOT держит <input type="file" .../> и общий обработчик ошибок импорта
-        onRequestPickImage?.()
+        // Legacy import overlay is disabled; root owns the active Open File picker.
     }
+    void openFileDialog
 
     // ------------------- SWATCH EDIT -------------------
 
@@ -11789,22 +11740,6 @@ function PixelEditorFramer({
 
     // FIX: anchor must be captured from the button on the same user gesture.
 
-    const openImport = (e?: React.MouseEvent) => {
-        let rect: DOMRect | null = null
-
-        const t = e?.currentTarget
-        if (t && t instanceof HTMLElement) {
-            rect = t.getBoundingClientRect()
-        } else {
-            // fallback: measure by ref (in case called programmatically)
-            const el = importBtnRef.current
-            rect = el instanceof HTMLElement ? el.getBoundingClientRect() : null
-        }
-
-        setOverlayAnchorRect(rect)
-        setOverlayMode("import")
-    }
-
     const openExport = (e?: React.MouseEvent) => {
         if (isExporting) return
 
@@ -11883,12 +11818,7 @@ function PixelEditorFramer({
     }
 
     const updateOverlayAnchor = React.useCallback(() => {
-        const el =
-            overlayMode === "import"
-                ? importBtnRef.current
-                : overlayMode === "export"
-                  ? exportBtnRef.current
-                  : null
+        const el = overlayMode === "export" ? exportBtnRef.current : null
 
         if (!el) {
             setOverlayAnchorRect(null)
@@ -12407,25 +12337,8 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 2: Import / Export (keep refs + dropdown anchoring) */}
+                    {/* Block 2: Export */}
                     <div style={{ display: "contents" }}>
-                        <button
-                            ref={importBtnRef}
-                            onClick={(e) => openImport(e)}
-                            style={iconOnlyButton(true)}
-                            aria-label="Import (Camera / Image)"
-                            className="pxUiAnim"
-                        >
-                            <SvgTopButton3
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    display: "block",
-                                    transform: "translateY(0px)",
-                                }}
-                            />
-                        </button>
-
                         <button
                             ref={exportBtnRef}
                             onClick={(e) => openExport(e)}
@@ -13571,11 +13484,9 @@ function PixelEditorFramer({
                                 // ✅ берём "живой" rect прямо из DOM как fallback,
                                 // чтобы не зависеть от того, успел ли state overlayAnchorRect обновиться
                                 const liveEl =
-                                    overlayMode === "import"
-                                        ? importBtnRef.current
-                                        : overlayMode === "export"
-                                          ? exportBtnRef.current
-                                          : null
+                                    overlayMode === "export"
+                                        ? exportBtnRef.current
+                                        : null
 
                                 const rect =
                                     overlayAnchorRect ??
@@ -13637,85 +13548,6 @@ function PixelEditorFramer({
                                         }}
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        {overlayMode === "import" && (
-                                            <div
-                                                style={{
-                                                    display: "flex",
-                                                    flexDirection: "column",
-                                                    alignItems: "center",
-                                                    gap: 28,
-                                                    marginTop: 10,
-                                                }}
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        closeOverlay()
-                                                        openFileDialog()
-                                                    }}
-                                                    style={overlayButtonStyle}
-                                                    aria-label="Pick image from gallery"
-                                                >
-                                                    <SvgImageWhite
-                                                        style={{
-                                                            width: 70,
-                                                            height: 70,
-                                                            display: "block",
-                                                        }}
-                                                    />
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        closeOverlay()
-                                                        onRequestCamera()
-                                                    }}
-                                                    style={overlayButtonStyle}
-                                                    aria-label="Open camera"
-                                                >
-                                                    <SvgCameraWhite
-                                                        style={{
-                                                            width: 70,
-                                                            height: 70,
-                                                            display: "block",
-                                                        }}
-                                                    />
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        closeOverlay()
-                                                        onRequestBlankImport?.()
-                                                    }}
-                                                    style={overlayButtonStyle}
-                                                    aria-label="Blank canvas"
-                                                >
-                                                    <SvgBlankCanvasWhite
-                                                        style={{
-                                                            width: 70,
-                                                            height: 70,
-                                                            display: "block",
-                                                            color: "#fff",
-                                                        }}
-                                                    />
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={closeOverlay}
-                                                    style={okCancelButtonStyle}
-                                                    aria-label="Close"
-                                                    className="pxUiAnim"
-                                                >
-                                                    <SvgCancelButton
-                                                        style={okCancelSvgStyle}
-                                                    />
-                                                </button>
-                                            </div>
-                                        )}
-
                                         {overlayMode === "export" && (
                                             <>
                                                 <button
@@ -15366,7 +15198,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const cameraInputRef = React.useRef<HTMLInputElement | null>(null)
 
-    const openProjectPicker = React.useCallback(() => {
+    const openUnifiedFilePicker = React.useCallback(() => {
         pendingProjectOpenFromStartRef.current = screen === "start"
         const el = loadFileInputRef.current
         if (!el) return
@@ -15379,6 +15211,8 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         el.click()
     }, [screen])
+
+    const openProjectPicker = openUnifiedFilePicker
 
     // ======================
     // GLOBAL: unified import-error modal (single source of truth)
@@ -15541,7 +15375,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         : null
 
     // ЕДИНЫЙ вход для импорта изображения (Start Screen + Editor)
-    const openImagePicker = React.useCallback(() => {
+    const openLegacyImageImportPicker = React.useCallback(() => {
         const el = fileInputRef.current
         if (!el) return
 
@@ -15555,16 +15389,60 @@ export default function PIXTUDIO_Mobile_MVP() {
         el.click()
     }, [])
 
+    const openImagePicker = React.useCallback(() => {
+        if (USE_LEGACY_IMAGE_IMPORT_PICKER) {
+            openLegacyImageImportPicker()
+            return
+        }
+
+        openUnifiedFilePicker()
+    }, [openLegacyImageImportPicker, openUnifiedFilePicker])
+
+    const importImageFileThroughCurrentPipeline = React.useCallback(
+        async (file: File) => {
+            if (!isLikelyRasterImageFile(file)) {
+                console.warn("[IMPORT][GALLERY] rejected non-image file", {
+                    type: file.type,
+                    name: file.name,
+                    size: file.size,
+                })
+
+                failImport("Import failed. Please try again.")
+                return
+            }
+
+            try {
+                setImportStatus("decoding")
+                setImportError(null)
+
+                const sourceImage = await decodeToSourceImage(file)
+
+                // Gallery pipe: CropFlow -> ChineseRoom -> Editor
+                setCropFlowSource("gallery")
+                openCropFlow(sourceImage)
+            } catch (e: any) {
+                console.warn("[IMPORT][GALLERY] decodeToSourceImage failed", e)
+                failImport("Import failed. Please try again.")
+            }
+        },
+        []
+    )
+
     // ЕДИНЫЙ обработчик выбранного изображения (Start Screen + Editor)
     const handlePickedImage = React.useCallback(
         async (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0]
+            const file = event.target.files?.[0] as File
             if (!file) return
 
             // важно: чтобы повторный выбор того же файла срабатывал
             event.target.value = ""
 
-            // fail-closed: только image/*
+            await importImageFileThroughCurrentPipeline(file)
+            return
+
+            /*
+
+            // fail-closed: legacy image-only path
             if (!file.type || !file.type.startsWith("image/")) {
                 console.warn("[IMPORT][GALLERY] rejected non-image file", {
                     type: file.type,
@@ -15592,6 +15470,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 // ✅ единый алерт
                 failImport("Import failed. Please try again.")
             }
+            */
         },
         []
     )
@@ -17014,7 +16893,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const handlePickedProjectFile = React.useCallback(
         async (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0]
+            const file = event.target.files?.[0] ?? null
             if (!file) {
                 setScreen(
                     pendingProjectOpenFromStartRef.current ? "start" : "editor"
@@ -17025,13 +16904,32 @@ export default function PIXTUDIO_Mobile_MVP() {
             // важно: чтобы повторный выбор того же файла срабатывал
             event.target.value = ""
 
+            const route = routeOpenFile(file)
+            if (route === "project") {
+                setPendingProjectFile(file)
+                setScreen("editor")
+                return
+            }
+
+            if (route === "image") {
+                await importImageFileThroughCurrentPipeline(file)
+                return
+            }
+
+            failImport("Import failed. Please try again.")
+            setScreen(pendingProjectOpenFromStartRef.current ? "start" : "editor")
+            return
+
+            /*
+
             // 1) кладём файл в pending
             setPendingProjectFile(file)
 
             // 2) переключаемся в Editor (дальше Editor сам “съест” pending и восстановит)
             setScreen("editor")
+            */
         },
-        [setScreen]
+        [failImport, importImageFileThroughCurrentPipeline, setScreen]
     )
 
     const content =
@@ -17040,7 +16938,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                 onPickImage={openImagePicker}
                 onOpenCamera={openCamera}
                 onOpenDraw={openDraw}
-                onOpenProject={openProjectPicker}
                 onOpenHome={openPromoHome}
             />
         ) : (
@@ -17063,13 +16960,10 @@ export default function PIXTUDIO_Mobile_MVP() {
                         handleRestoreSmartObjectFromLoad
                     }
                     startWithImageVisible={true}
-                    onRequestCamera={openSystemCameraHead}
                     onRequestCropFromFile={async ({ file }) => {
                         const sourceImage = await decodeToSourceImage(file)
                         openCropFlow(sourceImage)
                     }}
-                    onRequestPickImage={openImagePicker}
-                    onRequestBlankImport={openDraw}
                     onRequestOpenProject={openProjectPicker}
                     onRequestStartScreen={openEditorStartScreen}
                     onShowImportError={failImport}
@@ -17148,7 +17042,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             <input
                 ref={loadFileInputRef}
                 type="file"
-                accept=".pixtudio,application/json"
+                accept=".pixtudio,application/json,image/*,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
                 style={{ display: "none" }}
                 onChange={handlePickedProjectFile}
             />
