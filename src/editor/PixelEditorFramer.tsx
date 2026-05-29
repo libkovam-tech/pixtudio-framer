@@ -72,8 +72,8 @@ import {
     SvgPickerThumb,
     SvgCircle,
     SvgCameraNewButton,
-    SvgOpenProject2White,
     SvgBlankCanvasWhite,
+    SvgImageWhite,
     SvgFolder,
     SvgCamera,
     SvgPencil,
@@ -13522,7 +13522,8 @@ function PixelEditorFramer({
                             onClick={(e) => e.stopPropagation()} // не закрываем по фону
                         >
                             {(() => {
-                                const MENU_W = 300
+                                const isOpenMenu = overlayMode === "open"
+                                const MENU_W = isOpenMenu ? 220 : 300
                                 const GAP = 10
 
                                 // ✅ берём "живой" rect прямо из DOM как fallback,
@@ -13551,14 +13552,28 @@ function PixelEditorFramer({
                                 const cx = rect
                                     ? rect.left + rect.width / 2
                                     : vw / 2
-                                const top = (rect ? rect.bottom : 60) + 10
+                                const viewportHeight =
+                                    (typeof document !== "undefined" &&
+                                    document.documentElement
+                                        ? document.documentElement.clientHeight
+                                        : window.innerHeight) ||
+                                    window.innerHeight
+                                const top = isOpenMenu
+                                    ? clampN(viewportHeight * 0.13, 72, 176)
+                                    : (rect ? rect.bottom : 60) + 10
 
                                 // ✅ используем локальный clampN (а не "какой-то clamp" из другого контекста)
-                                const left = clampN(
-                                    cx - MENU_W / 2,
-                                    10,
-                                    vw - 10 - MENU_W
-                                )
+                                const left = isOpenMenu
+                                    ? clampN(
+                                          (vw - MENU_W) / 2,
+                                          10,
+                                          vw - 10 - MENU_W
+                                      )
+                                    : clampN(
+                                          cx - MENU_W / 2,
+                                          10,
+                                          vw - 10 - MENU_W
+                                      )
 
                                 const itemStyle: React.CSSProperties = {
                                     width: "100%",
@@ -13580,12 +13595,18 @@ function PixelEditorFramer({
                                 }
 
                                 const openMenuItemStyle: React.CSSProperties = {
-                                    ...itemStyle,
+                                    width: "100%",
+                                    height: 128,
+                                    background: "transparent",
+                                    border: "none",
+                                    padding: 0,
+                                    margin: 0,
+                                    cursor: "pointer",
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    gap: 10,
-                                    lineHeight: 1,
+                                    userSelect: "none",
+                                    filter: `drop-shadow(0 2px 6px ${pixtudioInk(0.28)})`,
                                 }
 
                                 return (
@@ -13598,7 +13619,7 @@ function PixelEditorFramer({
                                             display: "flex",
                                             flexDirection: "column",
                                             alignItems: "center",
-                                            gap: GAP,
+                                            gap: isOpenMenu ? 46 : GAP,
                                             pointerEvents: "auto",
                                         }}
                                         onClick={(e) => e.stopPropagation()}
@@ -13614,14 +13635,12 @@ function PixelEditorFramer({
                                                     style={openMenuItemStyle}
                                                     aria-label="Open file"
                                                 >
-                                                    <SvgOpenProject2White
+                                                    <SvgImageWhite
                                                         style={{
-                                                            width: 32,
-                                                            height: 26,
-                                                            flex: "0 0 auto",
+                                                            width: 154,
+                                                            height: 128,
                                                         }}
                                                     />
-                                                    <span>OPEN</span>
                                                 </button>
 
                                                 <button
@@ -13635,12 +13654,10 @@ function PixelEditorFramer({
                                                 >
                                                     <SvgBlankCanvasWhite
                                                         style={{
-                                                            width: 28,
-                                                            height: 28,
-                                                            flex: "0 0 auto",
+                                                            width: 124,
+                                                            height: 160,
                                                         }}
                                                     />
-                                                    <span>BLANK CANVAS</span>
                                                 </button>
 
                                                 <div
@@ -13649,6 +13666,7 @@ function PixelEditorFramer({
                                                         justifyContent:
                                                             "center",
                                                         pointerEvents: "auto",
+                                                        marginTop: 30,
                                                     }}
                                                 >
                                                     <button
