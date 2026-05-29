@@ -3165,6 +3165,7 @@ type EditorCommittedState = {
     selectedSwatch: SwatchId | "transparent"
     quantizationProfile?: QuantizationProfile
     importedPalettePresets?: ImportedPalettePreset[]
+    hiddenPresetIds?: string[]
     activePaletteTab?: PaletteTab
     deletedAutoPaletteColors?: string[]
     autoOverrides: Record<
@@ -3248,6 +3249,12 @@ function areEditorCommittedStatesEqual(
         )
     ) {
         return false
+    }
+    const aHidden = [...(a.hiddenPresetIds ?? [])].sort()
+    const bHidden = [...(b.hiddenPresetIds ?? [])].sort()
+    if (aHidden.length !== bHidden.length) return false
+    for (let i = 0; i < aHidden.length; i += 1) {
+        if (aHidden[i] !== bHidden[i]) return false
     }
 
     const aOv = a.autoOverrides || {}
@@ -6512,7 +6519,8 @@ function PixelEditorFramer({
         world: DerivedWorld<PixelValue>,
         activePaletteTab: PaletteTab,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets
+        importedPresetRegistry = importedPalettePresets,
+        hiddenPresetRegistry = hiddenPresetIds
     ): ProjectState {
         const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
         return {
@@ -6537,6 +6545,7 @@ function PixelEditorFramer({
             // the preset registry in lockstep with the active quantization profile.
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPresetRegistry),
+            hiddenPresetIds: hiddenPresetRegistry.slice(),
             activePaletteTab,
             deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
             autoOverrides: { ...autoOverrides },
@@ -6611,7 +6620,8 @@ function PixelEditorFramer({
     function applyDerivedWorldSnapshot(
         world: DerivedWorld<PixelValue>,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets
+        importedPresetRegistry = importedPalettePresets,
+        hiddenPresetRegistry = hiddenPresetIds
     ) {
         const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
         const nextImage = clonePixelsGrid(world.imagePixels)
@@ -6655,6 +6665,7 @@ function PixelEditorFramer({
             ),
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPresetRegistry),
+            hiddenPresetIds: hiddenPresetRegistry.slice(),
             activePaletteTab:
                 world.profile.kind === "fixed"
                     ? "presets"
@@ -6702,6 +6713,70 @@ function PixelEditorFramer({
             ...world,
             referenceSignature: imageDataSampleSignature(originalImageData),
         }
+    }
+
+    function buildAutoPaletteDrawingWorld(): DerivedWorld<PixelValue> {
+        const count = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
+        const nextAuto = generatePalette(count).map((color, index) => ({
+            id: `auto-${index}`,
+            color,
+            isTransparent: false,
+            isUser: false,
+        }))
+        const nextImage = clonePixelsGrid(imagePixels)
+        const nextOverlay = clonePixelsGrid(overlayPixels)
+
+        return {
+            profile: EXTRACT_QUANTIZATION_PROFILE,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+            autoSwatches: nextAuto,
+            imagePixels: nextImage,
+            overlayPixels: nextOverlay,
+            canvasPixels:
+                overlayOverBaseGrid(nextImage, nextOverlay) ?? nextImage,
+        }
+    }
+
+    function switchDeletedActivePresetToAutoPalette(
+        nextHiddenPresetIds: string[],
+        nextImportedPalettePresets: ImportedPalettePreset[]
+    ) {
+        // Deleting the active preset must leave the canvas in a real palette
+        // world, not in an invisible fixed profile that would still save later.
+        const before = latestProjectStateRef.current ?? makeProjectState()
+        const world =
+            buildExtractWorldFromReference() ?? buildAutoPaletteDrawingWorld()
+        const afterState: ProjectState = {
+            ...makeProjectStateFromDerivedWorld(
+                world,
+                "size",
+                null,
+                nextImportedPalettePresets,
+                nextHiddenPresetIds
+            ),
+            quantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
+            activePaletteTab: "size",
+            hiddenPresetIds: nextHiddenPresetIds.slice(),
+        }
+
+        beginEditorActionTransaction("editor-action", before)
+        setHiddenPresetIds(nextHiddenPresetIds)
+        setImportedPalettePresets(nextImportedPalettePresets)
+        setActivePresetButton(null)
+        setPaletteTabsState((prev) => ({
+            ...prev,
+            activeTab: "size",
+            sizeWorld: world,
+            presetsWorld: null,
+        }))
+        applyDerivedWorldSnapshot(
+            world,
+            null,
+            nextImportedPalettePresets,
+            nextHiddenPresetIds
+        )
+        latestProjectStateRef.current = afterState
+        pushCommit(before, { afterState })
     }
 
     function switchPaletteTab(nextTab: PaletteTab) {
@@ -6904,6 +6979,7 @@ function PixelEditorFramer({
             quantizationProfile: cloneQuantizationProfileForHistory(profile),
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPresetRegistry),
+            hiddenPresetIds: hiddenPresetIds.slice(),
             activePaletteTab: "presets",
             autoOverrides: nextAutoOverrides,
         }
@@ -7153,21 +7229,23 @@ function PixelEditorFramer({
     }
 
     function deletePalettePreset(profileId: string) {
-        setHiddenPresetIds((prev) =>
-            prev.includes(profileId) ? prev : [...prev, profileId]
-        )
-        setImportedPalettePresets((prev) =>
-            prev.filter((preset) => preset.id !== profileId)
+        const nextHiddenPresetIds = hiddenPresetIds.includes(profileId)
+            ? hiddenPresetIds.slice()
+            : [...hiddenPresetIds, profileId]
+        const nextImportedPalettePresets = importedPalettePresets.filter(
+            (preset) => preset.id !== profileId
         )
 
-        if (activePresetButton !== profileId) return
+        if (activePresetButton === profileId) {
+            switchDeletedActivePresetToAutoPalette(
+                nextHiddenPresetIds,
+                nextImportedPalettePresets
+            )
+            return
+        }
 
-        setActivePresetButton(null)
-        setPaletteTabsState((prev) => ({
-            ...prev,
-            activeTab: "presets",
-            presetsWorld: null,
-        }))
+        setHiddenPresetIds(nextHiddenPresetIds)
+        setImportedPalettePresets(nextImportedPalettePresets)
     }
 
     // H0:
@@ -7200,6 +7278,7 @@ function PixelEditorFramer({
                 cloneQuantizationProfileForHistory(quantizationProfile),
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPalettePresets),
+            hiddenPresetIds: hiddenPresetIds.slice(),
             activePaletteTab: paletteTabsState.activeTab,
             deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
 
@@ -7463,6 +7542,7 @@ function PixelEditorFramer({
         autoOverrides,
         quantizationProfile,
         importedPalettePresets,
+        hiddenPresetIds,
         paletteTabsState.activeTab,
         activePresetButton,
     ])
@@ -7547,6 +7627,7 @@ function PixelEditorFramer({
         setImportedPalettePresets(
             cloneImportedPalettePresetsForHistory(restoredImportedPresets)
         )
+        setHiddenPresetIds((state.hiddenPresetIds ?? []).slice())
         const nextActivePaletteTab: PaletteTab =
             nextProfile.kind === "fixed"
                 ? "presets"
