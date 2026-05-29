@@ -13553,7 +13553,7 @@ function PixelEditorFramer({
                                     ? rect.left + rect.width / 2
                                     : vw / 2
                                 const top = isOpenMenu
-                                    ? (rect ? rect.bottom : 60) + 72
+                                    ? (rect ? rect.bottom : 60) + 28
                                     : (rect ? rect.bottom : 60) + 10
 
                                 // ✅ используем локальный clampN (а не "какой-то clamp" из другого контекста)
@@ -13590,7 +13590,7 @@ function PixelEditorFramer({
 
                                 const openMenuItemStyle: React.CSSProperties = {
                                     width: "100%",
-                                    height: 160,
+                                    height: 88,
                                     background: "transparent",
                                     border: "none",
                                     padding: 0,
@@ -13600,7 +13600,6 @@ function PixelEditorFramer({
                                     alignItems: "center",
                                     justifyContent: "center",
                                     userSelect: "none",
-                                    filter: `drop-shadow(0 2px 6px ${pixtudioInk(0.28)})`,
                                 }
 
                                 return (
@@ -13613,7 +13612,7 @@ function PixelEditorFramer({
                                             display: "flex",
                                             flexDirection: "column",
                                             alignItems: "center",
-                                            gap: isOpenMenu ? 28 : GAP,
+                                            gap: isOpenMenu ? 44 : GAP,
                                             pointerEvents: "auto",
                                         }}
                                         onClick={(e) => e.stopPropagation()}
@@ -13631,8 +13630,8 @@ function PixelEditorFramer({
                                                 >
                                                     <SvgOpenProject2White
                                                         style={{
-                                                            width: 174,
-                                                            height: 140,
+                                                            width: 92,
+                                                            height: 74,
                                                         }}
                                                     />
                                                 </button>
@@ -13648,8 +13647,8 @@ function PixelEditorFramer({
                                                 >
                                                     <SvgBlankCanvasWhite
                                                         style={{
-                                                            width: 154,
-                                                            height: 196,
+                                                            width: 82,
+                                                            height: 106,
                                                         }}
                                                     />
                                                 </button>
@@ -13660,7 +13659,7 @@ function PixelEditorFramer({
                                                         justifyContent:
                                                             "center",
                                                         pointerEvents: "auto",
-                                                        marginTop: 20,
+                                                        marginTop: 6,
                                                     }}
                                                 >
                                                     <button
