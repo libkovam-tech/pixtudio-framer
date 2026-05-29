@@ -34,6 +34,7 @@ import {
     QUANTIZATION_PROFILES,
     buildDerivedWorld,
     extractPalette,
+    getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
     type DerivedWorld,
@@ -3841,7 +3842,7 @@ function PixelEditorFramer({
                     pixels,
                     quantizationProfile
                 ),
-                palette: quantizationProfile.colors,
+                palette: getFixedProfilePaletteForApplication(quantizationProfile),
             }
         }
 
@@ -6917,7 +6918,7 @@ function PixelEditorFramer({
             overlayPixels,
             previousSwatches: autoSwatches,
             userSwatches,
-            paletteCountTarget: profile.colors.length,
+            paletteCountTarget: getFixedProfilePaletteForApplication(profile).length,
         })
         return {
             ...world,
@@ -6928,7 +6929,7 @@ function PixelEditorFramer({
     function makeAutoSwatchesFromFixedProfile(
         profile: FixedQuantizationProfile
     ): Swatch[] {
-        return profile.colors.map((color, i) => ({
+        return getFixedProfilePaletteForApplication(profile).map((color, i) => ({
             id: `auto-${i}`,
             color,
             isTransparent: false,
@@ -7404,7 +7405,9 @@ function PixelEditorFramer({
                                   basePixels,
                                   frozenQuantizationProfile
                               ),
-                              palette: frozenQuantizationProfile.colors,
+                              palette: getFixedProfilePaletteForApplication(
+                                  frozenQuantizationProfile
+                              ),
                           }
                         : quantizePixels(basePixels, nextPaletteSize)
                 const finalQuantPixels: (string | null)[][] = q.pixels
@@ -7484,7 +7487,9 @@ function PixelEditorFramer({
                 initialPaletteSize:
                     frozenQuantizationProfile.kind === "fixed"
                         ? clampInt(
-                              frozenQuantizationProfile.colors.length,
+                              getFixedProfilePaletteForApplication(
+                                  frozenQuantizationProfile
+                              ).length,
                               frozenPaletteBounds.min,
                               frozenPaletteBounds.max
                           )

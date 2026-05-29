@@ -1,5 +1,9 @@
 import { extractPaletteOklabTournament } from "./quantizationMethods/autoPaletteOklabTournament.ts"
 import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
+import {
+    applyImportedPaletteToPixels,
+    prepareImportedPaletteColorsForApplication,
+} from "./importedPaletteStrategy.ts"
 
 export type QuantizationProfile =
     | {
@@ -310,11 +314,23 @@ export function quantizeWithFixedProfile(
     pixels: QuantizationPixel[][],
     profile: Extract<QuantizationProfile, { kind: "fixed" }>
 ): QuantizationPixel[][] {
+    if (profile.source === "imported") {
+        return applyImportedPaletteToPixels(pixels, profile.colors)
+    }
     if (profile.id === "grayscale-32") return quantizeWithGrayscaleProfile(pixels)
     if (profile.id === "black-white-2") {
         return quantizeWithBlackWhiteProfile(pixels)
     }
     return quantizeWithFixedPalette(pixels, profile.colors)
+}
+
+export function getFixedProfilePaletteForApplication(
+    profile: Extract<QuantizationProfile, { kind: "fixed" }>
+): string[] {
+    if (profile.source === "imported") {
+        return prepareImportedPaletteColorsForApplication(profile.colors)
+    }
+    return profile.colors
 }
 
 export function extractPalette(
@@ -493,7 +509,7 @@ export function buildDerivedWorld<TPixel extends string | null>(params: {
                   params.sourcePixels,
                   params.profile
               ),
-              palette: params.profile.colors,
+              palette: getFixedProfilePaletteForApplication(params.profile),
           }
 
     const autoSwatches = result.palette.map((color, index) => ({

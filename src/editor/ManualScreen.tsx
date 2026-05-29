@@ -8,7 +8,6 @@ import googleSansFlex800Url from "../assets/fonts/GoogleSansFlex-800.ttf?url"
 import {
     SvgTopButton3,
     SvgTopButton4,
-    SvgManualButton,
     SaveIcon,
     LoadIcon,
     UndoIcon,
@@ -237,10 +236,6 @@ function HandIconInline({ style }: { style?: React.CSSProperties }) {
             <HandIconOff size={size} />
         </span>
     )
-}
-
-function ManualIconInline({ style }: { style?: React.CSSProperties }) {
-    return <SvgManualButton style={{ ...ICON_INLINE, ...style }} />
 }
 
 function QuantizationRecorderIconInline({
@@ -853,24 +848,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             Drawing is disabled while this tool is active.
-                        </SectionCopy>
-                    </SectionStack>
-                ),
-            },
-            {
-                id: "info",
-                title: "Info",
-                navLabel: "Info",
-                icon: <ManualIconInline />,
-                content: (
-                    <SectionStack>
-                        <SectionCopy>
-                            This button opens the built-in user guide you are
-                            reading now.
-                        </SectionCopy>
-                        <SectionCopy>
-                            Use it whenever you need a quick explanation of the
-                            interface, tools, or workflow.
                         </SectionCopy>
                     </SectionStack>
                 ),

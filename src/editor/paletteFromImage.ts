@@ -1,4 +1,8 @@
-import { extractPalette, type QuantizationPixel } from "./paletteQuantizationEngine.ts"
+import type { QuantizationPixel } from "./paletteQuantizationEngine.ts"
+import {
+    extractImportedPaletteColors,
+    shouldUseObjectiveImportedPaletteSampling,
+} from "./importedPaletteStrategy.ts"
 
 const DEFAULT_TARGET_COLORS = 32
 const DEFAULT_SAMPLE_MAX_SIDE = 160
@@ -54,7 +58,8 @@ async function decodeImageFile(file: File): Promise<ImageBitmap> {
 
 function imageBitmapToSamplePixels(
     bitmap: ImageBitmap,
-    sampleMaxSide: number
+    sampleMaxSide: number,
+    options: { smooth: boolean }
 ): QuantizationPixel[][] {
     const { width, height } = getImageSampleSize(
         bitmap.width,
@@ -68,8 +73,8 @@ function imageBitmapToSamplePixels(
     const ctx = canvas.getContext("2d", { willReadFrequently: true })
     if (!ctx) throw new Error("paletteFromImage: canvas context unavailable")
 
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = "high"
+    ctx.imageSmoothingEnabled = options.smooth
+    ctx.imageSmoothingQuality = options.smooth ? "high" : "low"
     ctx.clearRect(0, 0, width, height)
     ctx.drawImage(bitmap, 0, 0, width, height)
 
@@ -109,9 +114,10 @@ export async function extractPaletteFromImageFile(
     const bitmap = await decodeImageFile(file)
 
     try {
-        const pixels = imageBitmapToSamplePixels(bitmap, sampleMaxSide)
-        const result = extractPalette(pixels, targetColors)
-        return result.palette.map(cssColorToHex)
+        const pixels = imageBitmapToSamplePixels(bitmap, sampleMaxSide, {
+            smooth: !shouldUseObjectiveImportedPaletteSampling(),
+        })
+        return extractImportedPaletteColors(pixels, targetColors).map(cssColorToHex)
     } finally {
         bitmap.close()
     }
