@@ -13630,8 +13630,8 @@ function PixelEditorFramer({
                                                 >
                                                     <SvgOpenProject2White
                                                         style={{
-                                                            width: 92,
-                                                            height: 74,
+                                                            width: 46,
+                                                            height: 37,
                                                         }}
                                                     />
                                                 </button>
@@ -13647,8 +13647,8 @@ function PixelEditorFramer({
                                                 >
                                                     <SvgBlankCanvasWhite
                                                         style={{
-                                                            width: 82,
-                                                            height: 106,
+                                                            width: 41,
+                                                            height: 53,
                                                         }}
                                                     />
                                                 </button>
