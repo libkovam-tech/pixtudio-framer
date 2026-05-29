@@ -71,6 +71,9 @@ import {
     SvgOkButton,
     SvgPickerThumb,
     SvgCircle,
+    SvgCameraNewButton,
+    SvgOpenProject2White,
+    SvgBlankCanvasWhite,
     SvgFolder,
     SvgCamera,
     SvgPencil,
@@ -3050,7 +3053,7 @@ function StartScreen({
 
 // ------------------- EDITOR -------------------
 
-type OverlayMode = null | "export"
+type OverlayMode = null | "open" | "export"
 
 type BusyKind = "stream" | "txn" | null
 
@@ -3420,7 +3423,9 @@ function PixelEditorFramer({
     onCaptureSmartReferenceBaseForSave,
     onCaptureSmartObjectCommittedStateForSave,
     onRestoreSmartObjectFromLoad,
+    onRequestCamera,
     onRequestCropFromFile,
+    onRequestBlankImport,
     onRequestOpenProject,
     onRequestStartScreen,
     pendingProjectFile,
@@ -3460,7 +3465,9 @@ function PixelEditorFramer({
         adjustments: SmartReferenceAdjustments
     }) => boolean
     startWithImageVisible: boolean
+    onRequestCamera: () => void
     onRequestCropFromFile: (p: { file: File }) => void
+    onRequestBlankImport?: () => void
     onRequestOpenProject?: () => void
     onRequestStartScreen?: () => void
 
@@ -3986,10 +3993,10 @@ function PixelEditorFramer({
         })
     }, [buildProjectSnapshotV2])
 
-    const onLoadProject = React.useCallback(() => {
-        coreLifecycleLog("load:picker-opened")
-        onRequestOpenProject?.()
-    }, [onRequestOpenProject])
+    function onLoadProject(e: React.MouseEvent) {
+        coreLifecycleLog("load:menu-opened")
+        openOpenMenu(e)
+    }
 
     type LoadPayload = {
         snapshotVersion: 2
@@ -9478,6 +9485,7 @@ function PixelEditorFramer({
         [swatchById]
     )
 
+    const openBtnRef = React.useRef<HTMLButtonElement | null>(null)
     const exportBtnRef = React.useRef<HTMLButtonElement | null>(null)
 
     const [overlayAnchorRect, setOverlayAnchorRect] =
@@ -11740,19 +11748,32 @@ function PixelEditorFramer({
 
     // FIX: anchor must be captured from the button on the same user gesture.
 
-    const openExport = (e?: React.MouseEvent) => {
-        if (isExporting) return
-
+    const getOverlayAnchorRectFromEvent = (
+        e: React.MouseEvent | undefined,
+        fallbackRef: React.RefObject<HTMLButtonElement | null>
+    ): DOMRect | null => {
         let rect: DOMRect | null = null
 
         const t = e?.currentTarget
         if (t && t instanceof HTMLElement) {
             rect = t.getBoundingClientRect()
         } else {
-            const el = exportBtnRef.current
+            const el = fallbackRef.current
             rect = el instanceof HTMLElement ? el.getBoundingClientRect() : null
         }
 
+        return rect
+    }
+
+    const openOpenMenu = (e?: React.MouseEvent) => {
+        setOverlayAnchorRect(getOverlayAnchorRectFromEvent(e, openBtnRef))
+        setOverlayMode("open")
+    }
+
+    const openExport = (e?: React.MouseEvent) => {
+        if (isExporting) return
+
+        const rect = getOverlayAnchorRectFromEvent(e, exportBtnRef)
         setOverlayAnchorRect(rect)
         setOverlayMode("export")
     }
@@ -11818,7 +11839,12 @@ function PixelEditorFramer({
     }
 
     const updateOverlayAnchor = React.useCallback(() => {
-        const el = overlayMode === "export" ? exportBtnRef.current : null
+        const el =
+            overlayMode === "open"
+                ? openBtnRef.current
+                : overlayMode === "export"
+                  ? exportBtnRef.current
+                  : null
 
         if (!el) {
             setOverlayAnchorRect(null)
@@ -12297,8 +12323,9 @@ function PixelEditorFramer({
 
                         <button
                             type="button"
+                            ref={openBtnRef}
                             onClick={onLoadProject}
-                            aria-label="Load"
+                            aria-label="Open"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
                         >
@@ -12337,8 +12364,25 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 2: Export */}
+                    {/* Block 2: Camera / Export */}
                     <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            onClick={onRequestCamera}
+                            style={iconOnlyButton(true)}
+                            aria-label="Camera"
+                            className="pxUiAnim"
+                        >
+                            <SvgCameraNewButton
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    display: "block",
+                                    transform: "translateY(0px)",
+                                }}
+                            />
+                        </button>
+
                         <button
                             ref={exportBtnRef}
                             onClick={(e) => openExport(e)}
@@ -13484,9 +13528,11 @@ function PixelEditorFramer({
                                 // ✅ берём "живой" rect прямо из DOM как fallback,
                                 // чтобы не зависеть от того, успел ли state overlayAnchorRect обновиться
                                 const liveEl =
-                                    overlayMode === "export"
-                                        ? exportBtnRef.current
-                                        : null
+                                    overlayMode === "open"
+                                        ? openBtnRef.current
+                                        : overlayMode === "export"
+                                          ? exportBtnRef.current
+                                          : null
 
                                 const rect =
                                     overlayAnchorRect ??
@@ -13533,6 +13579,15 @@ function PixelEditorFramer({
                                     textShadow: `0 2px 6px ${pixtudioInk(0.45)}`,
                                 }
 
+                                const openMenuItemStyle: React.CSSProperties = {
+                                    ...itemStyle,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 10,
+                                    lineHeight: 1,
+                                }
+
                                 return (
                                     <div
                                         style={{
@@ -13548,6 +13603,73 @@ function PixelEditorFramer({
                                         }}
                                         onClick={(e) => e.stopPropagation()}
                                     >
+                                        {overlayMode === "open" && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        closeOverlay()
+                                                        onRequestOpenProject?.()
+                                                    }}
+                                                    style={openMenuItemStyle}
+                                                    aria-label="Open file"
+                                                >
+                                                    <SvgOpenProject2White
+                                                        style={{
+                                                            width: 32,
+                                                            height: 26,
+                                                            flex: "0 0 auto",
+                                                        }}
+                                                    />
+                                                    <span>OPEN</span>
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        closeOverlay()
+                                                        onRequestBlankImport?.()
+                                                    }}
+                                                    style={openMenuItemStyle}
+                                                    aria-label="Blank canvas"
+                                                >
+                                                    <SvgBlankCanvasWhite
+                                                        style={{
+                                                            width: 28,
+                                                            height: 28,
+                                                            flex: "0 0 auto",
+                                                        }}
+                                                    />
+                                                    <span>BLANK CANVAS</span>
+                                                </button>
+
+                                                <div
+                                                    style={{
+                                                        display: "flex",
+                                                        justifyContent:
+                                                            "center",
+                                                        pointerEvents: "auto",
+                                                    }}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={closeOverlay}
+                                                        style={
+                                                            okCancelButtonStyle
+                                                        }
+                                                        aria-label="Close"
+                                                        className="pxUiAnim"
+                                                    >
+                                                        <SvgCancelButton
+                                                            style={
+                                                                okCancelSvgStyle
+                                                            }
+                                                        />
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+
                                         {overlayMode === "export" && (
                                             <>
                                                 <button
@@ -16960,10 +17082,12 @@ export default function PIXTUDIO_Mobile_MVP() {
                         handleRestoreSmartObjectFromLoad
                     }
                     startWithImageVisible={true}
+                    onRequestCamera={openSystemCameraHead}
                     onRequestCropFromFile={async ({ file }) => {
                         const sourceImage = await decodeToSourceImage(file)
                         openCropFlow(sourceImage)
                     }}
+                    onRequestBlankImport={openDraw}
                     onRequestOpenProject={openProjectPicker}
                     onRequestStartScreen={openEditorStartScreen}
                     onShowImportError={failImport}

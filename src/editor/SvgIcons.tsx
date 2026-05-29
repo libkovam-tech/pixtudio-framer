@@ -275,6 +275,69 @@ export function SvgTopButton4({ style }: { style?: React.CSSProperties }) {
     )
 }
 
+export function SvgCameraNewButton({ style }: { style?: React.CSSProperties }) {
+    return (
+        <InlineSvgWrap style={style} ariaLabel="Camera button">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 2834.6 2834.6"
+                width="100%"
+                height="100%"
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label="Camera button"
+            >
+                <g>
+                    <polygon
+                        fill="#6E3B6E"
+                        points="1240.1,2834.6 1240.1,2657.3 708.6,2657.3 708.6,2480.2 531.5,2480.2 531.5,2303.1 354.4,2303.1 354.4,2126 177.1,2126 177.1,1594.5 0,1594.5 0,1240.1 177.1,1240.1 177.1,708.6 354.4,708.6 354.4,531.5 531.5,531.5 531.5,354.4 708.6,354.4 708.6,177.1 1240.1,177.1 1240.1,0 1594.5,0 1594.5,177.1 2126,177.1 2126,354.4 2303.1,354.4 2303.1,531.5 2480.2,531.5 2480.2,708.6 2657.3,708.6 2657.3,1240.1 2834.6,1240.1 2834.6,1594.5 2657.3,1594.5 2657.3,2126 2480.2,2126 2480.2,2303.1 2303.1,2303.1 2303.1,2480.2 2126,2480.2 2126,2657.3 1594.5,2657.3 1594.5,2834.6"
+                    />
+                </g>
+                <g>
+                    <path
+                        fill="#FFFFFF"
+                        d="M2181.8,1992.2h-1529V978.5h343.9l130.4-260.2h580.4l130.4,260.2h343.9V1992.2z M747.8,1897.2h1339v-823.7h-307.5l-130.4-260.2h-463.1l-130.4,260.2H747.8V1897.2z"
+                    />
+                    <path
+                        fill="#FFFFFF"
+                        d="M1417.3,1790.6c-50.4,0-99.2-9.9-145.3-29.4c-44.4-18.8-84.4-45.7-118.6-80c-34.3-34.3-61.2-74.2-80-118.6c-19.5-46-29.4-94.9-29.4-145.3c0-50.4,9.9-99.2,29.4-145.3c18.8-44.5,45.7-84.4,80-118.6c34.3-34.3,74.2-61.2,118.6-80c46-19.5,94.9-29.3,145.3-29.3s99.2,9.9,145.3,29.3c44.4,18.8,84.4,45.7,118.6,80c34.3,34.3,61.2,74.2,80,118.6c19.5,46,29.4,94.9,29.4,145.3c0,50.4-9.9,99.2-29.4,145.3c-18.8,44.4-45.7,84.4-80,118.6c-34.3,34.3-74.2,61.2-118.6,80C1516.6,1780.7,1467.7,1790.6,1417.3,1790.6z M1417.3,1139.1c-153.4,0-278.2,124.8-278.2,278.2c0,153.4,124.8,278.2,278.2,278.2s278.2-124.8,278.2-278.2C1695.6,1263.9,1570.7,1139.1,1417.3,1139.1z"
+                    />
+                </g>
+            </svg>
+        </InlineSvgWrap>
+    )
+}
+
+export function SvgOpenProject2White({
+    style,
+    ariaLabel,
+}: {
+    style?: React.CSSProperties
+    ariaLabel?: string
+}) {
+    return (
+        <InlineSvgWrap
+            style={style}
+            ariaLabel={ariaLabel || "Open project icon"}
+        >
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 487.6 390"
+                width="100%"
+                height="100%"
+                preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label={ariaLabel || "Open project icon"}
+            >
+                <path
+                    fill="#FFFFFF"
+                    d="M390,133.3v-76H229.6L205.7,0H0v390h423.4l64.2-256.8H390z M32.2,357.8L32.2,357.8L32.1,32.2h152.1l23.9,57.2h149.7v43.8H103.5L47.4,357.8H32.2z M398.2,357.8H80.5l48.1-192.4h317.7L398.2,357.8z"
+                />
+            </svg>
+        </InlineSvgWrap>
+    )
+}
+
 export function SvgManualButton({ style }: { style?: React.CSSProperties }) {
     return (
         <InlineSvgWrap style={style} ariaLabel="Manual button">
