@@ -40,4 +40,16 @@ describe("pixel art xlsx export", () => {
         expect(normalizeXlsxHexColor("rgba(10, 20, 30, 0)")).toBeNull()
         expect(normalizeXlsxHexColor("rgb(10, 20, 30)")).toBe("0A141E")
     })
+
+    it("keeps narrow 128px exports square in Excel units", async () => {
+        const colors = Array.from({ length: 128 }, () =>
+            Array.from({ length: 128 }, () => "#123456")
+        )
+        const text = await blobAsText(
+            buildPixelArtXlsxBlob({ colors, sizeMm: 200 })
+        )
+
+        expect(text).toContain('ht="4.4291"')
+        expect(text).toContain('width="0.4505"')
+    })
 })

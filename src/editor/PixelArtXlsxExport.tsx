@@ -106,8 +106,8 @@ function worksheetXml(params: {
     const { rows, size, sizeMm, styleByColor } = params
     const totalPt = sizeMm * POINTS_PER_MM
     const rowHeightPt = size > 0 ? totalPt / size : totalPt
-    const rowHeightPx = rowHeightPt * (96 / 72)
-    const colWidth = Math.max(0.1, Math.min(255, (rowHeightPx - 5) / 7))
+    const cellSizePx = rowHeightPt * (96 / 72)
+    const colWidth = excelColumnWidthForPixels(cellSizePx)
     const dimension = size > 0 ? `A1:${cellRef(size - 1, size - 1)}` : "A1"
 
     const rowsXml = rows
@@ -262,6 +262,16 @@ function columnName(col: number) {
 
 function formatNumber(value: number) {
     return Number.isFinite(value) ? value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : "0"
+}
+
+function excelColumnWidthForPixels(px: number) {
+    if (!Number.isFinite(px) || px <= 0) return 0.1
+
+    // Excel column width is not a pixel or point value. Below roughly 12px it
+    // uses a different conversion; using the normal formula collapses pixel-art
+    // columns into a thin vertical strip.
+    const width = px < 12 ? (px - 0.5) / 12 : (px - 5) / 7
+    return Math.max(0.1, Math.min(255, width))
 }
 
 function zipStore(files: XlsxFile[]) {
