@@ -16,6 +16,7 @@ import QuantizationRecorder, {
     type QuantizationRecorderFrame,
     type QuantizationRecorderSeed,
 } from "./QuantizationRecorder.tsx"
+import { buildPixelArtXlsxBlob } from "./PixelArtXlsxExport.tsx"
 
 import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
 import {
@@ -11410,6 +11411,7 @@ function PixelEditorFramer({
         const lower = filename.toLowerCase()
         const isPng = lower.endsWith(".png")
         const isSvg = lower.endsWith(".svg")
+        const isXlsx = lower.endsWith(".xlsx")
 
         const pickerOpts: any = {
             suggestedName: filename,
@@ -11427,6 +11429,16 @@ function PixelEditorFramer({
                 {
                     description: "SVG Image",
                     accept: { "image/svg+xml": [".svg"] },
+                },
+            ]
+        } else if (isXlsx) {
+            pickerOpts.types = [
+                {
+                    description: "Excel Workbook",
+                    accept: {
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                            [".xlsx"],
+                    },
                 },
             ]
         }
@@ -11575,6 +11587,7 @@ function PixelEditorFramer({
                 const lower = filename.toLowerCase()
                 const isPng = lower.endsWith(".png")
                 const isSvg = lower.endsWith(".svg")
+                const isXlsx = lower.endsWith(".xlsx")
 
                 const pickerOpts: any = {
                     suggestedName: filename,
@@ -11593,6 +11606,16 @@ function PixelEditorFramer({
                         {
                             description: "SVG Image",
                             accept: { "image/svg+xml": [".svg"] },
+                        },
+                    ]
+                } else if (isXlsx) {
+                    pickerOpts.types = [
+                        {
+                            description: "Excel Workbook",
+                            accept: {
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                                    [".xlsx"],
+                            },
                         },
                     ]
                 }
@@ -11741,6 +11764,58 @@ function PixelEditorFramer({
         }, "pixtudio-icon.svg")
     }
 
+    function buildExportColorGrid(p?: {
+        includeStroke: boolean
+        includeImage: boolean
+    }): (string | null)[][] {
+        const includeStroke = p?.includeStroke ?? true
+        const includeImage = p?.includeImage ?? true
+
+        const rows = gridSize
+        const cols = gridSize
+        const out: (string | null)[][] = []
+
+        for (let r = 0; r < rows; r++) {
+            const iRow = imagePixels[r]
+            const oRow = overlayPixels[r]
+            const row: (string | null)[] = []
+
+            for (let c = 0; c < cols; c++) {
+                let v: PixelValue = null
+
+                if (includeStroke) {
+                    const o = oRow?.[c] ?? null
+                    if (o != null) v = o
+                }
+
+                if (v == null && includeImage) v = iRow?.[c] ?? null
+
+                if (!v || isTransparentValue(v)) {
+                    row.push(null)
+                    continue
+                }
+
+                row.push(resolveToColor(v))
+            }
+
+            out.push(row)
+        }
+
+        return out
+    }
+
+    async function exportXLSX(p?: {
+        includeStroke: boolean
+        includeImage: boolean
+    }): Promise<boolean> {
+        return await saveBlobFromProducer(async () => {
+            return buildPixelArtXlsxBlob({
+                colors: buildExportColorGrid(p),
+                sizeMm: 200,
+            })
+        }, "pixtudio.xlsx")
+    }
+
     // ------------------- OVERLAY MENU (#3/#4) -------------------
 
     const clampN = (v: number, min: number, max: number) =>
@@ -11799,7 +11874,7 @@ function PixelEditorFramer({
         onRequestStartScreen?.()
     }
 
-    const runExport = async (kind: "png" | "svg") => {
+    const runExport = async (kind: "png" | "svg" | "xlsx") => {
         // Enterprise: ignore re-entry (no toasts, no alerts)
         if (isExporting) return
 
@@ -11818,8 +11893,13 @@ function PixelEditorFramer({
                     includeStroke: exportIncludeStroke,
                     includeImage: exportIncludeImage,
                 })
-            } else {
+            } else if (kind === "svg") {
                 ok = await exportSVG({
+                    includeStroke: exportIncludeStroke,
+                    includeImage: exportIncludeImage,
+                })
+            } else {
+                ok = await exportXLSX({
                     includeStroke: exportIncludeStroke,
                     includeImage: exportIncludeImage,
                 })
@@ -13725,6 +13805,17 @@ function PixelEditorFramer({
                                                     style={itemStyle}
                                                 >
                                                     SVG
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        void runExport("xlsx")
+                                                    }
+                                                    disabled={isExporting}
+                                                    style={itemStyle}
+                                                >
+                                                    XLSX
                                                 </button>
 
                                                 {/* separator / spacing (same vibe as other modals, no new paradigm) */}
