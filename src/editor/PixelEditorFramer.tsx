@@ -12295,6 +12295,7 @@ function PixelEditorFramer({
                             type="button"
                             onClick={openStartScreen}
                             aria-label="Home"
+                            title="Home"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
                         >
@@ -12315,6 +12316,7 @@ function PixelEditorFramer({
                             type="button"
                             onClick={onSaveProject}
                             aria-label="Save"
+                            title="Save project"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
                         >
@@ -12326,6 +12328,7 @@ function PixelEditorFramer({
                             onClick={(e) => openExport(e)}
                             style={iconOnlyButton(true)}
                             aria-label="Export (PNG / SVG)"
+                            title="Download Pixel-Art"
                             className="pxUiAnim"
                         >
                             <SvgTopButton4
@@ -12346,6 +12349,7 @@ function PixelEditorFramer({
                             onClick={onCoordinatedUndo}
                             disabled={!coordinatedCanUndo}
                             aria-label="Undo"
+                            title="Undo"
                             className="pxUiAnim"
                             style={{
                                 ...iconOnlyButton(!!coordinatedCanUndo),
@@ -12360,6 +12364,7 @@ function PixelEditorFramer({
                             onClick={onCoordinatedRedo}
                             disabled={!coordinatedCanRedo}
                             aria-label="Redo"
+                            title="Redo"
                             className="pxUiAnim"
                             style={{
                                 ...iconOnlyButton(!!coordinatedCanRedo),
@@ -12377,6 +12382,7 @@ function PixelEditorFramer({
                             ref={openBtnRef}
                             onClick={onLoadProject}
                             aria-label="Open"
+                            title="Open"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
                         >
@@ -12388,6 +12394,7 @@ function PixelEditorFramer({
                             onClick={onRequestCamera}
                             style={iconOnlyButton(true)}
                             aria-label="Camera"
+                            title="Camera"
                             className="pxUiAnim"
                         >
                             <SvgCameraNewButton
@@ -12415,6 +12422,7 @@ function PixelEditorFramer({
                                 resetView()
                             }}
                             aria-label="Zoom out (tap) / Reset view (long-press or right-click)"
+                            title="Zoom-Out"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
                         >
@@ -12425,6 +12433,7 @@ function PixelEditorFramer({
                             type="button"
                             onClick={handleZoomIn}
                             aria-label="Zoom in"
+                            title="Zoom-In"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
                         >
@@ -12437,6 +12446,7 @@ function PixelEditorFramer({
                         <button
                             type="button"
                             aria-label="Pipette tool"
+                            title="Color Picker"
                             className="pxUiAnim"
                             onClick={() =>
                                 setToolMode((m) =>
@@ -12458,6 +12468,7 @@ function PixelEditorFramer({
                         <button
                             type="button"
                             aria-label="Hand tool"
+                            title="Pan"
                             className="pxUiAnim"
                             onClick={() =>
                                 setToolMode((m) =>
@@ -12488,6 +12499,7 @@ function PixelEditorFramer({
                             }}
                             style={iconOnlyButton(true)}
                             aria-label="Manual button"
+                            title="Manual"
                             className="pxUiAnim"
                         >
                             <SvgManualButton
@@ -12903,6 +12915,7 @@ function PixelEditorFramer({
                                     onClick={openQuantizationRecorder}
                                     disabled={!originalImageData}
                                     aria-label="Quantization Recorder"
+                                    title="Pixelization Record"
                                     className="pxUiAnim"
                                     style={{
                                         width: 60,
@@ -12937,6 +12950,7 @@ function PixelEditorFramer({
                                     onClick={onOpenSmartReferenceTest}
                                     disabled={!onOpenSmartReferenceTest}
                                     aria-label="Smart Object"
+                                    title="Reference Setup"
                                     className="pxUiAnim"
                                     style={{
                                         width: 60,
