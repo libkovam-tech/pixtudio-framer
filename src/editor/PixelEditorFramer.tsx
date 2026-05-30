@@ -13603,6 +13603,14 @@ function PixelEditorFramer({
                                     userSelect: "none",
                                 }
 
+                                const openMenuCancelButtonStyle: React.CSSProperties =
+                                    {
+                                        ...okCancelButtonStyle,
+                                        marginTop: 0,
+                                        marginLeft: 0,
+                                        marginRight: 0,
+                                    }
+
                                 return (
                                     <div
                                         style={{
@@ -13613,7 +13621,7 @@ function PixelEditorFramer({
                                             display: "flex",
                                             flexDirection: "column",
                                             alignItems: "center",
-                                            gap: isOpenMenu ? 30 : GAP,
+                                            gap: isOpenMenu ? 40 : GAP,
                                             pointerEvents: "auto",
                                         }}
                                         onClick={(e) => e.stopPropagation()}
@@ -13666,7 +13674,7 @@ function PixelEditorFramer({
                                                         type="button"
                                                         onClick={closeOverlay}
                                                         style={
-                                                            okCancelButtonStyle
+                                                            openMenuCancelButtonStyle
                                                         }
                                                         aria-label="Close"
                                                         className="pxUiAnim"
