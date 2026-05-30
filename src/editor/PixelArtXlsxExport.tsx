@@ -6,6 +6,7 @@ export const PIXEL_ART_XLSX_MIME =
 const XLSX_TARGET_SIZE_MM = 200
 const SCREEN_PIXELS_PER_MM = 96 / 25.4
 const POINTS_PER_SCREEN_PIXEL = 72 / 96
+const CALIBRI_11_MAX_DIGIT_WIDTH_PX = 7
 const MIN_STABLE_DISPLAY_CELL_PX = 12
 
 type XlsxFile = {
@@ -106,9 +107,9 @@ function worksheetXml(params: {
     styleByColor: Map<string, number>
 }) {
     const { rows, size, sizeMm, styleByColor } = params
-    const geometry = excelCellGeometry(sizeMm, size)
-    const rowHeightPt = geometry.cellSizePx * POINTS_PER_SCREEN_PIXEL
-    const colWidth = excelColumnWidthForPixels(geometry.cellSizePx)
+    const cellSizePx = excelDefaultCellSizePx(sizeMm, size)
+    const rowHeightPt = cellSizePx * POINTS_PER_SCREEN_PIXEL
+    const colWidth = excelColumnWidthForPixels(cellSizePx)
     const dimension = size > 0 ? `A1:${cellRef(size - 1, size - 1)}` : "A1"
 
     const rowsXml = rows
@@ -122,7 +123,7 @@ function worksheetXml(params: {
                 })
                 .join("")
 
-            return `<row r="${r + 1}" ht="${formatNumber(rowHeightPt)}" customHeight="1">${cells}</row>`
+            return `<row r="${r + 1}">${cells}</row>`
         })
         .join("")
 
@@ -132,9 +133,8 @@ function worksheetXml(params: {
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
         `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` +
         `<dimension ref="${dimension}"/>` +
-        `<sheetViews><sheetView workbookViewId="0" showGridLines="0" showRowColHeaders="0" zoomScale="${geometry.zoomScale}" zoomScaleNormal="${geometry.zoomScale}"/></sheetViews>` +
-        `<sheetFormatPr baseColWidth="1" defaultColWidth="${formatNumber(colWidth)}" defaultRowHeight="${formatNumber(rowHeightPt)}"/>` +
-        `<cols><col min="1" max="${Math.max(1, size)}" width="${formatNumber(colWidth)}" customWidth="1"/></cols>` +
+        `<sheetViews><sheetView workbookViewId="0" showGridLines="0" showRowColHeaders="0" zoomScale="100" zoomScaleNormal="100"/></sheetViews>` +
+        `<sheetFormatPr baseColWidth="1" defaultColWidth="${formatNumber(colWidth)}" defaultRowHeight="${formatNumber(rowHeightPt)}" customHeight="1"/>` +
         `<sheetData>${rowsXml}</sheetData>` +
         `<pageMargins left="0.19685" right="0.19685" top="0.19685" bottom="0.19685" header="0" footer="0"/>` +
         `<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1"/>` +
@@ -265,37 +265,20 @@ function formatNumber(value: number) {
     return Number.isFinite(value) ? value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : "0"
 }
 
-function excelCellGeometry(sizeMm: number, gridSize: number) {
-    if (!Number.isFinite(sizeMm) || sizeMm <= 0 || gridSize <= 0) {
-        return { cellSizePx: MIN_STABLE_DISPLAY_CELL_PX, zoomScale: 100 }
-    }
+function excelDefaultCellSizePx(sizeMm: number, gridSize: number) {
+    if (!Number.isFinite(sizeMm) || sizeMm <= 0 || gridSize <= 0)
+        return MIN_STABLE_DISPLAY_CELL_PX
 
     const targetPx = (sizeMm * SCREEN_PIXELS_PER_MM) / gridSize
-    if (targetPx >= MIN_STABLE_DISPLAY_CELL_PX) {
-        return { cellSizePx: Math.round(targetPx), zoomScale: 100 }
-    }
-
-    const targetDisplayPx = Math.max(1, Math.round(targetPx))
-    const zoomScale = Math.max(
-        10,
-        Math.min(
-            100,
-            Math.round(
-                (targetDisplayPx / MIN_STABLE_DISPLAY_CELL_PX) * 100
-            )
-        )
-    )
-
-    return { cellSizePx: MIN_STABLE_DISPLAY_CELL_PX, zoomScale }
+    return Math.max(MIN_STABLE_DISPLAY_CELL_PX, Math.round(targetPx))
 }
 
 function excelColumnWidthForPixels(px: number) {
     if (!Number.isFinite(px) || px <= 0) return 0.1
 
-    // Excel column width is character-based, while row height is point-based.
-    // Convert from a shared integer screen-pixel target so the opened sheet is
-    // square at 100% zoom; page setup still scales the grid to the print width.
-    const width = px <= 12 ? px / 12 : (px - 5) / 7
+    // Excel column width is based on the workbook's max digit width. Calibri 11
+    // is the default font declared in stylesXml(), and OOXML uses 7px for it.
+    const width = px / CALIBRI_11_MAX_DIGIT_WIDTH_PX
     return Math.max(0.1, Math.min(255, width))
 }
 

@@ -50,8 +50,11 @@ describe("pixel art xlsx export", () => {
             buildPixelArtXlsxBlob({ colors, sizeMm: 200 })
         )
 
-        expect(text).toContain('zoomScale="50"')
-        expect(text).toContain('ht="9"')
-        expect(text).toContain('width="1"')
+        expect(text).toContain('zoomScale="100"')
+        expect(text).toContain(
+            'defaultColWidth="1.7143" defaultRowHeight="9" customHeight="1"'
+        )
+        expect(text).not.toContain("<cols>")
+        expect(text).not.toContain(' ht="')
     })
 })
