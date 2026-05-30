@@ -50,6 +50,6 @@ describe("pixel art xlsx export", () => {
         )
 
         expect(text).toContain('ht="4.4291"')
-        expect(text).toContain('width="0.4505"')
+        expect(text).toContain('width="0.8146"')
     })
 })

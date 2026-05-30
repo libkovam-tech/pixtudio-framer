@@ -267,10 +267,10 @@ function formatNumber(value: number) {
 function excelColumnWidthForPixels(px: number) {
     if (!Number.isFinite(px) || px <= 0) return 0.1
 
-    // Excel column width is not a pixel or point value. Below roughly 12px it
-    // uses a different conversion; using the normal formula collapses pixel-art
-    // columns into a thin vertical strip.
-    const width = px < 12 ? (px - 0.5) / 12 : (px - 5) / 7
+    // Excel column width is not a pixel or point value. For tiny pixel-art
+    // cells, Excel renders the narrow-width branch much tighter than the OOXML
+    // nominal math suggests, so we target its effective on-screen width.
+    const width = px < 12 ? px / 7.25 : (px - 5) / 7
     return Math.max(0.1, Math.min(255, width))
 }
 
