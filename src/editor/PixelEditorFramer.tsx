@@ -13523,7 +13523,7 @@ function PixelEditorFramer({
                         >
                             {(() => {
                                 const isOpenMenu = overlayMode === "open"
-                                const MENU_W = isOpenMenu ? 220 : 300
+                                const MENU_W = isOpenMenu ? 50 : 300
                                 const GAP = 10
 
                                 // ✅ берём "живой" rect прямо из DOM как fallback,
