@@ -17,6 +17,7 @@ import QuantizationRecorder, {
     type QuantizationRecorderSeed,
 } from "./QuantizationRecorder.tsx"
 import { buildPixelArtXlsxBlob } from "./PixelArtXlsxExport.tsx"
+import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 
 import { parseProjectSnapshotV2Json } from "./projectSnapshotV2.ts"
 import {
@@ -11412,6 +11413,7 @@ function PixelEditorFramer({
         const isPng = lower.endsWith(".png")
         const isSvg = lower.endsWith(".svg")
         const isXlsx = lower.endsWith(".xlsx")
+        const isZip = lower.endsWith(".zip")
 
         const pickerOpts: any = {
             suggestedName: filename,
@@ -11439,6 +11441,13 @@ function PixelEditorFramer({
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
                             [".xlsx"],
                     },
+                },
+            ]
+        } else if (isZip) {
+            pickerOpts.types = [
+                {
+                    description: "ZIP Archive",
+                    accept: { "application/zip": [".zip"] },
                 },
             ]
         }
@@ -11588,6 +11597,7 @@ function PixelEditorFramer({
                 const isPng = lower.endsWith(".png")
                 const isSvg = lower.endsWith(".svg")
                 const isXlsx = lower.endsWith(".xlsx")
+                const isZip = lower.endsWith(".zip")
 
                 const pickerOpts: any = {
                     suggestedName: filename,
@@ -11618,6 +11628,13 @@ function PixelEditorFramer({
                             },
                         },
                     ]
+                } else if (isZip) {
+                    pickerOpts.types = [
+                        {
+                            description: "ZIP Archive",
+                            accept: { "application/zip": [".zip"] },
+                        },
+                    ]
                 }
 
                 const handle = await anyWin.showSaveFilePicker(pickerOpts)
@@ -11637,10 +11654,10 @@ function PixelEditorFramer({
     }
     void saveBlob
 
-    async function exportPNG(p?: {
+    async function makePNGBlob(p?: {
         includeStroke: boolean
         includeImage: boolean
-    }): Promise<boolean> {
+    }): Promise<Blob | null> {
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
 
@@ -11655,7 +11672,7 @@ function PixelEditorFramer({
         out.height = exportSize
 
         const ctx = out.getContext("2d")
-        if (!ctx) return false
+        if (!ctx) return null
 
         ctx.imageSmoothingEnabled = false
         ctx.clearRect(0, 0, exportSize, exportSize)
@@ -11693,18 +11710,22 @@ function PixelEditorFramer({
             }
         }
 
-        return await saveBlobFromProducer(async () => {
-            const blob = await new Promise<Blob | null>((resolve) => {
-                out.toBlob((b) => resolve(b), "image/png")
-            })
-            return blob
-        }, "pixtudio.png")
+        return await new Promise<Blob | null>((resolve) => {
+            out.toBlob((b) => resolve(b), "image/png")
+        })
     }
 
-    async function exportSVG(p?: {
+    async function exportPNG(p?: {
         includeStroke: boolean
         includeImage: boolean
     }): Promise<boolean> {
+        return await saveBlobFromProducer(async () => makePNGBlob(p), "pixtudio.png")
+    }
+
+    function makeSVGBlob(p?: {
+        includeStroke: boolean
+        includeImage: boolean
+    }): Blob {
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
 
@@ -11756,12 +11777,16 @@ function PixelEditorFramer({
             rects.join("") +
             `</svg>`
 
-        return await saveBlobFromProducer(async () => {
-            const blob = new Blob([svg], {
-                type: "image/svg+xml;charset=utf-8",
-            })
-            return blob
-        }, "pixtudio-icon.svg")
+        return new Blob([svg], {
+            type: "image/svg+xml;charset=utf-8",
+        })
+    }
+
+    async function exportSVG(p?: {
+        includeStroke: boolean
+        includeImage: boolean
+    }): Promise<boolean> {
+        return await saveBlobFromProducer(async () => makeSVGBlob(p), "pixtudio-icon.svg")
     }
 
     function buildExportColorGrid(p?: {
@@ -11804,16 +11829,46 @@ function PixelEditorFramer({
         return out
     }
 
+    function makeXLSXBlob(p?: {
+        includeStroke: boolean
+        includeImage: boolean
+    }): Blob {
+        return buildPixelArtXlsxBlob({
+            colors: buildExportColorGrid(p),
+            sizeMm: 200,
+        })
+    }
+
     async function exportXLSX(p?: {
         includeStroke: boolean
         includeImage: boolean
     }): Promise<boolean> {
+        return await saveBlobFromProducer(async () => makeXLSXBlob(p), "pixtudio.xlsx")
+    }
+
+    async function blobToBytes(blob: Blob): Promise<Uint8Array> {
+        return new Uint8Array(await blob.arrayBuffer())
+    }
+
+    async function exportZIP(p?: {
+        includeStroke: boolean
+        includeImage: boolean
+    }): Promise<boolean> {
         return await saveBlobFromProducer(async () => {
-            return buildPixelArtXlsxBlob({
-                colors: buildExportColorGrid(p),
-                sizeMm: 200,
-            })
-        }, "pixtudio.xlsx")
+            const png = await makePNGBlob(p)
+            if (!png) return null
+
+            const svg = makeSVGBlob(p)
+            const xlsx = makeXLSXBlob(p)
+
+            const files: ZipStoreFile[] = [
+                { name: "pixtudio.png", bytes: await blobToBytes(png) },
+                { name: "pixtudio-icon.svg", bytes: await blobToBytes(svg) },
+                { name: "pixtudio.xlsx", bytes: await blobToBytes(xlsx) },
+            ]
+
+            return new Blob([zipStore(files)], { type: "application/zip" })
+        }, "pixtudio-export.zip")
     }
 
     // ------------------- OVERLAY MENU (#3/#4) -------------------
@@ -11874,7 +11929,7 @@ function PixelEditorFramer({
         onRequestStartScreen?.()
     }
 
-    const runExport = async (kind: "png" | "svg" | "xlsx") => {
+    const runExport = async (kind: "png" | "svg" | "xlsx" | "zip") => {
         // Enterprise: ignore re-entry (no toasts, no alerts)
         if (isExporting) return
 
@@ -11899,10 +11954,14 @@ function PixelEditorFramer({
                     includeImage: exportIncludeImage,
                 })
             } else {
-                ok = await exportXLSX({
+                const exportParams = {
                     includeStroke: exportIncludeStroke,
                     includeImage: exportIncludeImage,
-                })
+                }
+                ok =
+                    kind === "xlsx"
+                        ? await exportXLSX(exportParams)
+                        : await exportZIP(exportParams)
             }
 
             if (ok) {
@@ -13818,6 +13877,26 @@ function PixelEditorFramer({
                                                     XLSX
                                                 </button>
 
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        void runExport("zip")
+                                                    }
+                                                    disabled={isExporting}
+                                                    style={itemStyle}
+                                                >
+                                                    ZIP
+                                                    <sup
+                                                        style={{
+                                                            fontSize: "0.65em",
+                                                            lineHeight: 0,
+                                                            marginLeft: 1,
+                                                        }}
+                                                    >
+                                                        *
+                                                    </sup>
+                                                </button>
+
                                                 {/* separator / spacing (same vibe as other modals, no new paradigm) */}
                                                 <div
                                                     style={{
@@ -14046,52 +14125,25 @@ function PixelEditorFramer({
                                                         </div>
                                                     </label>
 
-                                                    {/* Disclaimer (3 lines) */}
+                                                    {/* Export package footnote */}
                                                     <div
                                                         style={{
-                                                            marginTop: 6,
+                                                            marginTop: -2,
                                                             fontSize:
-                                                                "clamp(10px, 3.6vw, 12px)",
-                                                            lineHeight: 1.4,
-                                                            color: "rgba(255,255,255,1)",
+                                                                "clamp(9px, 3.1vw, 11px)",
+                                                            lineHeight: 1.35,
+                                                            color: "rgba(255,255,255,0.76)",
                                                             textAlign: "left",
                                                             textShadow:
-                                                                `0 2px 6px ${pixtudioInk(0.45)}`,
-                                                            display: "flex",
-                                                            flexDirection:
-                                                                "column",
-                                                            gap: 10,
+                                                                `0 2px 5px ${pixtudioInk(0.42)}`,
+                                                            fontStyle:
+                                                                "italic",
+                                                            fontWeight: 600,
                                                         }}
                                                     >
-                                                        <div>
-                                                            <span
-                                                                style={{
-                                                                    fontWeight: 800,
-                                                                }}
-                                                            >
-                                                                Both layers
-                                                            </span>
-                                                            <span
-                                                                style={{
-                                                                    fontWeight: 600,
-                                                                }}
-                                                            >
-                                                                {" "}
-                                                                —{" "}
-                                                            </span>
-                                                            <span
-                                                                style={{
-                                                                    fontWeight: 600,
-                                                                }}
-                                                            >
-                                                                composite: brush
-                                                                strokes over the
-                                                                image; a
-                                                                transparent
-                                                                brush creates
-                                                                “holes”.
-                                                            </span>
-                                                        </div>
+                                                        * ZIP contains all three
+                                                        files: PNG, SVG, and
+                                                        XLSX.
                                                     </div>
                                                 </div>
                                                 <div
