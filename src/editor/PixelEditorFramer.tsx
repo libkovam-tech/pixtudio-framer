@@ -13590,7 +13590,7 @@ function PixelEditorFramer({
 
                                 const openMenuItemStyle: React.CSSProperties = {
                                     width: "100%",
-                                    height: 88,
+                                    height: "auto",
                                     background: "transparent",
                                     border: "none",
                                     padding: 0,
@@ -13599,6 +13599,7 @@ function PixelEditorFramer({
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
+                                    lineHeight: 0,
                                     userSelect: "none",
                                 }
 
@@ -13659,7 +13660,6 @@ function PixelEditorFramer({
                                                         justifyContent:
                                                             "center",
                                                         pointerEvents: "auto",
-                                                        marginTop: 6,
                                                     }}
                                                 >
                                                     <button
