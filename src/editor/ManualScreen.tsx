@@ -753,7 +753,15 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            You can export your work as PNG or SVG.
+                            You can export your work as PNG, SVG, or XLSX.
+                            ZIP packages all three files into one archive.
+                        </SectionCopy>
+                        <SectionCopy>
+                            PNG is useful for social media and web use. SVG is
+                            better for high-quality printing and merch. XLSX
+                            turns the canvas into colored Excel cells for office
+                            tasks, report decoration, and unusual spreadsheet
+                            headers.
                         </SectionCopy>
                         <SectionCopy>
                             Before exporting, choose which layers to include:

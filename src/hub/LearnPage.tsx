@@ -365,6 +365,7 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
           "**Personal Branding**: Unique avatars and profile pictures for social networks, Telegram, and Discord.",
           "**Content Creation**: Eye-catching visuals for TikTok, Instagram Reels, and YouTube Shorts (especially process videos).",
           "**Merch and Print**: Designs for t-shirts, hoodies, stickers, posters, and postcards.",
+          "**Office & Spreadsheet Art**: Export your pixel art directly to Excel - each pixel becomes a colored cell. Use it to decorate reports, create unusual table headers, or just surprise your colleagues with a pixel masterpiece hidden in a spreadsheet.",
           "**Branding**: Logos, mascots, and creatives for gaming, retro, and tech brands.",
         ],
       },

@@ -24,7 +24,7 @@ type HowModalCopy = {
   paragraphs: string[]
 }
 
-export const HOW_MODAL_COPY: HowModalCopy[] = [
+const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Start with a Photo",
     paragraphs: [
@@ -64,7 +64,7 @@ export const HOW_MODAL_COPY: HowModalCopy[] = [
     title: "Export Your Pixel Art",
     paragraphs: [
       "Tap the Export icon in the top menu.",
-      "Export as PNG for social media and web use, or SVG for high-quality printing and merch. You can export the base pixel art, your brush drawings, or everything together.",
+      "Export as PNG for social media and web use, SVG for high-quality printing and merch, or XLSX for office tasks and spreadsheet decoration. You can export the base pixel art, your brush drawings, or everything together.",
     ],
   },
   {
