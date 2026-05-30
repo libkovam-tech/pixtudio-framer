@@ -27,6 +27,7 @@ describe("pixel art xlsx export", () => {
         expect(text).toContain("xl/styles.xml")
         expect(text).toContain('<dimension ref="A1:B2"/>')
         expect(text).toContain('fitToPage="1"')
+        expect(text).toContain('showRowColHeaders="0"')
         expect(text).toContain('paperSize="9"')
         expect(text).toContain('rgb="FFFF0000"')
         expect(text).toContain('rgb="FF00FF00"')
@@ -49,7 +50,7 @@ describe("pixel art xlsx export", () => {
             buildPixelArtXlsxBlob({ colors, sizeMm: 200 })
         )
 
-        expect(text).toContain('ht="4.4291"')
-        expect(text).toContain('width="0.8146"')
+        expect(text).toContain('ht="4.5"')
+        expect(text).toContain('width="0.5"')
     })
 })

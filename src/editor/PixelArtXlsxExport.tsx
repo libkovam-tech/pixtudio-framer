@@ -4,7 +4,8 @@ export const PIXEL_ART_XLSX_MIME =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 const XLSX_TARGET_SIZE_MM = 200
-const POINTS_PER_MM = 72 / 25.4
+const SCREEN_PIXELS_PER_MM = 96 / 25.4
+const POINTS_PER_SCREEN_PIXEL = 72 / 96
 
 type XlsxFile = {
     name: string
@@ -104,9 +105,8 @@ function worksheetXml(params: {
     styleByColor: Map<string, number>
 }) {
     const { rows, size, sizeMm, styleByColor } = params
-    const totalPt = sizeMm * POINTS_PER_MM
-    const rowHeightPt = size > 0 ? totalPt / size : totalPt
-    const cellSizePx = rowHeightPt * (96 / 72)
+    const cellSizePx = excelDisplayPixelCellSize(sizeMm, size)
+    const rowHeightPt = cellSizePx * POINTS_PER_SCREEN_PIXEL
     const colWidth = excelColumnWidthForPixels(cellSizePx)
     const dimension = size > 0 ? `A1:${cellRef(size - 1, size - 1)}` : "A1"
 
@@ -131,8 +131,8 @@ function worksheetXml(params: {
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
         `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` +
         `<dimension ref="${dimension}"/>` +
-        `<sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews>` +
-        `<sheetFormatPr defaultRowHeight="${formatNumber(rowHeightPt)}"/>` +
+        `<sheetViews><sheetView workbookViewId="0" showGridLines="0" showRowColHeaders="0" zoomScale="100" zoomScaleNormal="100"/></sheetViews>` +
+        `<sheetFormatPr baseColWidth="1" defaultColWidth="${formatNumber(colWidth)}" defaultRowHeight="${formatNumber(rowHeightPt)}"/>` +
         `<cols><col min="1" max="${Math.max(1, size)}" width="${formatNumber(colWidth)}" customWidth="1"/></cols>` +
         `<sheetData>${rowsXml}</sheetData>` +
         `<pageMargins left="0.19685" right="0.19685" top="0.19685" bottom="0.19685" header="0" footer="0"/>` +
@@ -264,13 +264,20 @@ function formatNumber(value: number) {
     return Number.isFinite(value) ? value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : "0"
 }
 
+function excelDisplayPixelCellSize(sizeMm: number, gridSize: number) {
+    if (!Number.isFinite(sizeMm) || sizeMm <= 0 || gridSize <= 0) return 1
+
+    const targetPx = (sizeMm * SCREEN_PIXELS_PER_MM) / gridSize
+    return Math.max(1, Math.round(targetPx))
+}
+
 function excelColumnWidthForPixels(px: number) {
     if (!Number.isFinite(px) || px <= 0) return 0.1
 
-    // Excel column width is not a pixel or point value. For tiny pixel-art
-    // cells, Excel renders the narrow-width branch much tighter than the OOXML
-    // nominal math suggests, so we target its effective on-screen width.
-    const width = px < 12 ? px / 7.25 : (px - 5) / 7
+    // Excel column width is character-based, while row height is point-based.
+    // Convert from a shared integer screen-pixel target so the opened sheet is
+    // square at 100% zoom; page setup still scales the grid to the print width.
+    const width = px <= 12 ? px / 12 : (px - 5) / 7
     return Math.max(0.1, Math.min(255, width))
 }
 
