@@ -50,7 +50,8 @@ describe("pixel art xlsx export", () => {
             buildPixelArtXlsxBlob({ colors, sizeMm: 200 })
         )
 
-        expect(text).toContain('ht="4.5"')
-        expect(text).toContain('width="0.5"')
+        expect(text).toContain('zoomScale="50"')
+        expect(text).toContain('ht="9"')
+        expect(text).toContain('width="1"')
     })
 })

@@ -6,6 +6,7 @@ export const PIXEL_ART_XLSX_MIME =
 const XLSX_TARGET_SIZE_MM = 200
 const SCREEN_PIXELS_PER_MM = 96 / 25.4
 const POINTS_PER_SCREEN_PIXEL = 72 / 96
+const MIN_STABLE_DISPLAY_CELL_PX = 12
 
 type XlsxFile = {
     name: string
@@ -105,9 +106,9 @@ function worksheetXml(params: {
     styleByColor: Map<string, number>
 }) {
     const { rows, size, sizeMm, styleByColor } = params
-    const cellSizePx = excelDisplayPixelCellSize(sizeMm, size)
-    const rowHeightPt = cellSizePx * POINTS_PER_SCREEN_PIXEL
-    const colWidth = excelColumnWidthForPixels(cellSizePx)
+    const geometry = excelCellGeometry(sizeMm, size)
+    const rowHeightPt = geometry.cellSizePx * POINTS_PER_SCREEN_PIXEL
+    const colWidth = excelColumnWidthForPixels(geometry.cellSizePx)
     const dimension = size > 0 ? `A1:${cellRef(size - 1, size - 1)}` : "A1"
 
     const rowsXml = rows
@@ -131,7 +132,7 @@ function worksheetXml(params: {
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
         `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` +
         `<dimension ref="${dimension}"/>` +
-        `<sheetViews><sheetView workbookViewId="0" showGridLines="0" showRowColHeaders="0" zoomScale="100" zoomScaleNormal="100"/></sheetViews>` +
+        `<sheetViews><sheetView workbookViewId="0" showGridLines="0" showRowColHeaders="0" zoomScale="${geometry.zoomScale}" zoomScaleNormal="${geometry.zoomScale}"/></sheetViews>` +
         `<sheetFormatPr baseColWidth="1" defaultColWidth="${formatNumber(colWidth)}" defaultRowHeight="${formatNumber(rowHeightPt)}"/>` +
         `<cols><col min="1" max="${Math.max(1, size)}" width="${formatNumber(colWidth)}" customWidth="1"/></cols>` +
         `<sheetData>${rowsXml}</sheetData>` +
@@ -264,11 +265,28 @@ function formatNumber(value: number) {
     return Number.isFinite(value) ? value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : "0"
 }
 
-function excelDisplayPixelCellSize(sizeMm: number, gridSize: number) {
-    if (!Number.isFinite(sizeMm) || sizeMm <= 0 || gridSize <= 0) return 1
+function excelCellGeometry(sizeMm: number, gridSize: number) {
+    if (!Number.isFinite(sizeMm) || sizeMm <= 0 || gridSize <= 0) {
+        return { cellSizePx: MIN_STABLE_DISPLAY_CELL_PX, zoomScale: 100 }
+    }
 
     const targetPx = (sizeMm * SCREEN_PIXELS_PER_MM) / gridSize
-    return Math.max(1, Math.round(targetPx))
+    if (targetPx >= MIN_STABLE_DISPLAY_CELL_PX) {
+        return { cellSizePx: Math.round(targetPx), zoomScale: 100 }
+    }
+
+    const targetDisplayPx = Math.max(1, Math.round(targetPx))
+    const zoomScale = Math.max(
+        10,
+        Math.min(
+            100,
+            Math.round(
+                (targetDisplayPx / MIN_STABLE_DISPLAY_CELL_PX) * 100
+            )
+        )
+    )
+
+    return { cellSizePx: MIN_STABLE_DISPLAY_CELL_PX, zoomScale }
 }
 
 function excelColumnWidthForPixels(px: number) {
