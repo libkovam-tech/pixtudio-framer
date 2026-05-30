@@ -11470,13 +11470,13 @@ function PixelEditorFramer({
     }
 
     async function saveBlobFromProducer(
-        produceBlob: () => Promise<Blob | null>,
+        produceBlob: (selectedFilename: string) => Promise<Blob | null>,
         filename: string
     ): Promise<boolean> {
         savePathDebug(`save start: ${filename}`)
         // SSR safety
         if (typeof window === "undefined") {
-            const b = await produceBlob()
+            const b = await produceBlob(filename)
             if (!b) return false
             downloadBlob(b, filename)
             return true
@@ -11498,11 +11498,15 @@ function PixelEditorFramer({
         // 1) Если можем — открываем Save As СРАЗУ (пока есть user gesture)
         if (canSaveAs) {
             let handle: any = null
+            let selectedFilename = filename
             try {
                 savePathDebug("picker: opening")
                 handle = await anyWin.showSaveFilePicker(
                     getSavePickerOptionsForFilename(filename)
                 )
+                if (typeof handle?.name === "string" && handle.name.trim()) {
+                    selectedFilename = handle.name
+                }
                 savePathDebug(`picker: selected=${String(Boolean(handle))}`)
             } catch (e: any) {
                 savePathDebug(
@@ -11517,7 +11521,7 @@ function PixelEditorFramer({
             }
 
             // 2) Готовим blob уже после выбора файла
-            const blob = await produceBlob()
+            const blob = await produceBlob(selectedFilename)
             if (!blob) return false
             savePathDebug(
                 `blob ready: type=${blob.type || "-"}, size=${blob.size}`
@@ -11541,13 +11545,13 @@ function PixelEditorFramer({
             }
 
             // fallback download
-            downloadBlob(blob, filename)
+            downloadBlob(blob, selectedFilename)
             return true
         }
 
         // нет API → старый download
         savePathDebug("no picker path: producing blob")
-        const blob = await produceBlob()
+        const blob = await produceBlob(filename)
         if (!blob) return false
 
         downloadBlob(blob, filename)
@@ -11850,11 +11854,28 @@ function PixelEditorFramer({
         return new Uint8Array(await blob.arrayBuffer())
     }
 
+    function zipExportBaseName(filename: string) {
+        const leafName = filename.replace(/\\/g, "/").split("/").pop() ?? ""
+        const withoutZip = leafName.replace(/\.zip$/i, "")
+        const safeName = Array.from(withoutZip)
+            .map((char) =>
+                char.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(char)
+                    ? "_"
+                    : char
+            )
+            .join("")
+            .replace(/[. ]+$/g, "")
+            .trim()
+
+        return safeName || "pixtudio-export"
+    }
+
     async function exportZIP(p?: {
         includeStroke: boolean
         includeImage: boolean
     }): Promise<boolean> {
-        return await saveBlobFromProducer(async () => {
+        return await saveBlobFromProducer(async (selectedFilename) => {
+            const baseName = zipExportBaseName(selectedFilename)
             const png = await makePNGBlob(p)
             if (!png) return null
 
@@ -11862,9 +11883,9 @@ function PixelEditorFramer({
             const xlsx = makeXLSXBlob(p)
 
             const files: ZipStoreFile[] = [
-                { name: "pixtudio.png", bytes: await blobToBytes(png) },
-                { name: "pixtudio-icon.svg", bytes: await blobToBytes(svg) },
-                { name: "pixtudio.xlsx", bytes: await blobToBytes(xlsx) },
+                { name: `${baseName}.png`, bytes: await blobToBytes(png) },
+                { name: `${baseName}.svg`, bytes: await blobToBytes(svg) },
+                { name: `${baseName}.xlsx`, bytes: await blobToBytes(xlsx) },
             ]
 
             return new Blob([zipStore(files)], { type: "application/zip" })
