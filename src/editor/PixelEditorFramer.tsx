@@ -12309,7 +12309,7 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 0: Save / Load */}
+                    {/* Block 0: Save / Export */}
                     <div style={{ display: "contents" }}>
                         <button
                             type="button"
@@ -12322,14 +12322,20 @@ function PixelEditorFramer({
                         </button>
 
                         <button
-                            type="button"
-                            ref={openBtnRef}
-                            onClick={onLoadProject}
-                            aria-label="Open"
-                            className="pxUiAnim"
+                            ref={exportBtnRef}
+                            onClick={(e) => openExport(e)}
                             style={iconOnlyButton(true)}
+                            aria-label="Export (PNG / SVG)"
+                            className="pxUiAnim"
                         >
-                            <LoadIcon />
+                            <SvgTopButton4
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    display: "block",
+                                    transform: "translateY(0px)",
+                                }}
+                            />
                         </button>
                     </div>
 
@@ -12364,8 +12370,19 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 2: Camera / Export */}
+                    {/* Block 2: Open / Camera */}
                     <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            ref={openBtnRef}
+                            onClick={onLoadProject}
+                            aria-label="Open"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <LoadIcon />
+                        </button>
+
                         <button
                             type="button"
                             onClick={onRequestCamera}
@@ -12374,23 +12391,6 @@ function PixelEditorFramer({
                             className="pxUiAnim"
                         >
                             <SvgCameraNewButton
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    display: "block",
-                                    transform: "translateY(0px)",
-                                }}
-                            />
-                        </button>
-
-                        <button
-                            ref={exportBtnRef}
-                            onClick={(e) => openExport(e)}
-                            style={iconOnlyButton(true)}
-                            aria-label="Export (PNG / SVG)"
-                            className="pxUiAnim"
-                        >
-                            <SvgTopButton4
                                 style={{
                                     width: "100%",
                                     height: "100%",
