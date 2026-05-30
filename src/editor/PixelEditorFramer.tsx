@@ -13553,7 +13553,7 @@ function PixelEditorFramer({
                                     ? rect.left + rect.width / 2
                                     : vw / 2
                                 const top = isOpenMenu
-                                    ? (rect ? rect.bottom : 60) + 28
+                                    ? 50
                                     : (rect ? rect.bottom : 60) + 10
 
                                 // ✅ используем локальный clampN (а не "какой-то clamp" из другого контекста)
@@ -13612,7 +13612,7 @@ function PixelEditorFramer({
                                             display: "flex",
                                             flexDirection: "column",
                                             alignItems: "center",
-                                            gap: isOpenMenu ? 44 : GAP,
+                                            gap: isOpenMenu ? 30 : GAP,
                                             pointerEvents: "auto",
                                         }}
                                         onClick={(e) => e.stopPropagation()}
