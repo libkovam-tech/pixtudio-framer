@@ -2442,6 +2442,10 @@ function StartScreen({
     const START_LOGO_VISUAL_W = 154
     const START_LOGO_VISUAL_H = 38
     const START_BUTTONS_W = 260
+    const START_ACTION_GAP = 26
+    const START_ACTION_BUTTON_SIZE = Math.round(
+        (START_BUTTONS_W - START_ACTION_GAP) / 2
+    )
     const ENABLE_LOGO_REPORT_TRIGGER = false
     const START_LOGO_MOBILE_VISUAL_H = Math.round(
         (START_BUTTONS_W * START_LOGO_VISUAL_H) / START_LOGO_VISUAL_W
@@ -2705,15 +2709,11 @@ function StartScreen({
     }
 
     .pxStartActions > .pxStartActionButton:nth-child(2) {
-        animation-delay: -2.7s;
-    }
-
-    .pxStartActions > .pxStartActionButton:nth-child(4) {
-        animation-delay: -1.8s;
+        animation-delay: -2.4s;
     }
 
     .pxStartActions > .pxStartActionButton:nth-child(3) {
-        animation-delay: -0.9s;
+        animation-delay: -1.2s;
     }
 }`
 
@@ -2761,24 +2761,22 @@ function StartScreen({
     }
 
     const buttonsWrap: React.CSSProperties = {
-        width: START_BUTTONS_W,
-        height: START_BUTTONS_W,
+        width: START_ACTION_BUTTON_SIZE,
 
-        display: "grid",
-        gridTemplateColumns: "repeat(2, 1fr)",
-        gridTemplateRows: "repeat(2, 1fr)",
-        gap: 26,
+        display: "flex",
+        flexDirection: "column",
+        gap: START_ACTION_GAP,
 
-        justifyItems: "stretch",
         alignItems: "stretch",
 
         margin: "0 auto",
     }
 
     const circleButton: React.CSSProperties = {
-        // кнопка занимает ВСЮ ячейку grid
+        // The button fills its vertical action slot and keeps the circle square.
         width: "100%",
-        height: "100%",
+        height: START_ACTION_BUTTON_SIZE,
+        flex: "0 0 auto",
 
         border: "none",
         background: "transparent",
