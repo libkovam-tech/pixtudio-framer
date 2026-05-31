@@ -2446,6 +2446,7 @@ function StartScreen({
     const START_ACTION_BUTTON_SIZE = Math.round(
         (START_BUTTONS_W - START_ACTION_GAP) / 2
     )
+    const START_FOOTER_RESERVED_H = 72
     const ENABLE_LOGO_REPORT_TRIGGER = false
     const START_LOGO_MOBILE_VISUAL_H = Math.round(
         (START_BUTTONS_W * START_LOGO_VISUAL_H) / START_LOGO_VISUAL_W
@@ -2582,7 +2583,7 @@ function StartScreen({
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "flex-start",
-        padding: "28px 16px 10px",
+        padding: `28px 16px ${START_FOOTER_RESERVED_H}px`,
         boxSizing: "border-box",
         fontFamily:
             "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
@@ -2755,11 +2756,6 @@ function StartScreen({
         transformOrigin: "left center",
     }
 
-    const logoButtonsSpacerStyle: React.CSSProperties = {
-        height: "clamp(88px, 14vh, 118px)",
-        flex: "0 0 auto",
-    }
-
     const buttonsWrap: React.CSSProperties = {
         width: START_ACTION_BUTTON_SIZE,
 
@@ -2770,6 +2766,17 @@ function StartScreen({
         alignItems: "stretch",
 
         margin: "0 auto",
+    }
+
+    const actionsRegionStyle: React.CSSProperties = {
+        flex: "1 1 auto",
+        minHeight: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "100%",
+        padding: "24px 0",
+        boxSizing: "border-box",
     }
 
     const circleButton: React.CSSProperties = {
@@ -2983,68 +2990,69 @@ function StartScreen({
                     </div>
                 </div>
 
-                <div aria-hidden="true" style={logoButtonsSpacerStyle} />
-
-                <div className="pxStartActions" style={buttonsWrap}>
-                    <button
-                        type="button"
-                        onClick={onPickImage}
-                        className="pxUiAnim pxStartActionButton"
-                        style={circleButton}
-                        aria-label="Open File"
-                    >
-                        <div style={circleInner}>
-                            <SvgCircle style={circleSvgStyle} />
-                            <div style={iconStyle}>
-                                <SvgFolder
-                                    style={{
-                                        width: 51,
-                                        imageRendering: "pixelated",
-                                        paddingTop: 5,
-                                        paddingLeft: 2,
-                                    }}
-                                />
+                <div style={actionsRegionStyle}>
+                    <div className="pxStartActions" style={buttonsWrap}>
+                        <button
+                            type="button"
+                            onClick={onPickImage}
+                            className="pxUiAnim pxStartActionButton"
+                            style={circleButton}
+                            aria-label="Open File"
+                        >
+                            <div style={circleInner}>
+                                <SvgCircle style={circleSvgStyle} />
+                                <div style={iconStyle}>
+                                    <SvgFolder
+                                        style={{
+                                            width: 51,
+                                            imageRendering: "pixelated",
+                                            paddingTop: 5,
+                                            paddingLeft: 2,
+                                        }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    </button>
+                        </button>
 
-                    <button
-                        type="button"
-                        onClick={onOpenCamera}
-                        className="pxUiAnim pxStartActionButton"
-                        style={circleButton}
-                        aria-label="Camera"
-                    >
-                        <div style={circleInner}>
-                            <SvgCircle style={circleSvgStyle} />
-                            <div style={iconStyle}>
-                                <SvgCamera
-                                    style={{ imageRendering: "pixelated" }}
-                                />
+                        <button
+                            type="button"
+                            onClick={onOpenCamera}
+                            className="pxUiAnim pxStartActionButton"
+                            style={circleButton}
+                            aria-label="Camera"
+                        >
+                            <div style={circleInner}>
+                                <SvgCircle style={circleSvgStyle} />
+                                <div style={iconStyle}>
+                                    <SvgCamera
+                                        style={{
+                                            imageRendering: "pixelated",
+                                        }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    </button>
+                        </button>
 
-                    <button
-                        type="button"
-                        onClick={onOpenDraw}
-                        className="pxUiAnim pxStartActionButton"
-                        style={circleButton}
-                        aria-label="Draw"
-                    >
-                        <div style={circleInner}>
-                            <SvgCircle style={circleSvgStyle} />
-                            <div style={iconStyle}>
-                                <SvgPencil
-                                    style={{ imageRendering: "pixelated" }}
-                                />
+                        <button
+                            type="button"
+                            onClick={onOpenDraw}
+                            className="pxUiAnim pxStartActionButton"
+                            style={circleButton}
+                            aria-label="Draw"
+                        >
+                            <div style={circleInner}>
+                                <SvgCircle style={circleSvgStyle} />
+                                <div style={iconStyle}>
+                                    <SvgPencil
+                                        style={{
+                                            imageRendering: "pixelated",
+                                        }}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                    </button>
-
+                        </button>
+                    </div>
                 </div>
-
-                <div style={{ flex: 1 }} />
             </div>
             {reportCodeModal}
         </FitToViewport>
