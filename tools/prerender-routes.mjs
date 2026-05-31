@@ -12,10 +12,10 @@ const routeSeo = {
     output: "dist/index.html",
     title: "PIXTUDIO - Turn Photos into Pixel Art Online",
     description:
-      "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, SVG export, and MP4 process recording.",
+      "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, PNG, SVG, XLSX, ZIP export, and MP4 process recording.",
     ogTitle: "PIXTUDIO - Turn Photos into Pixel Art Online",
     ogDescription:
-      "Create pixel art from photos in your browser. Control grid size, palettes, colors, SVG export, and record the live process as MP4.",
+      "Create pixel art from photos in your browser. Control grid size, palettes, colors, export PNG, SVG, XLSX, or ZIP, and record the live process as MP4.",
     ogType: "website",
   },
   faq: {
@@ -23,7 +23,7 @@ const routeSeo = {
     output: "dist/faq/index.html",
     title: "PIXTUDIO FAQ - Pixel Art Editor Questions",
     description:
-      "Answers to common questions about PIXTUDIO, including photo-to-pixel-art conversion, palettes, SVG and PNG export, MP4 recording, mobile use, and saved projects.",
+      "Answers to common questions about PIXTUDIO, including photo-to-pixel-art conversion, palettes, PNG, SVG, XLSX, ZIP export, MP4 recording, mobile use, and saved projects.",
     ogTitle: "PIXTUDIO FAQ - Pixel Art Editor Questions",
     ogDescription:
       "Find answers about PIXTUDIO features, exports, palettes, mobile support, project saving, and browser-based pixel art editing.",
@@ -82,7 +82,7 @@ const homeCards = [
   ],
   [
     "FULL CREATIVE CONTROL",
-    "Smart palette, manual drawing, SVG export, and savable projects. Real creative tool.",
+    "Smart palette, manual drawing, PNG, SVG, XLSX, ZIP export, and savable projects. Real creative tool.",
   ],
   [
     "CREATORS & GAME DEVS LOVE IT",
@@ -98,7 +98,7 @@ const homeCards = [
   ],
   [
     "READY FOR PRODUCTION",
-    "SVG export and precise color control for professional merch. Lower printing costs.",
+    "SVG export for merch, XLSX for spreadsheet art, and precise color control. Lower production friction.",
   ],
   [
     "PALETTE CONTROLS EVERYTHING",
@@ -145,7 +145,7 @@ const faqItems = [
   ],
   [
     "Can I use files exported from PIXTUDIO for publishing online?",
-    "Yes. Both PNG images and MP4 recordings work perfectly on all social networks and websites.",
+    "Yes. PNG images and MP4 recordings work perfectly on social networks and websites. SVG is useful when you need scalable artwork.",
   ],
   [
     "Does the editor work on mobile devices?",
@@ -161,7 +161,7 @@ const faqItems = [
   ],
   [
     "What export formats are available?",
-    "You can export images as PNG or SVG, and record your process as MP4 video.",
+    "You can export pixel art as PNG, SVG, XLSX, or a ZIP bundle containing all three files. You can also record your process as MP4 video.",
   ],
 ]
 
@@ -188,7 +188,7 @@ const howItems = [
   ],
   [
     "Export Your Pixel Art",
-    "Export PNG for social media and web use, or SVG for high-quality printing and merch.",
+    "Export PNG for social media and web use, SVG for high-quality printing and merch, or XLSX for office and spreadsheet art.",
   ],
   [
     "Edit Color Swatches",
@@ -382,7 +382,7 @@ function renderHome() {
       "Import palettes from any photo, draw manually, and save projects for later.",
     ],
     [
-      "Export as PNG or SVG, or record the live process as MP4 for social media.",
+      "Export as PNG, SVG, XLSX, or ZIP, or record the live process as MP4 for social media.",
       "No installation needed - everything works in your browser.",
     ],
   ]

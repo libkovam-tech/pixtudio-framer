@@ -68,7 +68,7 @@ const MOBILE_INFO_CARDS = [
   },
   {
     title: ["FULL CREATIVE", "CONTROL"],
-    body: "Smart palette, manual drawing, SVG export, and savable projects. Real creative tool.",
+    body: "Smart palette, manual drawing, PNG, SVG, XLSX, ZIP export, and savable projects. Real creative tool.",
   },
   {
     title: ["CREATORS & GAME", "DEVS LOVE IT"],
@@ -84,7 +84,7 @@ const MOBILE_INFO_CARDS = [
   },
   {
     title: ["READY FOR", "PRODUCTION"],
-    body: "SVG export and precise color control for professional merch. Lower printing costs.",
+    body: "SVG export for merch, XLSX for spreadsheet art, and precise color control. Lower production friction.",
   },
   {
     title: ["PALETTE CONTROLS", "EVERYTHING"],
@@ -121,7 +121,7 @@ const DESKTOP_SEO_COPY = [
   },
   {
     accent:
-      "Export as PNG or SVG, or record the live process as MP4 for social media.",
+      "Export as PNG, SVG, XLSX, or ZIP, or record the live process as MP4 for social media.",
     text:
       "No installation needed – everything works in your browser.",
   },

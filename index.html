@@ -18,7 +18,7 @@
     <title>PIXTUDIO - Turn Photos into Pixel Art Online</title>
     <meta
       name="description"
-      content="PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, SVG export, and MP4 process recording."
+      content="PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, PNG, SVG, XLSX, ZIP export, and MP4 process recording."
     />
     <link rel="canonical" href="https://pixtudio.app/" />
 
@@ -29,7 +29,7 @@
     <meta property="og:title" content="PIXTUDIO - Turn Photos into Pixel Art Online" />
     <meta
       property="og:description"
-      content="Create pixel art from photos in your browser. Control grid size, palettes, colors, SVG export, and record the live process as MP4."
+      content="Create pixel art from photos in your browser. Control grid size, palettes, colors, export PNG, SVG, XLSX, or ZIP, and record the live process as MP4."
     />
     <meta property="og:image" content="https://pixtudio.app/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
@@ -40,7 +40,7 @@
     <meta name="twitter:title" content="PIXTUDIO - Turn Photos into Pixel Art Online" />
     <meta
       name="twitter:description"
-      content="Create pixel art from photos in your browser with live palette, grid, SVG export, and MP4 recording."
+      content="Create pixel art from photos in your browser with live palette, grid, PNG, SVG, XLSX, ZIP export, and MP4 recording."
     />
     <meta name="twitter:image" content="https://pixtudio.app/og-image.jpg" />
     <meta
@@ -97,12 +97,12 @@
             }
           },
           {
-            "@type": "SoftwareApplication",
+            "@type": ["WebApplication", "SoftwareApplication"],
             "@id": "https://pixtudio.app/#software",
             "name": "PIXTUDIO",
             "url": "https://pixtudio.app/",
             "image": "https://pixtudio.app/og-image.jpg",
-            "description": "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, SVG export, and MP4 process recording.",
+            "description": "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, PNG, SVG, XLSX, ZIP export, and MP4 process recording.",
             "applicationCategory": "DesignApplication",
             "applicationSubCategory": "Pixel art editor",
             "operatingSystem": "Web",
@@ -128,6 +128,8 @@
               "Import palettes from images",
               "SVG export",
               "PNG export",
+              "XLSX spreadsheet export",
+              "ZIP bundle export",
               "MP4 process recording",
               "Project saving"
             ]

@@ -25,17 +25,17 @@ export const SITE_ROUTE_SEO = {
   home: {
     title: "PIXTUDIO - Turn Photos into Pixel Art Online",
     description:
-      "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, SVG export, and MP4 process recording.",
+      "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, PNG, SVG, XLSX, ZIP export, and MP4 process recording.",
     path: "/",
     ogTitle: "PIXTUDIO - Turn Photos into Pixel Art Online",
     ogDescription:
-      "Create pixel art from photos in your browser. Control grid size, palettes, colors, SVG export, and record the live process as MP4.",
+      "Create pixel art from photos in your browser. Control grid size, palettes, colors, export PNG, SVG, XLSX, or ZIP, and record the live process as MP4.",
     ogType: "website",
   },
   faq: {
     title: "PIXTUDIO FAQ - Pixel Art Editor Questions",
     description:
-      "Answers to common questions about PIXTUDIO, including photo-to-pixel-art conversion, palettes, SVG and PNG export, MP4 recording, mobile use, and saved projects.",
+      "Answers to common questions about PIXTUDIO, including photo-to-pixel-art conversion, palettes, PNG, SVG, XLSX, ZIP export, MP4 recording, mobile use, and saved projects.",
     path: "/faq/",
     ogTitle: "PIXTUDIO FAQ - Pixel Art Editor Questions",
     ogDescription:

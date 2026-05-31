@@ -9,15 +9,6 @@ const LearnPage = lazy(() => import("./hub/LearnPage"))
 const LinksPage = lazy(() => import("./hub/LinksPage"))
 const EditorRoute = lazy(() => import("./editor/EditorRoute"))
 
-function RoomGameStub() {
-  return (
-    <div className="roomGameStub">
-      <h1>RoomGame</h1>
-      <div>Coming soon.</div>
-    </div>
-  )
-}
-
 export default function App() {
   return (
     <Suspense fallback={null}>
@@ -40,7 +31,6 @@ export default function App() {
         <Route path="/links" element={<Navigate to="/links/" replace />} />
         <Route path="/links/" element={<LinksPage />} />
         <Route path="/editor/*" element={<EditorRoute />} />
-        <Route path="/roomgame/*" element={<RoomGameStub />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

@@ -648,8 +648,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy muted>
                             Save Project is different from Export: it saves an
-                            editable project, not a final PNG, SVG, or video
-                            file.
+                            editable project, not a final PNG, SVG, XLSX, ZIP,
+                            or video file.
                         </SectionCopy>
                     </SectionStack>
                 ),

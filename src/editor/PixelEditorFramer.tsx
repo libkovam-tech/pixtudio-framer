@@ -11968,8 +11968,8 @@ function PixelEditorFramer({
         try {
             let ok = false
 
-            // 2) SaveAs запускается строго от user gesture:
-            // runExport() вызывается только из onClick PNG/SVG
+            // 2) Save As starts strictly from a user gesture:
+            // runExport() is called only from export menu buttons.
             if (kind === "png") {
                 ok = await exportPNG({
                     includeStroke: exportIncludeStroke,
@@ -12493,7 +12493,7 @@ function PixelEditorFramer({
                             ref={exportBtnRef}
                             onClick={(e) => openExport(e)}
                             style={iconOnlyButton(true)}
-                            aria-label="Export (PNG / SVG)"
+                            aria-label="Export"
                             title="Download Pixel-Art"
                             className="pxUiAnim"
                         >
@@ -14692,8 +14692,8 @@ function PixelEditorFramer({
                                         }}
                                     >
                                         This swatch will not paint pixels. It
-                                        behaves as empty pixel and will not
-                                        include in PNG/SVG
+                                        behaves as an empty pixel and will not
+                                        be included in exports
                                     </div>
                                 </div>
                             </div>

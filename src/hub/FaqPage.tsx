@@ -69,7 +69,7 @@ export const FAQ_ITEMS = [
     question: "Can I use files exported from PIXTUDIO for publishing online?",
     tocLabel: "Can I use files for online publishing?",
     answer:
-      "Yes. Both PNG images and MP4 recordings work perfectly on all social networks and websites.",
+      "Yes. PNG images and MP4 recordings work perfectly on social networks and websites. SVG is useful when you need scalable artwork.",
   },
   {
     question: "Does the editor work on mobile devices?",
@@ -95,7 +95,7 @@ export const FAQ_ITEMS = [
     question: "What export formats are available?",
     tocLabel: "What export formats are available?",
     answer:
-      "You can export images as PNG or SVG, and record your process as MP4 video.",
+      "You can export pixel art as PNG, SVG, XLSX, or a ZIP bundle containing all three files. You can also record your process as MP4 video.",
   },
 ]
 
