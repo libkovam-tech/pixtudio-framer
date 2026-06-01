@@ -1,0 +1,232 @@
+import { expect, test, type Page } from "@playwright/test"
+import { readFile, stat } from "node:fs/promises"
+import path from "node:path"
+import {
+    collectBrowserErrors,
+    fixturesDir,
+    installStableVisualEnvironment,
+    openBearProject,
+    settle,
+} from "./helpers"
+
+const unsupportedFilePath = path.join(fixturesDir, "unsupported-open-file.txt")
+
+test.beforeEach(async ({ page }) => {
+    await installStableVisualEnvironment(page)
+    await installDownloadFallbackEnvironment(page)
+})
+
+test("pixel-art exports download usable files", async ({ page }) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    const png = await downloadEditorExport(page, /^PNG$/)
+    expect(png.suggestedFilename).toBe("pixtudio.png")
+    expect(await fileSize(png.path)).toBeGreaterThan(100)
+    await expectFileSignature(png.path, [0x89, 0x50, 0x4e, 0x47])
+
+    const svg = await downloadEditorExport(page, /^SVG$/)
+    expect(svg.suggestedFilename).toBe("pixtudio-icon.svg")
+    expect(await readFile(svg.path, "utf8")).toContain("<svg")
+
+    const xlsx = await downloadEditorExport(page, /^XLSX$/)
+    expect(xlsx.suggestedFilename).toBe("pixtudio.xlsx")
+    expect(await fileSize(xlsx.path)).toBeGreaterThan(1000)
+    await expectFileSignature(xlsx.path, [0x50, 0x4b])
+
+    const zip = await downloadEditorExport(page, /^ZIP/i)
+    expect(zip.suggestedFilename).toBe("pixtudio-export.zip")
+    const zipBytes = await readFile(zip.path)
+    expect(zipBytes.byteLength).toBeGreaterThan(1000)
+    expect(readZipStoreEntryNames(zipBytes)).toEqual([
+        "pixtudio-export.png",
+        "pixtudio-export.svg",
+        "pixtudio-export.xlsx",
+    ])
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("open pipeline rejects unsupported files", async ({ page }) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    const fileChooserPromise = page.waitForEvent("filechooser")
+    await page.getByRole("button", { name: "Open File" }).click()
+    const fileChooser = await fileChooserPromise
+    await fileChooser.setFiles(unsupportedFilePath)
+
+    await expect(page.getByText("IMPORT ERROR")).toBeVisible()
+    await expect(page.getByText("Import failed. Please try again.")).toBeVisible()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByRole("button", { name: "Open File" })).toBeVisible()
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("deleting an active palette preset saves the auto-palette world", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.locator('button[title="SUNSET"]').click()
+    await page.getByLabel("Delete SUNSET preset").click()
+    await expect(page.locator('button[title="SUNSET"]')).toHaveCount(0)
+    await expect(
+        page.getByRole("button", { name: /AUTO PALETTE/i })
+    ).toBeVisible()
+
+    const save = await downloadProjectSave(page)
+    expect(save.suggestedFilename).toBe("project.pixtudio")
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    expect(snapshot.quantizationProfile).toBeUndefined()
+    expect(
+        snapshot.palette.swatches.map((swatch: { hex: string }) => swatch.hex)
+    ).not.toEqual([
+        "#001219",
+        "#005F73",
+        "#0A9396",
+        "#94D2BD",
+        "#E9D8A6",
+        "#EE9B00",
+        "#CA6702",
+        "#BB3E03",
+        "#AE2012",
+        "#9B2226",
+    ])
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("promo navigation links reach their primary destinations", async ({ page }) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/")
+    await expect(page.locator('a[href="/faq/"]').first()).toHaveAttribute(
+        "href",
+        "/faq/"
+    )
+    await expect(
+        page.locator('a[href="/how-it-works/"]').first()
+    ).toHaveAttribute("href", "/how-it-works/")
+    await expect(page.locator('a[href="/gallery/"]').first()).toHaveAttribute(
+        "href",
+        "/gallery/"
+    )
+
+    await page.getByRole("link", { name: "Try PIXTUDIO Now" }).first().click()
+    await expect(page).toHaveURL(/\/editor\/?$/)
+    await expect(page.getByRole("button", { name: "Open File" })).toBeVisible()
+
+    expect(errors.flush()).toEqual([])
+})
+
+async function installDownloadFallbackEnvironment(page: Page) {
+    await page.addInitScript(() => {
+        try {
+            Object.defineProperty(window, "showSaveFilePicker", {
+                configurable: true,
+                value: undefined,
+            })
+        } catch {
+            // Best-effort test stabilization.
+        }
+
+        try {
+            Object.defineProperty(navigator, "share", {
+                configurable: true,
+                value: undefined,
+            })
+            Object.defineProperty(navigator, "canShare", {
+                configurable: true,
+                value: undefined,
+            })
+        } catch {
+            // Best-effort test stabilization.
+        }
+    })
+}
+
+async function downloadEditorExport(page: Page, label: RegExp) {
+    await page.getByRole("button", { name: "Export" }).click()
+    await expect(page.getByRole("button", { name: label })).toBeVisible()
+
+    const downloadPromise = page.waitForEvent("download")
+    await page.getByRole("button", { name: label }).click()
+    const download = await downloadPromise
+    await settle(page)
+
+    const downloadPath = await download.path()
+    expect(downloadPath).toBeTruthy()
+
+    return {
+        path: downloadPath as string,
+        suggestedFilename: download.suggestedFilename(),
+    }
+}
+
+async function downloadProjectSave(page: Page) {
+    const downloadPromise = page.waitForEvent("download")
+    await page.getByRole("button", { name: "Save" }).click()
+    const download = await downloadPromise
+    await settle(page)
+
+    const downloadPath = await download.path()
+    expect(downloadPath).toBeTruthy()
+
+    return {
+        path: downloadPath as string,
+        suggestedFilename: download.suggestedFilename(),
+    }
+}
+
+async function fileSize(filePath: string) {
+    return (await stat(filePath)).size
+}
+
+async function expectFileSignature(filePath: string, signature: number[]) {
+    const bytes = await readFile(filePath)
+    expect(Array.from(bytes.subarray(0, signature.length))).toEqual(signature)
+}
+
+function readZipStoreEntryNames(bytes: Uint8Array) {
+    const names: string[] = []
+    const decoder = new TextDecoder()
+    let offset = 0
+
+    while (offset + 30 <= bytes.length) {
+        const signature =
+            bytes[offset] |
+            (bytes[offset + 1] << 8) |
+            (bytes[offset + 2] << 16) |
+            (bytes[offset + 3] << 24)
+        if (signature !== 0x04034b50) break
+
+        const compressedSize = readUint32LE(bytes, offset + 18)
+        const fileNameLength = readUint16LE(bytes, offset + 26)
+        const extraLength = readUint16LE(bytes, offset + 28)
+        const nameStart = offset + 30
+        const nameEnd = nameStart + fileNameLength
+        names.push(decoder.decode(bytes.subarray(nameStart, nameEnd)))
+
+        offset = nameEnd + extraLength + compressedSize
+    }
+
+    return names
+}
+
+function readUint16LE(bytes: Uint8Array, offset: number) {
+    return bytes[offset] | (bytes[offset + 1] << 8)
+}
+
+function readUint32LE(bytes: Uint8Array, offset: number) {
+    return (
+        bytes[offset] |
+        (bytes[offset + 1] << 8) |
+        (bytes[offset + 2] << 16) |
+        (bytes[offset + 3] << 24)
+    )
+}
