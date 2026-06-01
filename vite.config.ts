@@ -8,6 +8,7 @@ export default defineConfig({
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
+      "**/tests/e2e/**",
       "**/tools/ffmpeg-core-custom/upstream/**",
     ],
   },
