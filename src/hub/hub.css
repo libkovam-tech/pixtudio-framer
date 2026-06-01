@@ -1730,6 +1730,7 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     justify-self: end;
     width: var(--site-gallery-desktop-strip-w);
     min-height: 0;
+    margin-right: 30px;
     overflow-y: auto;
     overflow-x: hidden;
     direction: rtl;
