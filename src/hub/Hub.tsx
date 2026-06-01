@@ -231,6 +231,16 @@ function readStoredDesktopOrbitQuality(): DesktopOrbitQuality | null {
   }
 }
 
+function isPixtudioE2EVisualRun() {
+  if (typeof window === "undefined") return false
+
+  try {
+    return window.localStorage.getItem("pixtudio-e2e") === "true"
+  } catch {
+    return false
+  }
+}
+
 function writeStoredDesktopOrbitQuality(quality: DesktopOrbitQuality) {
   if (quality === "measuring") return
 
@@ -642,6 +652,12 @@ function DesktopOrbitCards({
 export default function Hub() {
   usePageSeo(SITE_ROUTE_SEO.home)
 
+  const initialDesktopOrbitAnimation: DesktopOrbitAnimation = {
+    phase: "enter",
+    direction: 1,
+    enteringStep: DESKTOP_ORBIT_INITIAL_STEP,
+    leavingStep: null,
+  }
   const desktopRootRef = useRef<HTMLDivElement | null>(null)
   const pixelateRef = useRef<HTMLHeadingElement | null>(null)
   const importRef = useRef<HTMLHeadingElement | null>(null)
@@ -661,12 +677,9 @@ export default function Hub() {
   const desktopOrbitAutoplayResumeRef = useRef(0)
   const desktopOrbitQueuedDirectionsRef = useRef<DesktopOrbitDirection[]>([])
   const desktopOrbitStepRef = useRef(DESKTOP_ORBIT_INITIAL_STEP)
-  const desktopOrbitAnimationRef = useRef<DesktopOrbitAnimation | null>({
-    phase: "enter",
-    direction: 1,
-    enteringStep: DESKTOP_ORBIT_INITIAL_STEP,
-    leavingStep: null,
-  })
+  const desktopOrbitAnimationRef = useRef<DesktopOrbitAnimation | null>(
+    initialDesktopOrbitAnimation
+  )
   const desktopOrbitDragRef = useRef<DesktopOrbitDrag | null>(null)
   const desktopOrbitPerformanceSamplesRef = useRef(
     DESKTOP_ORBIT_RUNTIME_SAMPLES
@@ -686,12 +699,7 @@ export default function Hub() {
     DESKTOP_ORBIT_INITIAL_STEP
   )
   const [desktopOrbitAnimation, setDesktopOrbitAnimation] =
-    useState<DesktopOrbitAnimation | null>({
-      phase: "enter",
-      direction: 1,
-      enteringStep: DESKTOP_ORBIT_INITIAL_STEP,
-      leavingStep: null,
-    })
+    useState<DesktopOrbitAnimation | null>(initialDesktopOrbitAnimation)
   const [desktopOrbitDrag, setDesktopOrbitDrag] =
     useState<DesktopOrbitDrag | null>(null)
   const [mobileCardTitleFontSize, setMobileCardTitleFontSize] = useState(34)
@@ -724,6 +732,47 @@ export default function Hub() {
       desktopRoot.style.removeProperty("--hub-orbit-title-font-size")
     }
   }, [desktopHintFontSize, desktopOrbitTitleFontSize, desktopWordFontSize])
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return
+
+    const desktopRoot = desktopRootRef.current
+    const headline = importRef.current
+    if (!desktopRoot || !headline) return undefined
+
+    let disposed = false
+
+    const updateDesktopOrbitViewport = () => {
+      if (disposed) return
+      if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) {
+        desktopRoot.style.removeProperty("--hub-desktop-orbit-viewport-bottom")
+        return
+      }
+
+      const rootRect = desktopRoot.getBoundingClientRect()
+      const headlineRect = headline.getBoundingClientRect()
+      const orbitBottom = Math.max(0, headlineRect.top - rootRect.top - 10)
+      desktopRoot.style.setProperty(
+        "--hub-desktop-orbit-viewport-bottom",
+        `${orbitBottom}px`
+      )
+    }
+
+    const resizeObserver = new ResizeObserver(updateDesktopOrbitViewport)
+    resizeObserver.observe(desktopRoot)
+    resizeObserver.observe(headline)
+
+    window.addEventListener("resize", updateDesktopOrbitViewport)
+    updateDesktopOrbitViewport()
+    void document.fonts?.ready.then(updateDesktopOrbitViewport)
+
+    return () => {
+      disposed = true
+      resizeObserver.disconnect()
+      window.removeEventListener("resize", updateDesktopOrbitViewport)
+      desktopRoot.style.removeProperty("--hub-desktop-orbit-viewport-bottom")
+    }
+  }, [desktopWordFontSize])
 
   useEffect(() => {
     const headline = mobileHeadlineRef.current
@@ -778,6 +827,31 @@ export default function Hub() {
   useEffect(() => {
     desktopOrbitDragRef.current = desktopOrbitDrag
   }, [desktopOrbitDrag])
+
+  useEffect(() => {
+    if (!isPixtudioE2EVisualRun()) return
+
+    desktopOrbitTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId)
+    })
+    desktopOrbitTimeoutsRef.current = []
+    desktopOrbitQueuedDirectionsRef.current = []
+    window.clearTimeout(desktopOrbitAutoplayResumeRef.current)
+    desktopOrbitAutoplayResumeRef.current = 0
+
+    desktopOrbitStepRef.current = DESKTOP_ORBIT_INITIAL_STEP
+    desktopOrbitAnimationRef.current = null
+    desktopOrbitDragRef.current = null
+
+    const stabilizeTimeout = window.setTimeout(() => {
+      setDesktopOrbitStep(DESKTOP_ORBIT_INITIAL_STEP)
+      setDesktopOrbitAnimation(null)
+      setDesktopOrbitDrag(null)
+      setDesktopOrbitAutoplayPaused(true)
+    }, 0)
+
+    return () => window.clearTimeout(stabilizeTimeout)
+  }, [])
 
   useEffect(() => {
     const setVisualViewportHeight = () => {

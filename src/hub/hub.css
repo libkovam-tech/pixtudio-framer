@@ -1718,7 +1718,7 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     grid-template-columns: 4fr minmax(0, 5fr) 4fr;
     grid-template-rows: minmax(0, var(--site-gallery-desktop-main-size)) auto;
     row-gap: clamp(7px, 0.85dvh, 13px);
-    align-content: end;
+    align-content: start;
     align-items: center;
     padding: 0 0 clamp(8px, 0.95dvh, 16px);
   }
@@ -3245,7 +3245,10 @@ body.hubPageLocked.hubVideoCompareScrollBody {
 
   .hubDesktopOrbitLayer {
     position: absolute;
-    inset: 0;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: var(--hub-desktop-orbit-viewport-bottom, 50%);
     z-index: 1;
     pointer-events: none;
     overflow: hidden;
@@ -3289,7 +3292,7 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   .hubDesktopOrbitCard {
     --hub-orbit-card-w: calc(var(--hub-desktop-side-col-w) - 50px);
     position: absolute;
-    top: calc(var(--hub-visual-viewport-h, 100dvh) / 2 - 70px);
+    top: 50%;
     width: var(--hub-orbit-card-w);
     min-height: 0;
     box-sizing: border-box;
@@ -3602,7 +3605,7 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     position: absolute;
     left: calc(25px + var(--hub-desktop-cta-h) * 0.5);
     right: calc(25px + var(--hub-desktop-cta-h) * 0.5);
-    top: 50%;
+    top: 0;
     bottom: auto;
     width: auto;
     max-height: calc(100% - var(--hub-desktop-cta-h) - 20px);
@@ -3610,7 +3613,6 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    transform: translateY(-50%);
     color: #001219;
     font-family: var(--site-font-content);
     font-size: var(--site-type-base-size);

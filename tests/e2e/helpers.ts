@@ -72,7 +72,6 @@ export function snapshotName(
 export function promoDynamicMasks(page: Page) {
     return [
         page.locator(".hubMobileVideoHero"),
-        page.locator(".hubDesktopOrbitLayer"),
         page.locator("video"),
         page.locator("canvas"),
     ]
