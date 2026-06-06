@@ -14,14 +14,20 @@ export type ImportedPaletteExtensionResult<
     added: boolean
 }
 
+function normalizeImportedPaletteHex(color: string): string | null {
+    const nextColor = color.trim().toUpperCase()
+    if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
+    return nextColor
+}
+
 export function extendImportedPaletteProfile<
     T extends ImportedFixedPaletteProfile,
 >(
     profile: T,
     color: string
 ): ImportedPaletteExtensionResult<T> | null {
-    const nextColor = color.trim().toUpperCase()
-    if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
+    const nextColor = normalizeImportedPaletteHex(color)
+    if (!nextColor) return null
 
     const existingIndex = profile.colors.findIndex(
         (item) => item.toUpperCase() === nextColor
@@ -65,4 +71,19 @@ export function removeImportedPaletteProfileColor<
         },
         removed: true,
     }
+}
+
+export function removeImportedPaletteProfileColorByHex<
+    T extends ImportedFixedPaletteProfile,
+>(profile: T, color: string): { profile: T; removed: boolean } {
+    const targetColor = normalizeImportedPaletteHex(color)
+    if (!targetColor) {
+        return { profile, removed: false }
+    }
+
+    const colorIndex = profile.colors.findIndex(
+        (item) => normalizeImportedPaletteHex(item) === targetColor
+    )
+
+    return removeImportedPaletteProfileColor(profile, colorIndex)
 }

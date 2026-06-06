@@ -27,7 +27,7 @@ import {
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendImportedPaletteProfile,
-    removeImportedPaletteProfileColor,
+    removeImportedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
@@ -3077,42 +3077,19 @@ type PendingFlags = {
 const START_LOGO_W = 260
 
 // =====================
-// SMART OBJECT ARCHITECTURE CONTRACT — S0
+// SMART OBJECT ARCHITECTURE CONTRACT
 // =====================
 //
-// Root / gateway:
-// - принимает baked reference после import
-// - в будущем открывает/закрывает SmartObject
-// - получает committed snapshot из SmartObject
-// - передаёт committed snapshot в editor
+// Root owns the cross-domain transaction boundary. It receives the baked
+// reference after import/load, opens SmartReferenceEditor, captures committed
+// Smart Object state, and passes committed output into the canvas editor.
 //
-// SmartObject module:
-// - хранит base
-// - хранит adjustments
-// - строит preview
-// - по Apply отдаёт committed snapshot
-// - по Cancel ничего не меняет
-// - по Export сохраняет текущее preview 512×512
+// SmartReferenceEditor owns the Smart Object domain: base reference,
+// non-destructive adjustments, preview, Apply/Cancel behavior, and committed
+// state capture/restore.
 //
-// Editor:
-// - получает только committed snapshot
-// - работает по старому pipeline
-// - ничего не знает о smart-object
-//
-// S1:
-// - SmartObject UI ещё отсутствует
-// - математики smart-object ещё нет
-// - gateway работает как пустой pass-through adapter
-
-// EDITOR MODULE BOUNDARY:
-// PixelEditorFramer получает только committed reference snapshot.
-// Он не знает о baked base, gateway-slot, smart-object state,
-// preview, adjustments, Apply/Cancel/Export.
-
-// S2 note:
-// SmartReferenceEditor создаётся как отдельный .tsx-модуль.
-// На этом шаге он ещё не импортируется и не подключается к root/editor.
-// Это намеренный NO-OP: сначала создаём контейнер, потом подключаем gateway.
+// PixelEditorFramer consumes only committed Smart Object output. It does not
+// mutate Smart Object base data or local adjustment state directly.
 
 // =====================
 // UNDO / REDO (H1/H2: infra only, no UI behavior changes yet)
@@ -10996,11 +10973,11 @@ function PixelEditorFramer({
                 handleModalCancel()
                 return
             }
-            const result = removeImportedPaletteProfileColor(
+            const result = removeImportedPaletteProfileColorByHex(
                 quantizationProfile as FixedQuantizationProfile & {
                     source: "imported"
                 },
-                colorIndex
+                swatch.color
             )
             if (!result.removed) {
                 handleModalCancel()
@@ -14871,13 +14848,11 @@ export default function PIXTUDIO_Mobile_MVP() {
     }, [])
 
     // =====================
-    // ROOT / GATEWAY — S1 PASS-THROUGH CUT
-    // Пока без SmartObject UI и без математики.
+    // ROOT / GATEWAY
     // bakedReferenceFromImport:
-    //   результат import/crop/preprocess до editor
+    //   result of import/crop/preprocess before editor commit
     // gatewayCommittedReference:
-    //   будущий committed snapshot от SmartObject;
-    //   на S1 это просто pass-through копия baked reference
+    //   committed reference from import, load, Smart Object Apply, or history restore
     // =====================
 
     // H1 / H2:
@@ -14889,8 +14864,6 @@ export default function PIXTUDIO_Mobile_MVP() {
     // - начинает новую session
     //
     // Undo/redo не имеет права возвращать состояние до импорта.
-
-    // S2: отдельный SmartReferenceEditor существует как внешний модуль, но сюда ещё не подключён.
 
     const [gatewayCommittedReference, setGatewayCommittedReference] =
         React.useState<ImageData | null>(null)
@@ -15801,8 +15774,8 @@ export default function PIXTUDIO_Mobile_MVP() {
     )
 
     // ROOT GATEWAY ENTRY:
-    // Именно здесь baked reference после import впервые входит
-    // в новый маршрут Root -> (future SmartObject) -> Editor.
+    // Baked import output enters the root route here before being committed
+    // into the Smart Object / editor state.
 
     function handleImportDecision(decision: ImportDecision) {
         const base = decision.preparedImageData
@@ -16243,6 +16216,8 @@ export default function PIXTUDIO_Mobile_MVP() {
     const cropPreviewCssTargetPx = Math.round(
         cropPreviewFrameTargetPx / Math.max(0.01, 1 - cropPreviewInsetFrac * 2)
     )
+    const cropMobilePreviewCssSize =
+        "min(100vw, calc(88vh - 145px), 820px)"
 
     const cropPointersRef = React.useRef<Map<number, { x: number; y: number }>>(
         new Map()
@@ -17606,9 +17581,11 @@ export default function PIXTUDIO_Mobile_MVP() {
                 >
                     <div
                         style={{
-                            width: isMobileUI ? "100vw" : cropPreviewCssTargetPx,
+                            width: isMobileUI
+                                ? cropMobilePreviewCssSize
+                                : cropPreviewCssTargetPx,
                             maxWidth: isMobileUI
-                                ? "100vw"
+                                ? cropMobilePreviewCssSize
                                 : cropPreviewCssTargetPx,
                             height: isMobileUI
                                 ? "min(88vh, 820px)"
@@ -17765,8 +17742,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                     style={{ display: "block" }}
                                                     xmlns="http://www.w3.org/2000/svg"
                                                 >
-                                                    {/* TODO: заменишь на свои пиксельные стрелки */}
-                                                    {/* простая “масштаб” иконка-заглушка */}
+                                                    {/* Generic resize handle icon. */}
                                                     <path
                                                         fill="#fff"
                                                         d="M41.7,66.8v-6.4H57L40.3,43.7l3.4-3.4L60.4,57V41.7h6.4v25.1H41.7z M0,66.8V41.7h6.4V57l16.7-16.7l3.4,3.4

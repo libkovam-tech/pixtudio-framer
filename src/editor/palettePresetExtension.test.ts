@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest"
 import {
     extendImportedPaletteProfile,
     removeImportedPaletteProfileColor,
+    removeImportedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
+import { prepareImportedPaletteColorsForApplication } from "./importedPaletteStrategy.ts"
 
 describe("palette preset extension", () => {
     const profile = {
@@ -53,6 +55,31 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("removes the displayed imported swatch color when application order differs from profile order", () => {
+        const unsortedProfile = {
+            ...profile,
+            colors: ["#FFFFFF", "#FF0000", "#00FF00"],
+        }
+        const displayedColors = prepareImportedPaletteColorsForApplication(
+            unsortedProfile.colors
+        )
+
+        expect(displayedColors[0]).toBe("#FF0000")
+
+        const result = removeImportedPaletteProfileColorByHex(
+            unsortedProfile,
+            displayedColors[0]
+        )
+
+        expect(result).toEqual({
+            profile: {
+                ...unsortedProfile,
+                colors: ["#FFFFFF", "#00FF00"],
+            },
+            removed: true,
+        })
+    })
+
     it("keeps imported palette profiles with at least one color", () => {
         const result = removeImportedPaletteProfileColor(
             { ...profile, colors: ["#001219"] },
@@ -74,5 +101,11 @@ describe("palette preset extension", () => {
             profile,
             removed: false,
         })
+        expect(removeImportedPaletteProfileColorByHex(profile, "white")).toEqual(
+            {
+                profile,
+                removed: false,
+            }
+        )
     })
 })

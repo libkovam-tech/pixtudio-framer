@@ -1,4 +1,11 @@
-import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import {
   DESKTOP_EDITOR_URL,
   SiteFloatingCta,
@@ -681,6 +688,9 @@ export default function Hub() {
     initialDesktopOrbitAnimation
   )
   const desktopOrbitDragRef = useRef<DesktopOrbitDrag | null>(null)
+  const runDesktopOrbitTransitionRef = useRef<
+    ((direction: DesktopOrbitDirection, fromStep: number) => void) | null
+  >(null)
   const desktopOrbitPerformanceSamplesRef = useRef(
     DESKTOP_ORBIT_RUNTIME_SAMPLES
   )
@@ -1129,15 +1139,15 @@ export default function Hub() {
     return () => window.clearTimeout(timeoutId)
   }, [desktopOrbitAnimation])
 
-  const pauseDesktopOrbitAutoplay = () => {
+  const pauseDesktopOrbitAutoplay = useCallback(() => {
     setDesktopOrbitAutoplayPaused(true)
     window.clearTimeout(desktopOrbitAutoplayResumeRef.current)
     desktopOrbitAutoplayResumeRef.current = window.setTimeout(() => {
       setDesktopOrbitAutoplayPaused(false)
     }, DESKTOP_ORBIT_AUTOPLAY_RESUME_MS)
-  }
+  }, [])
 
-  const sampleDesktopOrbitPerformance = () => {
+  const sampleDesktopOrbitPerformance = useCallback(() => {
     if (window.innerWidth < DESKTOP_LAYOUT_MIN_WIDTH) return
     if (document.hidden) return
     if (desktopOrbitQuality === "lite") return
@@ -1155,73 +1165,83 @@ export default function Hub() {
       writeStoredDesktopOrbitQuality("lite")
       desktopOrbitPerformanceSamplesRef.current = 0
     })
-  }
+  }, [desktopOrbitQuality])
 
-  const enqueueDesktopOrbitDirection = (direction: DesktopOrbitDirection) => {
-    desktopOrbitQueuedDirectionsRef.current = [
-      ...desktopOrbitQueuedDirectionsRef.current,
-      direction,
-    ].slice(-DESKTOP_ORBIT_MAX_QUEUED_STEPS)
-  }
+  const enqueueDesktopOrbitDirection = useCallback(
+    (direction: DesktopOrbitDirection) => {
+      desktopOrbitQueuedDirectionsRef.current = [
+        ...desktopOrbitQueuedDirectionsRef.current,
+        direction,
+      ].slice(-DESKTOP_ORBIT_MAX_QUEUED_STEPS)
+    },
+    []
+  )
 
-  const runDesktopOrbitTransition = (
-    direction: DesktopOrbitDirection,
-    fromStep: number
-  ) => {
-    sampleDesktopOrbitPerformance()
+  const runDesktopOrbitTransition = useCallback(
+    (direction: DesktopOrbitDirection, fromStep: number) => {
+      sampleDesktopOrbitPerformance()
 
-    const enteringStep = fromStep + direction
-    const leavingStep = fromStep
+      const enteringStep = fromStep + direction
+      const leavingStep = fromStep
 
-    const leavingAnimation: DesktopOrbitAnimation = {
-      phase: "leave",
-      direction,
-      enteringStep,
-      leavingStep,
-    }
-    desktopOrbitAnimationRef.current = leavingAnimation
-    setDesktopOrbitAnimation(leavingAnimation)
-
-    const enterTimeout = window.setTimeout(() => {
-      const overlappingAnimation: DesktopOrbitAnimation = {
+      const leavingAnimation: DesktopOrbitAnimation = {
         phase: "leave",
         direction,
         enteringStep,
         leavingStep,
-        overlap: true,
       }
-      desktopOrbitAnimationRef.current = overlappingAnimation
-      setDesktopOrbitAnimation(overlappingAnimation)
-    }, 230)
+      desktopOrbitAnimationRef.current = leavingAnimation
+      setDesktopOrbitAnimation(leavingAnimation)
 
-    const doneTimeout = window.setTimeout(() => {
-      const nextDirection = desktopOrbitQueuedDirectionsRef.current.shift()
-      desktopOrbitStepRef.current = enteringStep
-      setDesktopOrbitStep(enteringStep)
+      const enterTimeout = window.setTimeout(() => {
+        const overlappingAnimation: DesktopOrbitAnimation = {
+          phase: "leave",
+          direction,
+          enteringStep,
+          leavingStep,
+          overlap: true,
+        }
+        desktopOrbitAnimationRef.current = overlappingAnimation
+        setDesktopOrbitAnimation(overlappingAnimation)
+      }, 230)
 
-      if (nextDirection) {
-        runDesktopOrbitTransition(nextDirection, enteringStep)
-      } else {
-        desktopOrbitAnimationRef.current = null
-        setDesktopOrbitAnimation(null)
+      const doneTimeout = window.setTimeout(() => {
+        const nextDirection = desktopOrbitQueuedDirectionsRef.current.shift()
+        desktopOrbitStepRef.current = enteringStep
+        setDesktopOrbitStep(enteringStep)
+
+        if (nextDirection) {
+          runDesktopOrbitTransitionRef.current?.(nextDirection, enteringStep)
+        } else {
+          desktopOrbitAnimationRef.current = null
+          setDesktopOrbitAnimation(null)
+        }
+
+        desktopOrbitTimeoutsRef.current = desktopOrbitTimeoutsRef.current.filter(
+          (timeoutId) => timeoutId !== enterTimeout && timeoutId !== doneTimeout
+        )
+      }, 1360)
+
+      desktopOrbitTimeoutsRef.current.push(enterTimeout, doneTimeout)
+    },
+    [sampleDesktopOrbitPerformance]
+  )
+
+  useEffect(() => {
+    runDesktopOrbitTransitionRef.current = runDesktopOrbitTransition
+  }, [runDesktopOrbitTransition])
+
+  const advanceDesktopOrbit = useCallback(
+    (direction: DesktopOrbitDirection = 1) => {
+      if (desktopOrbitAnimationRef.current || desktopOrbitDragRef.current) {
+        enqueueDesktopOrbitDirection(direction)
+        return
       }
 
-      desktopOrbitTimeoutsRef.current = desktopOrbitTimeoutsRef.current.filter(
-        (timeoutId) => timeoutId !== enterTimeout && timeoutId !== doneTimeout
-      )
-    }, 1360)
-
-    desktopOrbitTimeoutsRef.current.push(enterTimeout, doneTimeout)
-  }
-
-  const advanceDesktopOrbit = (direction: DesktopOrbitDirection = 1) => {
-    if (desktopOrbitAnimationRef.current || desktopOrbitDragRef.current) {
-      enqueueDesktopOrbitDirection(direction)
-      return
-    }
-
-    runDesktopOrbitTransition(direction, desktopOrbitStepRef.current)
-  }
+      runDesktopOrbitTransition(direction, desktopOrbitStepRef.current)
+    },
+    [enqueueDesktopOrbitDirection, runDesktopOrbitTransition]
+  )
 
   useEffect(() => {
     if (desktopOrbitAutoplayPaused) return
@@ -1233,7 +1253,7 @@ export default function Hub() {
     }, DESKTOP_ORBIT_AUTOPLAY_INTERVAL_MS)
 
     return () => window.clearInterval(intervalId)
-  }, [desktopOrbitAutoplayPaused, desktopOrbitAnimation, desktopOrbitStep])
+  }, [advanceDesktopOrbit, desktopOrbitAutoplayPaused])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1247,7 +1267,7 @@ export default function Hub() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [desktopOrbitAnimation, desktopOrbitStep])
+  }, [advanceDesktopOrbit, pauseDesktopOrbitAutoplay])
 
   useEffect(() => {
     if (!desktopOrbitAutoplayPaused) return
@@ -1263,7 +1283,7 @@ export default function Hub() {
       window.removeEventListener("pointerdown", handleActivity)
       window.removeEventListener("mousemove", handleActivity)
     }
-  }, [desktopOrbitAutoplayPaused])
+  }, [desktopOrbitAutoplayPaused, pauseDesktopOrbitAutoplay])
 
   useEffect(() => {
     const desktopRoot = desktopRootRef.current
@@ -1406,7 +1426,12 @@ export default function Hub() {
       desktopRoot.removeEventListener("touchend", handleTouchEnd)
       desktopRoot.removeEventListener("touchcancel", resetSwipe)
     }
-  }, [desktopOrbitAnimation, desktopOrbitStep])
+  }, [
+    desktopOrbitAnimation,
+    desktopOrbitStep,
+    pauseDesktopOrbitAutoplay,
+    sampleDesktopOrbitPerformance,
+  ])
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") return

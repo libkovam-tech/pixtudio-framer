@@ -47,6 +47,27 @@ test("crop screen is stable", async ({ page }, testInfo) => {
     expect(errors.flush()).toEqual([])
 })
 
+test("tablet crop screen keeps action buttons in viewport", async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "tablet guard uses touch UI")
+    const errors = collectBrowserErrors(page)
+
+    await page.setViewportSize({ width: 1024, height: 768 })
+    await openBearImageCropScreen(page)
+
+    const cancelBox = await page
+        .getByRole("button", { name: "Cancel" })
+        .boundingBox()
+    const okBox = await page.getByRole("button", { name: "OK" }).boundingBox()
+
+    expect(cancelBox).not.toBeNull()
+    expect(okBox).not.toBeNull()
+    expect(cancelBox!.y + cancelBox!.height).toBeLessThanOrEqual(768)
+    expect(okBox!.y + okBox!.height).toBeLessThanOrEqual(768)
+    expect(errors.flush()).toEqual([])
+})
+
 test("smart object screen is stable", async ({ page }, testInfo) => {
     const errors = collectBrowserErrors(page)
 
