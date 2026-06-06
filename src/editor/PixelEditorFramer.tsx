@@ -9382,12 +9382,6 @@ function PixelEditorFramer({
         ? TRANSPARENT_PIXEL
         : (selectedSwatch as SwatchId)
 
-    const allSwatches = React.useMemo(() => {
-        return [...autoSwatches, ...userSwatches].filter(
-            (s) => !s.isTransparent && s.id !== "transparent"
-        )
-    }, [autoSwatches, userSwatches])
-
     // Унифицированная сортировка “по группам” (red → green → blue → gray) + внутри группы
     function sortSwatchesForUI(source: Swatch[]) {
         const groupOrder: Record<SwatchColorGroup, number> = {
@@ -9444,9 +9438,21 @@ function PixelEditorFramer({
 
     const swatchById = React.useMemo(() => {
         const m = new Map<SwatchId, Swatch>()
-        for (const s of allSwatches) m.set(s.id, s)
+        for (const s of autoSwatches) m.set(s.id, s)
+        for (const s of userSwatches) m.set(s.id, s)
         return m
-    }, [allSwatches])
+    }, [autoSwatches, userSwatches])
+
+    const paletteVisualSignature = React.useMemo(
+        () =>
+            [...autoSwatches, ...userSwatches]
+                .map(
+                    (swatch) =>
+                        `${swatch.id}:${swatch.color}:${swatch.isTransparent ? 1 : 0}:${swatch.isUser ? 1 : 0}`
+                )
+                .join("|"),
+        [autoSwatches, userSwatches]
+    )
 
     const resolveToColor = React.useCallback(
         (v: PixelValue): string | null => {
@@ -10202,6 +10208,7 @@ function PixelEditorFramer({
         showImage,
         resolveToColor,
         isTransparentValue,
+        paletteVisualSignature,
         showGrid,
         restoreVisualNonce,
     ])

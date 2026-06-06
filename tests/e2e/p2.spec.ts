@@ -101,6 +101,28 @@ test("deleting an active palette preset saves the auto-palette world", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("swatch edit repaint is visible on the canvas immediately", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    const before = await readEditorCanvasPixel(page, 408, 136)
+    expect(before.slice(0, 3)).toEqual([125, 168, 194])
+
+    await page.locator('button[title="#7DA8C2"]').click({ button: "right" })
+    await expect(page.getByText("SWATCH EDIT")).toBeVisible()
+    await page.getByLabel("HEX input").fill("#FF0000")
+    await page.getByRole("button", { name: "OK" }).click()
+
+    await expect
+        .poll(() => readEditorCanvasPixel(page, 408, 136))
+        .toEqual([255, 0, 0, 255])
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("promo navigation links reach their primary destinations", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
@@ -190,6 +212,19 @@ async function fileSize(filePath: string) {
 async function expectFileSignature(filePath: string, signature: number[]) {
     const bytes = await readFile(filePath)
     expect(Array.from(bytes.subarray(0, signature.length))).toEqual(signature)
+}
+
+async function readEditorCanvasPixel(page: Page, x: number, y: number) {
+    return page.locator("canvas").first().evaluate(
+        (canvas, point) => {
+            const context = canvas.getContext("2d")
+            if (!context) return []
+            return Array.from(
+                context.getImageData(point.x, point.y, 1, 1).data
+            )
+        },
+        { x, y }
+    )
 }
 
 function readZipStoreEntryNames(bytes: Uint8Array) {
