@@ -356,8 +356,20 @@ function getSavePickerOptionsForFilename(filename: string) {
 
 function getViewportHeightPx() {
     if (typeof document === "undefined") return 0
-    const vv = typeof window !== "undefined" ? window.visualViewport : null
-    return Math.round((vv?.height ?? window.innerHeight) || 0)
+    return Math.round(
+        document.documentElement.clientHeight ||
+            (typeof window !== "undefined" ? window.innerHeight : 0) ||
+            0
+    )
+}
+
+function getViewportWidthPx() {
+    if (typeof document === "undefined") return 0
+    return Math.round(
+        document.documentElement.clientWidth ||
+            (typeof window !== "undefined" ? window.innerWidth : 0) ||
+            0
+    )
 }
 
 function FitToViewport({
@@ -377,30 +389,19 @@ function FitToViewport({
         const updateViewport = () => {
             if (raf) cancelAnimationFrame(raf)
             raf = requestAnimationFrame(() => {
-                const vv = typeof window !== "undefined" ? window.visualViewport : null
-                const vh = vv?.height ?? getViewportHeightPx()
-                const vw =
-                    Math.round(
-                        vv?.width ??
-                            (typeof document !== "undefined"
-                                ? document.documentElement.clientWidth
-                                : 0) ??
-                            (typeof window !== "undefined"
-                                ? window.innerWidth
-                                : 0)
-                    ) || 0
                 setViewport({
-                    w: Math.max(1, vw),
-                    h: Math.max(1, vh),
+                    w: Math.max(1, getViewportWidthPx()),
+                    h: Math.max(1, getViewportHeightPx()),
                 })
             })
         }
+
+        const handleViewportResize = () => updateViewport()
+
         updateViewport()
-        window.addEventListener("resize", updateViewport)
-        window.visualViewport?.addEventListener("resize", updateViewport)
+        window.addEventListener("resize", handleViewportResize)
         return () => {
-            window.removeEventListener("resize", updateViewport)
-            window.visualViewport?.removeEventListener("resize", updateViewport)
+            window.removeEventListener("resize", handleViewportResize)
             if (raf) cancelAnimationFrame(raf)
         }
     }, [])
@@ -437,10 +438,12 @@ function FitToViewport({
 
     return (
         <div
+            data-qr-viewport-backdrop="true"
             style={{
-                width: viewport.w,
-                maxWidth: viewport.w,
-                height: viewport.h,
+                width: "100vw",
+                maxWidth: "100vw",
+                height: "100vh",
+                minHeight: "100dvh",
                 background,
                 overflow: "hidden",
                 display: "grid",
@@ -448,29 +451,46 @@ function FitToViewport({
             }}
         >
             <div
+                data-qr-fit-viewport="true"
                 style={{
-                    width: Math.max(1, Math.round(contentSize.w * scale)),
-                    height: Math.max(1, Math.round(contentSize.h * scale)),
-                    position: "relative",
+                    width: viewport.w,
+                    maxWidth: viewport.w,
+                    height: viewport.h,
                     overflow: "hidden",
+                    display: "grid",
+                    placeItems: "start center",
                 }}
             >
                 <div
                     style={{
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        width: contentSize.w,
-                        height: contentSize.h,
-                        transform: `scale(${scale})`,
-                        transformOrigin: "top left",
+                        width: Math.max(1, Math.round(contentSize.w * scale)),
+                        height: Math.max(1, Math.round(contentSize.h * scale)),
+                        position: "relative",
+                        overflow: "hidden",
                     }}
                 >
                     <div
-                        ref={contentRef}
-                        style={{ display: "inline-block", width: "fit-content" }}
+                        style={{
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            width: contentSize.w,
+                            height: contentSize.h,
+                            transform: `scale(${scale})`,
+                            transformOrigin: "top left",
+                        }}
                     >
-                        {typeof children === "function" ? children(scale) : children}
+                        <div
+                            ref={contentRef}
+                            style={{
+                                display: "inline-block",
+                                width: "fit-content",
+                            }}
+                        >
+                            {typeof children === "function"
+                                ? children(scale)
+                                : children}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -754,8 +774,10 @@ function CommittedNumberInput({
     onCommit: (value: number) => void
 }) {
     const [draft, setDraft] = React.useState(String(value))
+    const isFocusedRef = React.useRef(false)
 
     React.useEffect(() => {
+        if (isFocusedRef.current) return
         setDraft(String(value))
     }, [value])
 
@@ -783,7 +805,13 @@ function CommittedNumberInput({
             max={max}
             step={1}
             onChange={(e) => setDraft(e.currentTarget.value)}
-            onBlur={commit}
+            onFocus={() => {
+                isFocusedRef.current = true
+            }}
+            onBlur={() => {
+                isFocusedRef.current = false
+                commit()
+            }}
             onKeyDown={(e) => {
                 if (e.key === "Enter") {
                     e.currentTarget.blur()
@@ -1681,28 +1709,6 @@ export default function QuantizationRecorder({
         fontSize: cardTitleStyle.fontSize,
     }
 
-    const FieldInput = ({
-        value,
-        onCommit,
-        min,
-        max,
-        ariaLabel,
-    }: {
-        value: number
-        onCommit: (value: number) => void
-        min: number
-        max: number
-        ariaLabel: string
-    }) => (
-        <CommittedNumberInput
-            ariaLabel={ariaLabel}
-            value={value}
-            min={min}
-            max={max}
-            onCommit={onCommit}
-        />
-    )
-
     const PreviewOverlayButton = ({
         visible,
         onClick,
@@ -1936,7 +1942,7 @@ export default function QuantizationRecorder({
                                 }
                             >
                                 <span style={minorLabelStyle}>From</span>
-                                <FieldInput
+                                <CommittedNumberInput
                                     ariaLabel="Grid value"
                                     value={includeGridRange ? gridFrom : gridSingle}
                                     onCommit={
@@ -1948,7 +1954,7 @@ export default function QuantizationRecorder({
                                 {includeGridRange ? (
                                     <>
                                         <span style={minorLabelStyle}>To</span>
-                                        <FieldInput
+                                        <CommittedNumberInput
                                             ariaLabel="Grid end value"
                                             value={gridTo}
                                             onCommit={updateGridTo}
@@ -1982,7 +1988,7 @@ export default function QuantizationRecorder({
                                 }
                             >
                                 <span style={minorLabelStyle}>From</span>
-                                <FieldInput
+                                <CommittedNumberInput
                                     ariaLabel="Palette value"
                                     value={includePaletteRange ? paletteFrom : paletteSingle}
                                     onCommit={
@@ -1996,7 +2002,7 @@ export default function QuantizationRecorder({
                                 {includePaletteRange ? (
                                     <>
                                         <span style={minorLabelStyle}>To</span>
-                                        <FieldInput
+                                        <CommittedNumberInput
                                             ariaLabel="Palette end value"
                                             value={paletteTo}
                                             onCommit={updatePaletteTo}
@@ -2062,7 +2068,7 @@ export default function QuantizationRecorder({
                                     columnGap: 16,
                                 }}
                             >
-                                <FieldInput
+                                <CommittedNumberInput
                                     ariaLabel="Duration seconds"
                                     value={durationSeconds}
                                     onCommit={(value) =>

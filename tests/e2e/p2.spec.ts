@@ -158,6 +158,69 @@ test("manual screen keeps native viewport zoom locked on mobile", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("quantization recorder number inputs keep focus during mobile keyboard resize", async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "keyboard resize is mobile-only")
+    const errors = collectBrowserErrors(page)
+
+    await installSyntheticVisualViewport(page)
+    await page.setViewportSize({ width: 412, height: 915 })
+    await openBearProject(page)
+    await page.getByRole("button", { name: "Quantization Recorder" }).click()
+
+    const backdrop = page.locator('[data-qr-viewport-backdrop="true"]')
+    const fitViewport = page.locator('[data-qr-fit-viewport="true"]')
+    const initialBackdropHeight = await backdrop.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().height)
+    )
+    const initialFitHeight = await fitViewport.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().height)
+    )
+    expect(initialBackdropHeight).toBe(915)
+    expect(initialFitHeight).toBe(915)
+
+    const gridInput = page.getByLabel("Grid value")
+    await expect(gridInput).toBeVisible()
+    await gridInput.click()
+    await expect(gridInput).toBeFocused()
+
+    await setSyntheticVisualViewport(page, { width: 412, height: 590 })
+    await expect(gridInput).toBeFocused()
+    await expect
+        .poll(() =>
+            fitViewport.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().height)
+            )
+        )
+        .toBe(915)
+    await expect
+        .poll(() =>
+            backdrop.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().height)
+            )
+        )
+        .toBe(915)
+    await gridInput.fill("24")
+    await expect(gridInput).toHaveValue("24")
+
+    await setSyntheticVisualViewport(page, { width: 412, height: 520 })
+    await expect(gridInput).toBeFocused()
+    await gridInput.fill("28")
+    await expect(gridInput).toHaveValue("28")
+
+    await gridInput.blur()
+    await expect
+        .poll(() =>
+            fitViewport.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().height)
+            )
+        )
+        .toBe(915)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("promo navigation links reach their primary destinations", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
@@ -268,6 +331,56 @@ async function expectEditorViewportZoomLocked(page: Page) {
         touchMove: true,
         wheelZoom: true,
     })
+}
+
+async function installSyntheticVisualViewport(page: Page) {
+    await page.addInitScript(() => {
+        const viewport = new EventTarget() as EventTarget & {
+            width: number
+            height: number
+            offsetLeft: number
+            offsetTop: number
+            pageLeft: number
+            pageTop: number
+            scale: number
+        }
+        viewport.width = 412
+        viewport.height = 915
+        viewport.offsetLeft = 0
+        viewport.offsetTop = 0
+        viewport.pageLeft = 0
+        viewport.pageTop = 0
+        viewport.scale = 1
+
+        Object.defineProperty(window, "visualViewport", {
+            configurable: true,
+            value: viewport,
+        })
+
+        ;(window as Window & {
+            __setPixtudioSyntheticVisualViewport?: (
+                size: { width: number; height: number }
+            ) => void
+        }).__setPixtudioSyntheticVisualViewport = (size) => {
+            viewport.width = size.width
+            viewport.height = size.height
+            viewport.dispatchEvent(new Event("resize"))
+        }
+    })
+}
+
+async function setSyntheticVisualViewport(
+    page: Page,
+    size: { width: number; height: number }
+) {
+    await page.evaluate((nextSize) => {
+        const testWindow = window as Window & {
+            __setPixtudioSyntheticVisualViewport?: (
+                size: { width: number; height: number }
+            ) => void
+        }
+        testWindow.__setPixtudioSyntheticVisualViewport?.(nextSize)
+    }, size)
 }
 
 async function downloadEditorExport(page: Page, label: RegExp) {
