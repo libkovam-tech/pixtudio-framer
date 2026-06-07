@@ -12125,8 +12125,14 @@ function PixelEditorFramer({
 
     const renderSwatchButton = (sw: Swatch) => {
         const isActive = selectedSwatch === sw.id
+        const isMobileActiveSwatch = isMobileUI && isActive
         const isPipetteSwatchLifted =
             toolMode === "pipette" && !isMobileUI && selectedSwatch === sw.id
+        const swatchTransform = isMobileActiveSwatch
+            ? "scale(1.3)"
+            : isPipetteSwatchLifted
+              ? "scale(1.15)"
+              : "scale(1)"
 
         let longPressTimeout: number | null = null
         const cancelLongPress = () => {
@@ -12176,14 +12182,13 @@ function PixelEditorFramer({
                     border: isActive
                         ? `2px solid ${pixtudioInk(0.95)}`
                         : `1px solid ${pixtudioInk(0.25)}`,
-                    transform: isPipetteSwatchLifted
-                        ? "scale(1.15)"
-                        : "scale(1)",
+                    transform: swatchTransform,
                     transformOrigin: "center",
                     transition:
                         "transform 120ms ease, box-shadow 120ms ease",
                     position: "relative",
-                    zIndex: isPipetteSwatchLifted ? 2 : 1,
+                    zIndex:
+                        isMobileActiveSwatch || isPipetteSwatchLifted ? 2 : 1,
                 }}
             />
         )
@@ -13478,49 +13483,61 @@ function PixelEditorFramer({
                                 )}
 
                                 {/* 2) transparent tool */}
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        setSelectedSwatch("transparent")
-                                    }
-                                    title={TRANSPARENT_LABEL}
-                                    style={{
-                                        width: SWATCH_PX,
-                                        height: SWATCH_PX,
-                                        borderRadius: 0,
-                                        padding: 0,
-                                        cursor: "pointer",
-                                        background: checkerBackground,
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        border:
-                                            selectedSwatch === "transparent"
-                                                ? "2px solid rgba(255,255,255,0.95)"
-                                                : "2px solid rgba(255,255,255,0.25)",
-                                        boxShadow:
-                                            selectedSwatch === "transparent"
-                                                ? `0 0 0 2px ${pixtudioInk(0.6)}`
-                                                : `0 0 0 2px ${pixtudioInk(0.35)}`,
-                                        boxSizing: "border-box",
-                                        transform:
-                                            toolMode === "pipette" &&
-                                            !isMobileUI &&
-                                            selectedSwatch === "transparent"
-                                                ? "scale(1.15)"
-                                                : "scale(1)",
-                                        transformOrigin: "center",
-                                        transition:
-                                            "transform 120ms ease, box-shadow 120ms ease",
-                                        position: "relative",
-                                        zIndex:
-                                            toolMode === "pipette" &&
-                                            !isMobileUI &&
-                                            selectedSwatch === "transparent"
-                                                ? 2
-                                                : 1,
-                                    }}
-                                />
+                                {(() => {
+                                    const isTransparentSelected =
+                                        selectedSwatch === "transparent"
+                                    const isMobileActiveTransparent =
+                                        isMobileUI && isTransparentSelected
+                                    const isTransparentPipetteLifted =
+                                        toolMode === "pipette" &&
+                                        !isMobileUI &&
+                                        isTransparentSelected
+                                    const transparentTransform =
+                                        isMobileActiveTransparent
+                                            ? "scale(1.3)"
+                                            : isTransparentPipetteLifted
+                                              ? "scale(1.15)"
+                                              : "scale(1)"
+
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setSelectedSwatch("transparent")
+                                            }
+                                            title={TRANSPARENT_LABEL}
+                                            style={{
+                                                width: SWATCH_PX,
+                                                height: SWATCH_PX,
+                                                borderRadius: 0,
+                                                padding: 0,
+                                                cursor: "pointer",
+                                                background: checkerBackground,
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                border: isTransparentSelected
+                                                    ? "2px solid rgba(255,255,255,0.95)"
+                                                    : "2px solid rgba(255,255,255,0.25)",
+                                                boxShadow: isTransparentSelected
+                                                    ? `0 0 0 2px ${pixtudioInk(0.6)}`
+                                                    : `0 0 0 2px ${pixtudioInk(0.35)}`,
+                                                boxSizing: "border-box",
+                                                transform:
+                                                    transparentTransform,
+                                                transformOrigin: "center",
+                                                transition:
+                                                    "transform 120ms ease, box-shadow 120ms ease",
+                                                position: "relative",
+                                                zIndex:
+                                                    isMobileActiveTransparent ||
+                                                    isTransparentPipetteLifted
+                                                        ? 2
+                                                        : 1,
+                                            }}
+                                        />
+                                    )
+                                })()}
 
                                 {/* 3) add button INSIDE grid (после прозрачности) */}
                                 <button
