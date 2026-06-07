@@ -123,6 +123,41 @@ test("swatch edit repaint is visible on the canvas immediately", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("editor route locks native viewport zoom", async ({ page }) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await expectEditorViewportZoomLocked(page)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("manual screen keeps native viewport zoom locked on mobile", async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "manual pinch guard is mobile-only")
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.getByRole("button", { name: "Manual button" }).click()
+    await expect(
+        page.getByRole("heading", { name: "PIXTUDIO - User Guide" })
+    ).toBeVisible()
+    await expectEditorViewportZoomLocked(page)
+
+    await expect
+        .poll(() =>
+            page.locator(".manualScrollHidden").evaluate((element) => {
+                element.scrollTop = 0
+                element.scrollTop = 120
+                return element.scrollTop
+            })
+        )
+        .toBeGreaterThan(0)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("promo navigation links reach their primary destinations", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
@@ -169,6 +204,69 @@ async function installDownloadFallbackEnvironment(page: Page) {
         } catch {
             // Best-effort test stabilization.
         }
+    })
+}
+
+async function expectEditorViewportZoomLocked(page: Page) {
+    const viewportContent = await page
+        .locator('meta[name="viewport"]')
+        .getAttribute("content")
+    expect(viewportContent).toContain("maximum-scale=1")
+    expect(viewportContent).toContain("minimum-scale=1")
+    expect(viewportContent).toContain("user-scalable=no")
+
+    await expect
+        .poll(() =>
+            page.evaluate(() => ({
+                body: document.body.classList.contains(
+                    "pixtudio-editor-viewport-lock"
+                ),
+                html: document.documentElement.classList.contains(
+                    "pixtudio-editor-viewport-lock"
+                ),
+            }))
+        )
+        .toEqual({ body: true, html: true })
+
+    const prevented = await page.evaluate(() => {
+        const touchMove = new Event("touchmove", {
+            bubbles: true,
+            cancelable: true,
+        })
+        Object.defineProperty(touchMove, "touches", { value: [{}, {}] })
+        document.dispatchEvent(touchMove)
+
+        const gestureStart = new Event("gesturestart", {
+            bubbles: true,
+            cancelable: true,
+        })
+        window.dispatchEvent(gestureStart)
+
+        const documentGestureChange = new Event("gesturechange", {
+            bubbles: true,
+            cancelable: true,
+        })
+        document.dispatchEvent(documentGestureChange)
+
+        const wheelZoom = new WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+        })
+        window.dispatchEvent(wheelZoom)
+
+        return {
+            documentGestureChange: documentGestureChange.defaultPrevented,
+            gestureStart: gestureStart.defaultPrevented,
+            touchMove: touchMove.defaultPrevented,
+            wheelZoom: wheelZoom.defaultPrevented,
+        }
+    })
+    expect(prevented).toEqual({
+        documentGestureChange: true,
+        gestureStart: true,
+        touchMove: true,
+        wheelZoom: true,
     })
 }
 

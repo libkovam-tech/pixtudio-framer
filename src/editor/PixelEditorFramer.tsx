@@ -12421,7 +12421,8 @@ function PixelEditorFramer({
                     width: editorContentWidth,
                     display: "flex",
                     justifyContent: "center",
-                    marginBottom: 12,
+                    marginTop: isMobileUI ? 6 : 0,
+                    marginBottom: isMobileUI ? 6 : 12,
                 }}
             >
                 <div
