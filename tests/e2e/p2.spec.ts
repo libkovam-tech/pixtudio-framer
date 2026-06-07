@@ -158,6 +158,44 @@ test("manual screen keeps native viewport zoom locked on mobile", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("iPadOS desktop Safari opens native camera file input", async (
+    { browser },
+    testInfo
+) => {
+    test.skip(
+        testInfo.project.name !== "desktop",
+        "custom iPadOS context covers this scenario once"
+    )
+    const context = await browser.newContext({
+        hasTouch: true,
+        isMobile: false,
+        userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        viewport: { width: 834, height: 1194 },
+    })
+    await context.addInitScript(() => {
+        Object.defineProperty(navigator, "maxTouchPoints", {
+            configurable: true,
+            get: () => 5,
+        })
+    })
+    const page = await context.newPage()
+    await installStableVisualEnvironment(page)
+    await installDownloadFallbackEnvironment(page)
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    const fileChooserPromise = page.waitForEvent("filechooser")
+    await page.getByRole("button", { name: "Camera" }).click()
+    const chooser = await fileChooserPromise
+    expect(chooser.isMultiple()).toBe(false)
+    await chooser.setFiles([])
+    await expect(page.getByText("IMPORT ERROR")).toHaveCount(0)
+
+    expect(errors.flush()).toEqual([])
+    await context.close()
+})
+
 test("quantization recorder number inputs keep focus during mobile keyboard resize", async ({
     page,
 }, testInfo) => {

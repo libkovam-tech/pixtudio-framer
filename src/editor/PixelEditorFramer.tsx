@@ -1438,6 +1438,16 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     }
 }
 
+export function isLikelyMobileCameraInputDevice(
+    userAgent: string,
+    maxTouchPoints: number
+): boolean {
+    return (
+        /Android|iPhone|iPad|iPod/i.test(userAgent) ||
+        (/Macintosh/i.test(userAgent) && maxTouchPoints > 1)
+    )
+}
+
 function rgbToCss(r: number, g: number, b: number) {
     return `rgb(${clamp255(r)}, ${clamp255(g)}, ${clamp255(b)})`
 }
@@ -15823,8 +15833,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             (!file.name || file.name.trim() === "")
         if (looksLikeCancelGhost) return
 
-        // fail-closed: only image/*
-        if (!file.type || !file.type.startsWith("image/")) {
+        if (!isLikelyRasterImageFile(file)) {
             console.error("[CAMERA][head] rejected non-image file", {
                 type: file.type,
                 name: file.name,
@@ -17148,8 +17157,10 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     function isLikelyMobileDevice(): boolean {
         if (typeof navigator === "undefined") return false
-        const ua = navigator.userAgent || ""
-        return /Android|iPhone|iPad|iPod/i.test(ua)
+        return isLikelyMobileCameraInputDevice(
+            navigator.userAgent || "",
+            navigator.maxTouchPoints || 0
+        )
     }
 
     function openSystemCameraHead() {
@@ -17554,7 +17565,15 @@ export default function PIXTUDIO_Mobile_MVP() {
                 type="file"
                 accept="image/*"
                 capture="environment"
-                style={{ display: "none" }}
+                style={{
+                    position: "fixed",
+                    left: -10000,
+                    top: 0,
+                    width: 1,
+                    height: 1,
+                    opacity: 0,
+                    pointerEvents: "none",
+                }}
                 onChange={handlePickedCamera}
             />
 
