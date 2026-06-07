@@ -9626,6 +9626,7 @@ function PixelEditorFramer({
             // LOAD уже восстановил ProjectState отдельно.
             // Здесь editor получает только committed reference snapshot,
             // без import-side reset'ов и без визуального rebuild из ref.
+            resetEditorInteractionStateForNewImport()
 
             if (initialImageData) {
                 // обычный load с reference:

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import {
+    bearProjectPath,
     collectBrowserErrors,
     fixturesDir,
     installStableVisualEnvironment,
@@ -61,6 +62,36 @@ test("open pipeline rejects unsupported files", async ({ page }) => {
     await expect(page.getByText("Import failed. Please try again.")).toBeVisible()
     await page.getByRole("button", { name: "OK" }).click()
     await expect(page.getByRole("button", { name: "Open File" })).toBeVisible()
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("loading a project resets transient editor tools", async ({ page }) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    const pipette = page.getByRole("button", { name: "Pipette tool" })
+    await pipette.click()
+    await expect
+        .poll(() => pipette.evaluate((element) => getComputedStyle(element).opacity))
+        .toBe("1")
+
+    await openProjectFileFromEditor(page)
+    await expect
+        .poll(() => pipette.evaluate((element) => getComputedStyle(element).opacity))
+        .toBe("0.85")
+
+    const hand = page.getByRole("button", { name: "Hand tool" })
+    await hand.click()
+    await expect
+        .poll(() => hand.evaluate((element) => getComputedStyle(element).opacity))
+        .toBe("1")
+
+    await openProjectFileFromEditor(page)
+    await expect
+        .poll(() => hand.evaluate((element) => getComputedStyle(element).opacity))
+        .toBe("0.85")
 
     expect(errors.flush()).toEqual([])
 })
@@ -457,6 +488,21 @@ async function setSyntheticVisualViewport(
         }
         testWindow.__setPixtudioSyntheticVisualViewport?.(nextSize)
     }, size)
+}
+
+async function openProjectFileFromEditor(page: Page) {
+    await page.getByRole("button", { name: "Open" }).click()
+    await expect(page.getByRole("button", { name: "Open file" })).toBeVisible()
+
+    const fileChooserPromise = page.waitForEvent("filechooser")
+    await page.getByRole("button", { name: "Open file" }).click()
+    const fileChooser = await fileChooserPromise
+    await fileChooser.setFiles(bearProjectPath)
+
+    await expect(page.getByRole("button", { name: "Export" })).toBeVisible({
+        timeout: 20_000,
+    })
+    await settle(page)
 }
 
 async function getCanvasContentTransform(page: Page) {
