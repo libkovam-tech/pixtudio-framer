@@ -145,7 +145,7 @@ const SMART_UI_BUTTON_ANIM_CSS = `
 }
 `
 
-const SMART_SLIDER_MAGNET_PCT = 0.035
+const SMART_SLIDER_MAGNET_PCT = 0.015
 
 function snapToDefaultValue(params: {
     value: number
@@ -168,7 +168,7 @@ function smartAdjustmentDefaultValue(
     return ZERO_SMART_REFERENCE_ADJUSTMENTS[key]
 }
 
-function snapSmartAdjustmentValue(
+export function snapSmartAdjustmentValue(
     key: keyof SmartReferenceAdjustments,
     value: number
 ): number {

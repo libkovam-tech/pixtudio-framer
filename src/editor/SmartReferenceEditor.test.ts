@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import {
     ZERO_SMART_REFERENCE_ADJUSTMENTS,
     buildReferenceSnapshot,
+    snapSmartAdjustmentValue,
 } from "./SmartReferenceEditor.tsx"
 
 class TestImageData {
@@ -25,6 +26,13 @@ class TestImageData {
 vi.stubGlobal("ImageData", TestImageData)
 
 describe("Smart Reference invariants", () => {
+    it("uses a softer snap-to-zero band for signed adjustment sliders", () => {
+        expect(snapSmartAdjustmentValue("exposure", -3)).toBe(0)
+        expect(snapSmartAdjustmentValue("exposure", 3)).toBe(0)
+        expect(snapSmartAdjustmentValue("exposure", -4)).toBe(-4)
+        expect(snapSmartAdjustmentValue("exposure", 4)).toBe(4)
+    })
+
     it("buildReferenceSnapshot(base, ZERO) returns an exact pixel copy", () => {
         const bytes = new Uint8ClampedArray([
             0, 32, 64, 255,
