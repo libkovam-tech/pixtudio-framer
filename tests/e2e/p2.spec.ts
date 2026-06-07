@@ -196,6 +196,44 @@ test("iPadOS desktop Safari opens native camera file input", async (
     await context.close()
 })
 
+test("tablet touch layout supports canvas pinch zoom", async ({
+    browser,
+}, testInfo) => {
+    test.skip(
+        testInfo.project.name !== "desktop",
+        "custom tablet touch context covers this scenario once"
+    )
+    const context = await browser.newContext({
+        hasTouch: true,
+        isMobile: false,
+        userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        viewport: { width: 834, height: 1194 },
+    })
+    await context.addInitScript(() => {
+        Object.defineProperty(navigator, "maxTouchPoints", {
+            configurable: true,
+            get: () => 5,
+        })
+    })
+    const page = await context.newPage()
+    await installStableVisualEnvironment(page)
+    await installDownloadFallbackEnvironment(page)
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    const beforeTransform = await getCanvasContentTransform(page)
+    await dispatchCanvasPinch(page, 100, 180)
+    await expect
+        .poll(() => getCanvasContentTransform(page))
+        .not.toBe(beforeTransform)
+    await expect.poll(() => getCanvasContentScale(page)).toBeGreaterThan(1)
+
+    expect(errors.flush()).toEqual([])
+    await context.close()
+})
+
 test("quantization recorder number inputs keep focus during mobile keyboard resize", async ({
     page,
 }, testInfo) => {
@@ -419,6 +457,86 @@ async function setSyntheticVisualViewport(
         }
         testWindow.__setPixtudioSyntheticVisualViewport?.(nextSize)
     }, size)
+}
+
+async function getCanvasContentTransform(page: Page) {
+    return page.locator("canvas").first().evaluate((canvas) => {
+        const contentLayer = canvas.parentElement?.parentElement
+        return contentLayer instanceof HTMLElement
+            ? contentLayer.style.transform
+            : ""
+    })
+}
+
+async function getCanvasContentScale(page: Page) {
+    return page.locator("canvas").first().evaluate((canvas) => {
+        const contentLayer = canvas.parentElement?.parentElement
+        if (!(contentLayer instanceof HTMLElement)) return 0
+        const match = contentLayer.style.transform.match(/scale\(([^)]+)\)/)
+        return match ? Number(match[1]) : 0
+    })
+}
+
+async function dispatchCanvasPinch(
+    page: Page,
+    startDistance: number,
+    currentDistance: number
+) {
+    await page.locator("canvas").first().evaluate(
+        (canvas, distances) => {
+            const rect = canvas.getBoundingClientRect()
+            const centerX = rect.left + rect.width / 2
+            const centerY = rect.top + rect.height / 2
+
+            const send = (
+                type: string,
+                pointerId: number,
+                clientX: number,
+                clientY: number
+            ) => {
+                canvas.dispatchEvent(
+                    new PointerEvent(type, {
+                        bubbles: true,
+                        cancelable: true,
+                        pointerId,
+                        pointerType: "touch",
+                        clientX,
+                        clientY,
+                        button: 0,
+                        buttons: type === "pointerup" ? 0 : 1,
+                    })
+                )
+            }
+
+            send(
+                "pointerdown",
+                1,
+                centerX - distances.startDistance / 2,
+                centerY
+            )
+            send(
+                "pointerdown",
+                2,
+                centerX + distances.startDistance / 2,
+                centerY
+            )
+            send(
+                "pointermove",
+                1,
+                centerX - distances.currentDistance / 2,
+                centerY
+            )
+            send(
+                "pointermove",
+                2,
+                centerX + distances.currentDistance / 2,
+                centerY
+            )
+            send("pointerup", 1, centerX - distances.currentDistance / 2, centerY)
+            send("pointerup", 2, centerX + distances.currentDistance / 2, centerY)
+        },
+        { startDistance, currentDistance }
+    )
 }
 
 async function downloadEditorExport(page: Page, label: RegExp) {

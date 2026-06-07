@@ -8526,9 +8526,12 @@ function PixelEditorFramer({
         return true
     }
 
+    function isCanvasTouchZoomEvent(e: any) {
+        return ENABLE_MOBILE_CANVAS_PINCH_ZOOM && e?.pointerType === "touch"
+    }
+
     function trackMobileTouchPointer(e: any) {
-        if (!ENABLE_MOBILE_CANVAS_PINCH_ZOOM) return false
-        if (!isMobileUI || e.pointerType !== "touch") return false
+        if (!isCanvasTouchZoomEvent(e)) return false
 
         const point = getViewportPointFromPointerEvent(e)
         if (!point) return false
@@ -8544,9 +8547,7 @@ function PixelEditorFramer({
         trackMobileTouchPointer(e)
 
         if (
-            ENABLE_MOBILE_CANVAS_PINCH_ZOOM &&
-            isMobileUI &&
-            e.pointerType === "touch" &&
+            isCanvasTouchZoomEvent(e) &&
             touchPointersRef.current.size >= 2
         ) {
             try {
@@ -8715,9 +8716,7 @@ function PixelEditorFramer({
         trackMobileTouchPointer(e)
 
         if (
-            ENABLE_MOBILE_CANVAS_PINCH_ZOOM &&
-            isMobileUI &&
-            e.pointerType === "touch" &&
+            isCanvasTouchZoomEvent(e) &&
             (pinchZoomSessionRef.current.active ||
                 touchPointersRef.current.size >= 2)
         ) {
@@ -10590,9 +10589,7 @@ function PixelEditorFramer({
         }
 
         if (
-            ENABLE_MOBILE_CANVAS_PINCH_ZOOM &&
-            isMobileUI &&
-            e?.pointerType === "touch"
+            isCanvasTouchZoomEvent(e)
         ) {
             touchPointersRef.current.delete(e.pointerId)
 
