@@ -108,6 +108,11 @@ function worksheetXml(params: {
     const rowHeightPt = cellSizePx * POINTS_PER_SCREEN_PIXEL
     const colWidth = excelColumnWidthForPixels(cellSizePx)
     const dimension = size > 0 ? `A1:${cellRef(size - 1, size - 1)}` : "A1"
+    const colsXml =
+        size > 0
+            ? `<cols><col min="1" max="${size}" width="${formatNumber(colWidth)}" customWidth="1"/></cols>`
+            : ""
+    const rowSpans = size > 0 ? ` spans="1:${size}"` : ""
 
     const rowsXml = rows
         .map((row, r) => {
@@ -116,11 +121,11 @@ function worksheetXml(params: {
                     if (!color) return ""
                     const style = styleByColor.get(color)
                     if (!style) return ""
-                    return `<c r="${cellRef(r, c)}" s="${style}"/>`
+                    return `<c r="${cellRef(r, c)}" s="${style}"><v>0</v></c>`
                 })
                 .join("")
 
-            return `<row r="${r + 1}">${cells}</row>`
+            return `<row r="${r + 1}"${rowSpans}>${cells}</row>`
         })
         .join("")
 
@@ -132,6 +137,7 @@ function worksheetXml(params: {
         `<dimension ref="${dimension}"/>` +
         `<sheetViews><sheetView workbookViewId="0" showGridLines="0" showRowColHeaders="0" zoomScale="100" zoomScaleNormal="100"/></sheetViews>` +
         `<sheetFormatPr baseColWidth="1" defaultColWidth="${formatNumber(colWidth)}" defaultRowHeight="${formatNumber(rowHeightPt)}" customHeight="1"/>` +
+        colsXml +
         `<sheetData>${rowsXml}</sheetData>` +
         `<pageMargins left="0.19685" right="0.19685" top="0.19685" bottom="0.19685" header="0" footer="0"/>` +
         `<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1"/>` +
@@ -149,13 +155,14 @@ function stylesXml(colors: string[]) {
     const xfs = colors
         .map(
             (_, index) =>
-                `<xf numFmtId="0" fontId="0" fillId="${index + 2}" borderId="0" xfId="0" applyFill="1"/>`
+                `<xf numFmtId="164" fontId="0" fillId="${index + 2}" borderId="0" xfId="0" applyFill="1" applyNumberFormat="1"/>`
         )
         .join("")
 
     return (
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
         `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+        `<numFmts count="1"><numFmt numFmtId="164" formatCode=";;;"/></numFmts>` +
         `<fonts count="1"><font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font></fonts>` +
         `<fills count="${colors.length + 2}"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>${fills}</fills>` +
         `<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +

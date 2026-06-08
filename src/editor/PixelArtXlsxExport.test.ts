@@ -26,13 +26,17 @@ describe("pixel art xlsx export", () => {
         expect(text).toContain("xl/worksheets/sheet1.xml")
         expect(text).toContain("xl/styles.xml")
         expect(text).toContain('<dimension ref="A1:B2"/>')
+        expect(text).toContain('<cols><col min="1" max="2"')
+        expect(text).toContain('<row r="1" spans="1:2">')
         expect(text).toContain('fitToPage="1"')
         expect(text).toContain('showRowColHeaders="0"')
         expect(text).toContain('paperSize="9"')
         expect(text).toContain('rgb="FFFF0000"')
         expect(text).toContain('rgb="FF00FF00"')
         expect(text).toContain('rgb="FF0000FF"')
-        expect(text).toContain('<c r="A1" s="1"/>')
+        expect(text).toContain('formatCode=";;;"')
+        expect(text).toContain('applyNumberFormat="1"')
+        expect(text).toContain('<c r="A1" s="1"><v>0</v></c>')
         expect(text).not.toContain('<c r="B1"')
     })
 
@@ -51,10 +55,13 @@ describe("pixel art xlsx export", () => {
         )
 
         expect(text).toContain('zoomScale="100"')
+        expect(text).toContain('<dimension ref="A1:DX128"/>')
+        expect(text).toContain('<cols><col min="1" max="128"')
+        expect(text).toContain('<row r="1" spans="1:128">')
+        expect(text).toContain('<c r="AA1" s="1"><v>0</v></c>')
         expect(text).toContain(
             'defaultColWidth="1.7143" defaultRowHeight="9" customHeight="1"'
         )
-        expect(text).not.toContain("<cols>")
         expect(text).not.toContain(' ht="')
     })
 })
