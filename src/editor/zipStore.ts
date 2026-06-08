@@ -5,6 +5,8 @@ export type ZipStoreFile = {
 
 // Store-only ZIP writer for browser-generated exports; XLSX already uses
 // zipped XML, so keeping this local avoids another runtime dependency.
+const ZIP_UTF8_FILE_NAMES_FLAG = 0x0800
+
 export function zipStore(files: ZipStoreFile[]) {
     const localParts: Uint8Array[] = []
     const centralParts: Uint8Array[] = []
@@ -39,7 +41,7 @@ function createLocalHeader(
     const view = new DataView(header.buffer)
     view.setUint32(0, 0x04034b50, true)
     view.setUint16(4, 20, true)
-    view.setUint16(6, 0, true)
+    view.setUint16(6, ZIP_UTF8_FILE_NAMES_FLAG, true)
     view.setUint16(8, 0, true)
     view.setUint16(10, 0, true)
     view.setUint16(12, 0, true)
@@ -63,7 +65,7 @@ function createCentralHeader(
     view.setUint32(0, 0x02014b50, true)
     view.setUint16(4, 20, true)
     view.setUint16(6, 20, true)
-    view.setUint16(8, 0, true)
+    view.setUint16(8, ZIP_UTF8_FILE_NAMES_FLAG, true)
     view.setUint16(10, 0, true)
     view.setUint16(12, 0, true)
     view.setUint16(14, 0, true)
