@@ -172,6 +172,7 @@ const USE_LEGACY_IMAGE_IMPORT_PICKER = false
 
 const ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS = false
 const ENABLE_PALETTE_UNDO_TRACE_LOGS = false
+const ENABLE_EXPANDED_AUTO_SWATCH_DELETE_IGNORE = true
 const ENABLE_EDITOR_HISTORY_SHORTCUT_LOGS = false
 const ENABLE_SAVE_PATH_DEBUG_OVERLAY = false
 const ENABLE_DESKTOP_CANVAS_WHEEL_ZOOM = true
@@ -1478,6 +1479,90 @@ function parseAnyColorToRgb(
     }
 
     return null
+}
+
+type OklabColor = { l: number; a: number; b: number }
+
+const AUTO_SWATCH_DELETE_OKLAB_RADIUS = 0.05
+const AUTO_SWATCH_DELETE_MAX_LIGHTNESS_DELTA = 0.08
+
+function srgbChannelToLinear01ForOklab(value: number): number {
+    const n = clamp255(value) / 255
+    return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
+}
+
+function rgbToOklabColor(rgb: {
+    r: number
+    g: number
+    b: number
+}): OklabColor {
+    const r = srgbChannelToLinear01ForOklab(rgb.r)
+    const g = srgbChannelToLinear01ForOklab(rgb.g)
+    const b = srgbChannelToLinear01ForOklab(rgb.b)
+    const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+    const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+    const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+    const l3 = Math.cbrt(l)
+    const m3 = Math.cbrt(m)
+    const s3 = Math.cbrt(s)
+
+    return {
+        l: 0.2104542553 * l3 + 0.793617785 * m3 - 0.0040720468 * s3,
+        a: 1.9779984951 * l3 - 2.428592205 * m3 + 0.4505937099 * s3,
+        b: 0.0259040371 * l3 + 0.7827717662 * m3 - 0.808675766 * s3,
+    }
+}
+
+function oklabDistance(a: OklabColor, b: OklabColor): number {
+    const dl = a.l - b.l
+    const da = a.a - b.a
+    const db = a.b - b.b
+    return Math.sqrt(dl * dl + da * da + db * db)
+}
+
+function expandDeletedAutoPaletteColorsByOklab(input: {
+    sourcePixels: (string | null)[][]
+    deletedColor: string
+    currentDeletedColors: string[]
+}): string[] {
+    const baseHex = cssColorToHex(input.deletedColor).toUpperCase()
+    if (!ENABLE_EXPANDED_AUTO_SWATCH_DELETE_IGNORE) {
+        return input.currentDeletedColors.includes(baseHex)
+            ? input.currentDeletedColors.slice()
+            : [...input.currentDeletedColors, baseHex]
+    }
+
+    const deletedRgb = parseAnyColorToRgb(baseHex)
+    if (!deletedRgb) {
+        return input.currentDeletedColors.includes(baseHex)
+            ? input.currentDeletedColors.slice()
+            : [...input.currentDeletedColors, baseHex]
+    }
+
+    const deletedLab = rgbToOklabColor(deletedRgb)
+    const radius = AUTO_SWATCH_DELETE_OKLAB_RADIUS
+    const out = new Set(input.currentDeletedColors.map((c) => c.toUpperCase()))
+    out.add(baseHex)
+
+    for (const row of input.sourcePixels) {
+        for (const color of row) {
+            if (color == null) continue
+
+            const rgb = parseAnyColorToRgb(color)
+            if (!rgb) continue
+
+            const lab = rgbToOklabColor(rgb)
+            if (
+                Math.abs(lab.l - deletedLab.l) <=
+                    AUTO_SWATCH_DELETE_MAX_LIGHTNESS_DELTA &&
+                oklabDistance(lab, deletedLab) <= radius
+            ) {
+                out.add(cssColorToHex(color).toUpperCase())
+            }
+        }
+    }
+
+    return Array.from(out)
 }
 
 function toGrayscaleGrid(pixels: (string | null)[][]): (string | null)[][] {
@@ -10958,7 +11043,18 @@ function PixelEditorFramer({
         return Number.isInteger(index) ? index : null
     }
 
-    function appendDeletedAutoPaletteColor(color: string): string[] {
+    function appendDeletedAutoPaletteColor(
+        color: string,
+        sourcePixels?: (string | null)[][]
+    ): string[] {
+        if (sourcePixels) {
+            return expandDeletedAutoPaletteColorsByOklab({
+                sourcePixels,
+                deletedColor: color,
+                currentDeletedColors: deletedAutoPaletteColors,
+            })
+        }
+
         const nextColor = cssColorToHex(color).toUpperCase()
         if (deletedAutoPaletteColors.includes(nextColor)) {
             return deletedAutoPaletteColors.slice()
@@ -11026,11 +11122,14 @@ function PixelEditorFramer({
             editingSwatchId.startsWith("auto-") &&
             originalImageData
         ) {
-            const nextDeletedColors = appendDeletedAutoPaletteColor(swatch.color)
             const sourcePixels = pixelizeFromImageDominant(
                 originalImageData,
                 gridSize,
                 16
+            )
+            const nextDeletedColors = appendDeletedAutoPaletteColor(
+                swatch.color,
+                sourcePixels
             )
             const world = buildDerivedWorld<PixelValue>({
                 profile: EXTRACT_QUANTIZATION_PROFILE,
@@ -11090,7 +11189,12 @@ function PixelEditorFramer({
             editingSwatchId
         )
         const nextDeletedColors = editingSwatchId.startsWith("auto-")
-            ? appendDeletedAutoPaletteColor(swatch.color)
+            ? appendDeletedAutoPaletteColor(
+                  swatch.color,
+                  originalImageData
+                      ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
+                      : undefined
+              )
             : deletedAutoPaletteColors.slice()
         const nextSelected =
             selectedSwatch === editingSwatchId
