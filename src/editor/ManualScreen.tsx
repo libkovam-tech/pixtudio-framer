@@ -6,15 +6,17 @@ import googleSansFlex700Url from "../assets/fonts/GoogleSansFlex-700.ttf?url"
 import googleSansFlex800Url from "../assets/fonts/GoogleSansFlex-800.ttf?url"
 
 import {
-    SvgTopButton3,
     SvgTopButton4,
     SaveIcon,
+    LoadIcon,
     UndoIcon,
     RedoIcon,
     ZoomOutIcon,
     ZoomInIcon,
     PipetteIcon,
     HandIconOff,
+    SvgCameraNewButton,
+    SvgManualButton,
     SvgSmartObject,
     SvgExportSOButton,
     SvgQuantizationRecorderButton,
@@ -187,6 +189,30 @@ function RedoIconInline({ style }: { style?: React.CSSProperties }) {
     )
 }
 
+function LoadIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 20
+    return (
+        <span style={s}>
+            <LoadIcon size={size} />
+        </span>
+    )
+}
+
+function CameraIconInline({ style }: { style?: React.CSSProperties }) {
+    return (
+        <span style={{ ...ICON_INLINE, ...style }}>
+            <SvgCameraNewButton
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "block",
+                }}
+            />
+        </span>
+    )
+}
+
 function ZoomInIconInline({ style }: { style?: React.CSSProperties }) {
     const s = { ...ICON_INLINE, ...style }
     const size = typeof s.width === "number" ? s.width : 20
@@ -223,6 +249,29 @@ function HandIconInline({ style }: { style?: React.CSSProperties }) {
     return (
         <span style={s}>
             <HandIconOff size={size} />
+        </span>
+    )
+}
+
+function ManualIconInline({ style }: { style?: React.CSSProperties }) {
+    return (
+        <span
+            style={{
+                width: 24,
+                height: 24,
+                display: "grid",
+                placeItems: "center",
+                transform: "translateX(-3px)",
+                ...style,
+            }}
+        >
+            <SvgManualButton
+                style={{
+                    width: 24,
+                    height: 24,
+                    display: "block",
+                }}
+            />
         </span>
     )
 }
@@ -646,6 +695,41 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 ),
             },
             {
+                id: "export",
+                title: "Export",
+                navLabel: "Export",
+                icon: <SvgTopButton4 style={ICON_INLINE} />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            You can export your work as PNG, SVG, or XLSX.
+                            ZIP packages all three files into one archive.
+                        </SectionCopy>
+                        <SectionCopy>
+                            PNG is useful for social media and web use. SVG is
+                            better for high-quality printing and merch. XLSX
+                            turns the canvas into colored Excel cells for office
+                            tasks, report decoration, and unusual spreadsheet
+                            headers.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Before exporting, choose which layers to include:
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                "Stroke layer: only what was painted with the brush, including transparency.",
+                                "Image layer: only the quantized base image, without brush strokes.",
+                                "Both layers: brush strokes composited over the image.",
+                            ]}
+                        />
+                        <SectionCopy muted>
+                            A transparent brush stroke creates holes in the
+                            exported composite.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
                 id: "undo",
                 title: "Undo",
                 navLabel: "Undo",
@@ -684,7 +768,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 id: "import",
                 title: "Open",
                 navLabel: "Open",
-                icon: <SvgTopButton3 style={ICON_INLINE} />,
+                icon: <LoadIconInline />,
                 content: (
                     <SectionStack>
                         <SectionCopy>
@@ -729,36 +813,31 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 ),
             },
             {
-                id: "export",
-                title: "Export",
-                navLabel: "Export",
-                icon: <SvgTopButton4 style={ICON_INLINE} />,
+                id: "camera",
+                title: "Camera",
+                navLabel: "Camera",
+                icon: <CameraIconInline />,
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            You can export your work as PNG, SVG, or XLSX.
-                            ZIP packages all three files into one archive.
+                            Camera opens your device camera so you can take a
+                            new picture and send it into PIXTUDIO.
                         </SectionCopy>
                         <SectionCopy>
-                            PNG is useful for social media and web use. SVG is
-                            better for high-quality printing and merch. XLSX
-                            turns the canvas into colored Excel cells for office
-                            tasks, report decoration, and unusual spreadsheet
-                            headers.
+                            It has its own button on the start screen and in
+                            the editor top menu. On mobile and tablets, the
+                            system camera picker opens. On desktop, PIXTUDIO
+                            uses the browser camera flow when camera access is
+                            available.
                         </SectionCopy>
                         <SectionCopy>
-                            Before exporting, choose which layers to include:
+                            After taking a picture, the preparation screen lets
+                            you crop, rotate, move, or scale the photo before
+                            applying it to the canvas.
                         </SectionCopy>
-                        <BulletList
-                            items={[
-                                "Stroke layer: only what was painted with the brush, including transparency.",
-                                "Image layer: only the quantized base image, without brush strokes.",
-                                "Both layers: brush strokes composited over the image.",
-                            ]}
-                        />
                         <SectionCopy muted>
-                            A transparent brush stroke creates holes in the
-                            exported composite.
+                            If the browser asks for camera permission, allow it
+                            to continue shooting from inside PIXTUDIO.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -841,6 +920,28 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             Drawing is disabled while this tool is active.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "manual",
+                title: "Manual",
+                navLabel: "Manual",
+                icon: <ManualIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Manual opens this user guide inside the editor.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Use it when you want to check what a button does,
+                            review export formats, or refresh the workflow
+                            without leaving the editor.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Press <b>Back to Editor</b> to close the guide and
+                            return to the current project.
                         </SectionCopy>
                     </SectionStack>
                 ),
