@@ -15,10 +15,12 @@ import {
   toAbsoluteSiteUrl,
   usePageSeo,
 } from "./structuredData"
+import faqLeftImageSrc from "./assets/faq/faq-left.png"
+import faqRightImageSrc from "./assets/faq/faq-right.png"
 import "./hub.css"
 
-const FAQ_LEFT_IMAGE_SRC = "/media/faq-left.png"
-const FAQ_RIGHT_IMAGE_SRC = "/media/faq-right.png"
+const FAQ_LEFT_IMAGE_SRC = faqLeftImageSrc
+const FAQ_RIGHT_IMAGE_SRC = faqRightImageSrc
 
 export const FAQ_ITEMS = [
   {
