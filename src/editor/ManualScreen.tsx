@@ -358,6 +358,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
         height: number
     } | null>(null)
     const cardScrollRef = React.useRef<HTMLDivElement | null>(null)
+    const navViewportRef = React.useRef<HTMLElement | null>(null)
     const navInnerRef = React.useRef<HTMLDivElement | null>(null)
     const navItemRefs = React.useRef<Record<string, HTMLAnchorElement | null>>(
         {}
@@ -976,10 +977,15 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
             const naturalHeight = Math.ceil(el.scrollHeight)
             const reservedTop = isNarrow ? 18 : 28
             const reservedBottom = 108
-            const availableHeight = Math.max(
-                120,
-                viewportHeight - reservedTop - reservedBottom
-            )
+            const measuredViewportHeight =
+                navViewportRef.current?.clientHeight ?? 0
+            const availableHeight =
+                measuredViewportHeight > 0
+                    ? measuredViewportHeight
+                    : Math.max(
+                          120,
+                          viewportHeight - reservedTop - reservedBottom
+                      )
             const nextScale =
                 naturalHeight > 0
                     ? Math.min(1, availableHeight / naturalHeight)
@@ -999,6 +1005,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
 
         const ro = new ResizeObserver(() => recompute())
         ro.observe(el)
+        if (navViewportRef.current) {
+            ro.observe(navViewportRef.current)
+        }
 
         return () => ro.disconnect()
     }, [sections, isNarrow, viewportHeight, viewportWidth])
@@ -1257,6 +1266,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                     >
                         {!isNarrow ? (
                             <aside
+                                ref={navViewportRef}
                                 style={{
                                     position: "sticky",
                                     top: 0,
@@ -1265,11 +1275,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     border: 0,
                                     borderRadius: 0,
                                     width: desktopNavColumnWidth,
-                                    height:
-                                        navBox.height > 0
-                                            ? navBox.height * navScale
-                                            : "auto",
-                                    overflow: "visible",
+                                    height: "100%",
+                                    minHeight: 0,
+                                    overflow: "hidden",
                                 }}
                             >
                                 <div
