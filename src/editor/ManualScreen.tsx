@@ -9,7 +9,6 @@ import {
     SvgTopButton3,
     SvgTopButton4,
     SaveIcon,
-    LoadIcon,
     UndoIcon,
     RedoIcon,
     ZoomOutIcon,
@@ -164,16 +163,6 @@ function SaveIconInline({ style }: { style?: React.CSSProperties }) {
     return (
         <span style={s}>
             <SaveIcon size={size} />
-        </span>
-    )
-}
-
-function LoadIconInline({ style }: { style?: React.CSSProperties }) {
-    const s = { ...ICON_INLINE, ...style }
-    const size = typeof s.width === "number" ? s.width : 20
-    return (
-        <span style={s}>
-            <LoadIcon size={size} />
         </span>
     )
 }
@@ -403,7 +392,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <BulletList
                             items={[
-                                "upload a photo,",
                                 "select an image from your gallery,",
                                 "take a picture with your camera,",
                                 "or start with a blank canvas.",
@@ -414,8 +402,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             automatically simplified and converted into a pixel
                             grid. The image keeps a reference source behind the
                             scenes, so grid size, palette size, palette
-                            presets, and Smart Object adjustments can rebuild
-                            the pixel result without destroying the source.
+                            presets, and reference image adjustments can
+                            rebuild the pixel result without destroying the
+                            source.
                         </SectionCopy>
                         <SectionCopy muted>
                             <b style={{ color: TEXT }}>Important:</b> every
@@ -437,10 +426,14 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <OrderedList
                             items={[
                                 <>
-                                    Click <b>Import</b> in the top menu or use
-                                    the image / camera icon.
+                                    On the start screen or in the editor, use{" "}
+                                    <b>Open</b> to import an image, open a saved
+                                    project, or create a blank canvas.
                                 </>,
-                                "Choose an image source or create a blank canvas.",
+                                <>
+                                    Use <b>Camera</b> on the start screen or in
+                                    the editor top menu to take a new picture.
+                                </>,
                                 "If needed, crop, move, rotate, or scale the image on the preparation screen.",
                                 "After the image appears on the canvas, adjust grid size and palette size.",
                                 "Edit colors, apply a palette preset, refine the source image, or draw using the brush tool.",
@@ -451,10 +444,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             returns to fit-to-canvas, the default brush tool is
                             restored, and temporary tool states such as Hand or
                             Eyedropper are cleared.
-                        </SectionCopy>
-                        <SectionCopy muted>
-                            Palette presets are applied after import from the
-                            Palette Presets tab. The crop screen stays neutral.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -557,15 +546,16 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             In Auto Palette, you can edit palette colors, make a
-                            swatch transparent, and add custom user swatches.
-                            Long press or right-click a swatch to open Swatch
-                            Edit.
+                            swatch transparent, delete a swatch, and add custom
+                            user swatches. Long press or right-click a swatch
+                            to open Swatch Edit.
                         </SectionCopy>
                         <BulletList
                             items={[
                                 "choose a color from the spectrum",
                                 "enter a #HEX value by hand",
                                 "make the swatch transparent",
+                                "delete the swatch",
                             ]}
                         />
                         <SectionCopy>
@@ -633,8 +623,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Saving creates a <code>.pixtudio</code> file
                             containing all project data: image, palette,
-                            drawing, Smart Object state, active palette world,
-                            and editor settings.
+                            drawing, reference image adjustments, active
+                            palette world, and editor settings.
                         </SectionCopy>
                         <SectionCopy>
                             Use it when you want to continue working later
@@ -650,29 +640,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             Save Project is different from Export: it saves an
                             editable project, not a final PNG, SVG, XLSX, ZIP,
                             or video file.
-                        </SectionCopy>
-                    </SectionStack>
-                ),
-            },
-            {
-                id: "load-project",
-                title: "Load Project",
-                navLabel: "Load Project",
-                icon: <LoadIconInline />,
-                content: (
-                    <SectionStack>
-                        <SectionCopy>
-                            Loading a project completely replaces the current
-                            editor state with the contents of a saved{" "}
-                            <code>.pixtudio</code> file.
-                        </SectionCopy>
-                        <SectionCopy>
-                            The saved grid, palette, drawings, imported palette
-                            state, and Smart Object adjustments are restored
-                            together.
-                        </SectionCopy>
-                        <SectionCopy muted>
-                            The undo history is cleared after loading.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -714,19 +681,26 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
             },
             {
                 id: "import",
-                title: "Import",
-                navLabel: "Import",
+                title: "Open",
+                navLabel: "Open",
                 icon: <SvgTopButton3 style={ICON_INLINE} />,
                 content: (
                     <SectionStack>
-                        <SectionCopy>You can:</SectionCopy>
+                        <SectionCopy>
+                            Open collects every file-based way to start or
+                            replace work:
+                        </SectionCopy>
                         <BulletList
                             items={[
-                                "upload JPG/PNG files,",
-                                "capture an image using your device camera,",
-                                "create a blank transparent canvas.",
+                                "import JPG/PNG images",
+                                "open a saved .pixtudio project",
+                                "create a blank transparent canvas",
                             ]}
                         />
+                        <SectionCopy>
+                            Camera has its own button on the start screen and in
+                            the editor top menu.
+                        </SectionCopy>
                         <SectionCopy>
                             Before the image reaches the canvas, a preparation
                             screen appears where you can adjust scale, rotate
@@ -738,9 +712,17 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             desktop, or two fingers on touch devices to refine
                             the crop before applying it.
                         </SectionCopy>
+                        <SectionCopy>
+                            Opening a saved project completely replaces the
+                            current editor state with the contents of the
+                            selected <code>.pixtudio</code> file. The saved
+                            grid, palette, drawings, imported palette state,
+                            and reference image adjustments are restored
+                            together.
+                        </SectionCopy>
                         <SectionCopy muted>
-                            Import does not apply a color preset. Use Palette
-                            Presets after the image reaches the editor.
+                            The undo history is cleared after opening a saved
+                            project.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -793,8 +775,10 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             On desktop, the mouse wheel also zooms in and out
-                            when the cursor is inside the canvas. Zoom Out never
-                            makes the image smaller than fit-to-canvas.
+                            when the cursor is inside the canvas. On
+                            touchscreens, use a two-finger pinch gesture on the
+                            canvas to zoom out or zoom in. Zoom Out never makes
+                            the image smaller than fit-to-canvas.
                         </SectionCopy>
                         <SectionCopy muted>
                             Long press or right-click on Zoom Out resets the
@@ -937,8 +921,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            This button opens the Smart Object / reference image
-                            editor.
+                            This button opens the reference image editor.
                         </SectionCopy>
                         <SectionCopy>
                             Here you can adjust exposure and contrast, increase
@@ -950,8 +933,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             These changes are non-destructive. Apply publishes
                             the adjusted reference back to the pixel editor,
                             Cancel leaves the previous reference unchanged, and
-                            the saved project keeps the applied Smart Object
-                            state.
+                            the saved project keeps the applied reference image
+                            adjustments.
                         </SectionCopy>
                         <SectionCopy>
                             <span

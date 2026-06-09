@@ -45,11 +45,11 @@ export const SITE_ROUTE_SEO = {
   how: {
     title: "PIXTUDIO How It Works - Pixel Art Editor Guide",
     description:
-      "Explore PIXTUDIO feature scenarios for importing photos, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, and recording video.",
+      "Explore PIXTUDIO feature scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording video.",
     path: "/how-it-works/",
     ogTitle: "PIXTUDIO How It Works - Pixel Art Editor Guide",
     ogDescription:
-      "See how PIXTUDIO works: import photos, draw from scratch, edit palettes, export pixel art, save projects, and record the pixelization process.",
+      "See how PIXTUDIO works: open files, draw from scratch, edit palettes, export pixel art, save projects, and record the pixelization process.",
     ogType: "website",
   },
   gallery: {

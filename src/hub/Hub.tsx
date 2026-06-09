@@ -103,7 +103,7 @@ const MOBILE_INFO_CARDS = [
   },
   {
     title: ["MORE THAN", "A GENERATOR"],
-    body: "Manual drawing, project saving, Smart Object, and full editing tools. Start fast, finish pro.",
+    body: "Manual drawing, project saving, reference image adjustments, and full editing tools. Start fast, finish pro.",
   },
 ]
 

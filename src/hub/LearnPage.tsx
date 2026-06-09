@@ -113,13 +113,13 @@ const ARTICLE_IMAGE_PAIRS: Record<
     alt: "One portrait transformed into pixel art with different imported color palettes",
   },
   adjustments: {
-    left: adjustments1Src,
-    right: adjustments2Src,
+    left: adjustments2Src,
+    right: adjustments1Src,
     alt: "PIXTUDIO adjustment examples showing edited and neutral settings",
   },
   refinement: {
-    left: refinement1Src,
-    right: refinement2Src,
+    left: refinement2Src,
+    right: refinement1Src,
     alt: "Manual refinement example showing a photo and the final pixel art result",
   },
   merch: {

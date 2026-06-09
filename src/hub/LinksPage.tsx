@@ -18,6 +18,10 @@ const PALETTE_LINKS = [
     label: "Coolors Trending Palettes",
     href: "https://coolors.co/palettes/trending",
   },
+  {
+    label: "Palette Inspiration",
+    href: "https://paletteinspiration.com/?ref=producthunt",
+  },
 ]
 
 export default function LinksPage() {

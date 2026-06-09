@@ -28,21 +28,21 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Start with a Photo",
     paragraphs: [
-      "Tap the Image icon on the home screen or in the Import menu at the top. Choose a photo from your gallery, crop it to a square, rotate or scale if needed.",
+      "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place - choose an image, crop it to a square, rotate or scale if needed.",
       "PIXTUDIO instantly converts it into beautiful pixel art. Discover your familiar photos from a fresh, unexpected new side - often revealing charm you never noticed before.",
     ],
   },
   {
     title: "Shoot with Camera",
     paragraphs: [
-      "Tap the Camera icon on the home screen or in the Import menu at the top. Take a photo directly with your device, crop it to a square, rotate or scale if needed.",
+      "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, crop it to a square, rotate or scale if needed.",
       "Watch as your photo transforms into pixel art in real time - great for spontaneous ideas and quick creative experiments.",
     ],
   },
   {
     title: "Draw from a Blank Canvas",
     paragraphs: [
-      "Tap the Blank Canvas icon on the home screen or in the Import menu at the top. Choose your brush size and start drawing with colors from the auto palette or import your own.",
+      "Tap the Blank Canvas icon on the home screen, or open the top-menu Open panel in the editor and choose Blank Canvas. Choose your brush size and start drawing with colors from the auto palette or import your own.",
       "Perfect when you want to create original pixel art completely from scratch and enjoy the pure creative process.",
     ],
   },
@@ -56,7 +56,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Open a Saved Project",
     paragraphs: [
-      "Tap the Folder icon on the home screen or in the top menu, then select your .pixtudio file.",
+      "Tap the Open icon on the home screen or in the top menu, then select your .pixtudio file.",
       "Quickly return to any of your projects and continue right where you stopped.",
     ],
   },
@@ -64,20 +64,20 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     title: "Export Your Pixel Art",
     paragraphs: [
       "Tap the Export icon in the top menu.",
-      "Export as PNG for social media and web use, SVG for high-quality printing and merch, or XLSX for office tasks and spreadsheet decoration. You can export the base pixel art, your brush drawings, or everything together.",
+      "Export as PNG for social media and web use, SVG for high-quality printing and merch, XLSX for office tasks and spreadsheet decoration, or ZIP to package PNG, SVG, and XLSX together. You can export the base pixel art, your brush drawings, or everything together.",
     ],
   },
   {
     title: "Edit Color Swatches",
     paragraphs: [
       "Click or long-tap any color in the palette.",
-      "Change a color and watch as all connected pixels on the canvas update instantly. This makes experimenting with different moods and styles incredibly fast and satisfying.",
+      "Change a color, make a swatch transparent, or delete it from the palette. All connected pixels on the canvas update instantly, making experiments with different moods and styles fast and satisfying.",
     ],
   },
   {
     title: "Add New Custom Colors",
     paragraphs: [
-      "Tap the New Color button in the palette.",
+      "Tap the Add Swatch button in the palette.",
       "Create your own colors that stay exactly where you placed them - giving you full control and creative freedom even when changing grid size.",
     ],
   },
@@ -85,21 +85,21 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     title: "Apply Custom Palette",
     paragraphs: [
       "Go to the Palette Presets tab and import a palette from any image or saved project.",
-      "Instantly give your artwork a completely new look using your own colors or built-in presets (Neon, Grayscale, Black & White).",
+      "Instantly give your artwork a completely new look using your own colors or built-in presets (Sunset, Grayscale, Black & White).",
     ],
   },
   {
     title: "Fine-Tune the Source Image",
     paragraphs: [
-      "Tap the adjustment icon below the canvas to open smart editing tools.",
+      "Tap the reference image button below the canvas to open image adjustment controls.",
       "Non-destructively adjust Exposure, Highlights, Midtones, Shadows, Saturation, and White Balance. These live adjustments let you perfect the mood and quality of the original image before turning it into pixel art.",
     ],
   },
   {
     title: "Record Pixelization Video",
     paragraphs: [
-      "Tap the Record button below the canvas.",
-      "Create a beautiful timelapse video of the pixelization process. Adjust speed, colors, direction, add music, and export as MP4 - perfect for TikTok, Instagram Reels, and YouTube Shorts.",
+      "Tap the Pixelization Record button below the canvas.",
+      "Create a beautiful timelapse video of the pixelization process. Adjust grid and palette ranges, direction, duration, add an audio track, and export as MP4 - perfect for TikTok, Instagram Reels, and YouTube Shorts.",
     ],
   },
   {
@@ -155,7 +155,7 @@ export default function HowItWorksPage() {
           name: "How PIXTUDIO Works",
           url: toAbsoluteSiteUrl("/how-it-works/"),
           description:
-            "Explore PIXTUDIO scenarios for importing photos, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, and recording the pixelization process.",
+            "Explore PIXTUDIO scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording the pixelization process.",
           image: SITE_OG_IMAGE_URL,
           isPartOf: { "@id": SITE_SCHEMA_IDS.website },
           publisher: { "@id": SITE_SCHEMA_IDS.organization },

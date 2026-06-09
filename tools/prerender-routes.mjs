@@ -34,10 +34,10 @@ const routeSeo = {
     output: "dist/how-it-works/index.html",
     title: "PIXTUDIO How It Works - Pixel Art Editor Guide",
     description:
-      "Explore PIXTUDIO feature scenarios for importing photos, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, and recording video.",
+      "Explore PIXTUDIO feature scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording video.",
     ogTitle: "PIXTUDIO How It Works - Pixel Art Editor Guide",
     ogDescription:
-      "See how PIXTUDIO works: import photos, draw from scratch, edit palettes, export pixel art, save projects, and record the pixelization process.",
+      "See how PIXTUDIO works: open files, draw from scratch, edit palettes, export pixel art, save projects, and record the pixelization process.",
     ogType: "website",
   },
   gallery: {
@@ -110,7 +110,7 @@ const homeCards = [
   ],
   [
     "MORE THAN A GENERATOR",
-    "Manual drawing, project saving, Smart Object, and full editing tools. Start fast, finish pro.",
+    "Manual drawing, project saving, reference image adjustments, and full editing tools. Start fast, finish pro.",
   ],
 ]
 
@@ -168,15 +168,15 @@ const faqItems = [
 const howItems = [
   [
     "Start with a Photo",
-    "Choose a photo from your gallery, crop it to a square, rotate or scale if needed, and PIXTUDIO instantly converts it into pixel art.",
+    "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place - choose an image, crop it to a square, rotate or scale if needed. PIXTUDIO instantly converts it into beautiful pixel art.",
   ],
   [
     "Shoot with Camera",
-    "Take a photo directly with your device and watch it transform into pixel art in real time.",
+    "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, crop it to a square, rotate or scale if needed, and watch it transform into pixel art.",
   ],
   [
     "Draw from a Blank Canvas",
-    "Start drawing from scratch with brush size control, auto palette colors, or your own imported palette.",
+    "Tap the Blank Canvas icon on the home screen, or open the top-menu Open panel in the editor and choose Blank Canvas. Choose your brush size and start drawing with colors from the auto palette or import your own.",
   ],
   [
     "Save Your Project",
@@ -184,15 +184,15 @@ const howItems = [
   ],
   [
     "Open a Saved Project",
-    "Open a .pixtudio file and return to any project exactly where you stopped.",
+    "Tap the Open icon on the home screen or in the top menu, then select your .pixtudio file. Quickly return to any of your projects and continue right where you stopped.",
   ],
   [
     "Export Your Pixel Art",
-    "Export PNG for social media and web use, SVG for high-quality printing and merch, or XLSX for office and spreadsheet art.",
+    "Export as PNG for social media and web use, SVG for high-quality printing and merch, XLSX for office tasks and spreadsheet decoration, or ZIP to package PNG, SVG, and XLSX together.",
   ],
   [
     "Edit Color Swatches",
-    "Change any palette color and all connected pixels on the canvas update instantly.",
+    "Change a color, make a swatch transparent, or delete it from the palette. All connected pixels on the canvas update instantly.",
   ],
   [
     "Add New Custom Colors",
@@ -200,11 +200,11 @@ const howItems = [
   ],
   [
     "Apply Custom Palette",
-    "Import a palette from an image or saved project and instantly give your artwork a new look.",
+    "Import a palette from any image or saved project and instantly give your artwork a new look using your own colors or built-in presets such as Sunset, Grayscale, and Black & White.",
   ],
   [
     "Fine-Tune the Source Image",
-    "Adjust Exposure, Highlights, Midtones, Shadows, Saturation, and White Balance non-destructively.",
+    "Tap the reference image button below the canvas to open image adjustment controls. Adjust Exposure, Highlights, Midtones, Shadows, Saturation, and White Balance non-destructively.",
   ],
   [
     "Record Pixelization Video",
@@ -420,7 +420,7 @@ function renderHow() {
   return `
     <main class="prerenderPage" data-prerender-route="/how-it-works/">
       <h1>How PIXTUDIO Works</h1>
-      <p>Explore PIXTUDIO scenarios for importing photos, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, and recording the pixelization process.</p>
+      <p>Explore PIXTUDIO scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, and recording the pixelization process.</p>
       <section class="prerenderGrid" aria-label="PIXTUDIO feature scenarios">
         ${renderList(howItems)}
       </section>
@@ -470,6 +470,7 @@ function renderLinks() {
         <ul>
           <li><a href="https://colrd.com/palette/">https://colrd.com/palette/</a></li>
           <li><a href="https://coolors.co/palettes/trending">https://coolors.co/palettes/trending</a></li>
+          <li><a href="https://paletteinspiration.com/?ref=producthunt">https://paletteinspiration.com/?ref=producthunt</a></li>
         </ul>
       </section>
     </main>`
@@ -717,6 +718,7 @@ function routeStructuredData(routeKey) {
     const paletteLinks = [
       ["ColRD Palettes", "https://colrd.com/palette/"],
       ["Coolors Trending Palettes", "https://coolors.co/palettes/trending"],
+      ["Palette Inspiration", "https://paletteinspiration.com/?ref=producthunt"],
     ]
 
     return {
