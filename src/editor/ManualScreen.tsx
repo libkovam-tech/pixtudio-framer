@@ -1117,8 +1117,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
         : Math.max(80, Math.min(500, Math.floor((viewportWidth - 760) / 2)))
     const contentBottomInset = isNarrow ? 28 : 28
     const desktopBackLeft = Math.max(40, Math.round(desktopGutter * 0.22))
-    const navViewportHeight =
-        navBox.height > 0 ? Math.round(navBox.height * navScale) : 0
     const desktopNavColumnWidth = 236
 
     const navBase: React.CSSProperties = {
@@ -1254,10 +1252,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                 : `${desktopNavColumnWidth}px minmax(0, 1fr)`,
                             gap: isNarrow ? 14 : 36,
                             alignItems: "start",
-                            height:
-                                isNarrow || navViewportHeight <= 0
-                                    ? "100%"
-                                    : navViewportHeight,
+                            height: "100%",
                         }}
                     >
                         {!isNarrow ? (
@@ -1386,10 +1381,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             style={{
                                 minHeight: 0,
                                 minWidth: 0,
-                                height:
-                                    isNarrow || navViewportHeight <= 0
-                                        ? "100%"
-                                        : navViewportHeight,
+                                height: "100%",
                             }}
                         >
                             <section
