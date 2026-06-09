@@ -820,24 +820,21 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            Camera opens your device camera so you can take a
-                            new picture and send it into PIXTUDIO.
+                            Camera starts the same image-opening flow as Open,
+                            but uses your device camera as the source. The
+                            photo becomes the reference image that PIXTUDIO
+                            quantizes into pixel art.
                         </SectionCopy>
                         <SectionCopy>
                             It has its own button on the start screen and in
-                            the editor top menu. On mobile and tablets, the
-                            system camera picker opens. On desktop, PIXTUDIO
-                            uses the browser camera flow when camera access is
-                            available.
+                            the editor top menu. Use it when you want to create
+                            the quantization source directly from the camera
+                            instead of choosing an existing file.
                         </SectionCopy>
                         <SectionCopy>
                             After taking a picture, the preparation screen lets
                             you crop, rotate, move, or scale the photo before
                             applying it to the canvas.
-                        </SectionCopy>
-                        <SectionCopy muted>
-                            If the browser asks for camera permission, allow it
-                            to continue shooting from inside PIXTUDIO.
                         </SectionCopy>
                     </SectionStack>
                 ),
