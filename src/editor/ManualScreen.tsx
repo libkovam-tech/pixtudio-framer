@@ -1285,6 +1285,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     style={{
                                         ...navBase,
                                         position: "relative",
+                                        height: "100%",
+                                        minHeight: 0,
+                                        alignContent: "space-between",
                                         transform: `scale(${navScale})`,
                                         transformOrigin: "top left",
                                     }}
