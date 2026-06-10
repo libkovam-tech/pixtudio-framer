@@ -137,7 +137,6 @@ const DESKTOP_SEO_COPY = [
 const MOBILE_CARD_TITLE_LINES = MOBILE_INFO_CARDS.flatMap((card) => card.title)
 const MOBILE_CAROUSEL_REPEAT_COUNT = 9
 const MOBILE_CAROUSEL_CENTER_REPEAT = Math.floor(MOBILE_CAROUSEL_REPEAT_COUNT / 2)
-const MOBILE_CAROUSEL_INITIAL_CARD = 1
 const MOBILE_CAROUSEL_ITEMS = Array.from({
   length: MOBILE_CAROUSEL_REPEAT_COUNT * MOBILE_INFO_CARDS.length,
 }).map((_, index) => ({
@@ -676,7 +675,11 @@ export default function Hub() {
   const mobileSwipeStartYRef = useRef<number | null>(null)
   const mobileSwipeStartOffsetXRef = useRef(0)
   const mobileSwipePointerIdRef = useRef<number | null>(null)
+  const mobileCarouselBaseOffsetRef = useRef(0)
   const mobileCarouselCycleWidthRef = useRef(0)
+  const mobileCarouselInitialPositionedRef = useRef(false)
+  const mobileCarouselInitialSnapFrameRef = useRef<number | null>(null)
+  const mobileCardsSnapTimeoutRef = useRef<number | null>(null)
   const mobileHeadlineRef = useRef<HTMLHeadingElement | null>(null)
   const mobileCardsRef = useRef<HTMLElement | null>(null)
   const mobileCardRailRef = useRef<HTMLDivElement | null>(null)
@@ -715,8 +718,6 @@ export default function Hub() {
   const [mobileCardTitleFontSize, setMobileCardTitleFontSize] = useState(34)
   const [mobileCardBodyFontSize, setMobileCardBodyFontSize] = useState(14)
   const [mobileHeadlineFontSize, setMobileHeadlineFontSize] = useState(36)
-  const [mobileCarouselAnchorX, setMobileCarouselAnchorX] = useState(0)
-  const [mobileCarouselCenterX, setMobileCarouselCenterX] = useState(0)
   const [mobileCarouselOffsetX, setMobileCarouselOffsetX] = useState(0)
 
   useEffect(() => {
@@ -821,10 +822,19 @@ export default function Hub() {
     const rail = mobileCardRailRef.current
     if (!rail) return
 
-    rail.style.transform = `translateX(${
-      mobileCarouselCenterX - mobileCarouselAnchorX + mobileCarouselOffsetX
-    }px)`
-  }, [mobileCarouselAnchorX, mobileCarouselCenterX, mobileCarouselOffsetX])
+    rail.style.transform = `translateX(${mobileCarouselOffsetX}px)`
+  }, [mobileCarouselOffsetX])
+
+  useEffect(() => {
+    return () => {
+      if (mobileCardsSnapTimeoutRef.current != null) {
+        window.clearTimeout(mobileCardsSnapTimeoutRef.current)
+      }
+      if (mobileCarouselInitialSnapFrameRef.current != null) {
+        window.cancelAnimationFrame(mobileCarouselInitialSnapFrameRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     desktopOrbitStepRef.current = desktopOrbitStep
@@ -1437,32 +1447,134 @@ export default function Hub() {
     if (typeof window === "undefined") return
 
     let disposed = false
+    let initialSnapCompleted = false
+    let initialSnapStabilityTimeout: number | null = null
+    let initialSnapResizeObserver: ResizeObserver | null = null
+
+    const cancelInitialSnapFrame = () => {
+      if (initialSnapStabilityTimeout != null) {
+        window.clearTimeout(initialSnapStabilityTimeout)
+        initialSnapStabilityTimeout = null
+      }
+      if (mobileCarouselInitialSnapFrameRef.current != null) {
+        window.cancelAnimationFrame(mobileCarouselInitialSnapFrameRef.current)
+        mobileCarouselInitialSnapFrameRef.current = null
+      }
+    }
+
+    const runInitialSnap = () => {
+      if (disposed || initialSnapCompleted) return
+
+      const currentViewport = mobileCardsRef.current
+      const currentRail = mobileCardRailRef.current
+      if (!currentViewport || !currentRail) return
+
+      const currentCycleStart = currentViewport.querySelector<HTMLElement>(
+        `[data-carousel-item="${MOBILE_CAROUSEL_CENTER_REPEAT * MOBILE_INFO_CARDS.length}"]`
+      )
+      const currentNextCycleStart =
+        currentViewport.querySelector<HTMLElement>(
+          `[data-carousel-item="${(MOBILE_CAROUSEL_CENTER_REPEAT + 1) * MOBILE_INFO_CARDS.length}"]`
+        )
+      if (!currentCycleStart || !currentNextCycleStart) return
+
+      initialSnapCompleted = true
+      initialSnapResizeObserver?.disconnect()
+      initialSnapResizeObserver = null
+
+      const currentCycleWidth =
+        currentNextCycleStart.offsetLeft - currentCycleStart.offsetLeft
+      const currentBaseOffset = -currentCycleStart.offsetLeft
+      mobileCarouselCycleWidthRef.current = currentCycleWidth
+      mobileCarouselBaseOffsetRef.current = currentBaseOffset
+      currentRail.style.setProperty(
+        "transform",
+        `translateX(${currentBaseOffset}px)`
+      )
+
+      const viewportRect = currentViewport.getBoundingClientRect()
+      const viewportCenterX = viewportRect.left + viewportRect.width / 2
+      const cards = Array.from(
+        currentViewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
+      )
+      let closestDelta = 0
+      let closestDistance = Number.POSITIVE_INFINITY
+
+      for (const card of cards) {
+        const cardRect = card.getBoundingClientRect()
+        const cardCenterX = cardRect.left + cardRect.width / 2
+        const delta = cardCenterX - viewportCenterX
+        const distance = Math.abs(delta)
+        if (distance < closestDistance) {
+          closestDelta = delta
+          closestDistance = distance
+        }
+      }
+
+      let normalized = currentBaseOffset - closestDelta
+      while (normalized > currentBaseOffset + currentCycleWidth / 2) {
+        normalized -= currentCycleWidth
+      }
+      while (normalized < currentBaseOffset - currentCycleWidth / 2) {
+        normalized += currentCycleWidth
+      }
+      currentRail.style.setProperty("transform", `translateX(${normalized}px)`)
+      setMobileCarouselOffsetX(normalized)
+    }
+
+    const scheduleInitialSnap = () => {
+      if (disposed || initialSnapCompleted) return
+
+      cancelInitialSnapFrame()
+      initialSnapStabilityTimeout = window.setTimeout(() => {
+        initialSnapStabilityTimeout = null
+        if (disposed || initialSnapCompleted) return
+
+        mobileCarouselInitialSnapFrameRef.current =
+          window.requestAnimationFrame(() => {
+            mobileCarouselInitialSnapFrameRef.current =
+              window.requestAnimationFrame(() => {
+                mobileCarouselInitialSnapFrameRef.current = null
+                runInitialSnap()
+              })
+          })
+      }, 120)
+    }
 
     const measureCarousel = () => {
       const viewport = mobileCardsRef.current
       if (!viewport) return
 
-      const targetIndex =
-        MOBILE_CAROUSEL_CENTER_REPEAT * MOBILE_INFO_CARDS.length +
-        MOBILE_CAROUSEL_INITIAL_CARD
-      const target = viewport.querySelector<HTMLElement>(
-        `[data-carousel-item="${targetIndex}"]`
-      )
       const cycleStart = viewport.querySelector<HTMLElement>(
         `[data-carousel-item="${MOBILE_CAROUSEL_CENTER_REPEAT * MOBILE_INFO_CARDS.length}"]`
       )
       const nextCycleStart = viewport.querySelector<HTMLElement>(
         `[data-carousel-item="${(MOBILE_CAROUSEL_CENTER_REPEAT + 1) * MOBILE_INFO_CARDS.length}"]`
       )
-      if (!target || !cycleStart || !nextCycleStart) return
-
-      const anchor = target.offsetLeft + target.offsetWidth / 2
+      if (!cycleStart || !nextCycleStart) return
       const cycleWidth = nextCycleStart.offsetLeft - cycleStart.offsetLeft
 
       if (!disposed) {
         mobileCarouselCycleWidthRef.current = cycleWidth
-        setMobileCarouselAnchorX(anchor)
-        setMobileCarouselCenterX(viewport.clientWidth / 2)
+
+        if (!mobileCarouselInitialPositionedRef.current) {
+          mobileCarouselInitialPositionedRef.current = true
+          const baseOffset = -cycleStart.offsetLeft
+          mobileCarouselBaseOffsetRef.current = baseOffset
+          setMobileCarouselOffsetX(baseOffset)
+          mobileCardRailRef.current?.style.setProperty(
+            "transform",
+            `translateX(${baseOffset}px)`
+          )
+
+          initialSnapResizeObserver = new ResizeObserver(scheduleInitialSnap)
+          viewport
+            .querySelectorAll<HTMLElement>(".hubMobileInfoCard")
+            .forEach((card) => initialSnapResizeObserver?.observe(card))
+          scheduleInitialSnap()
+          const fontsReady = document.fonts?.ready ?? Promise.resolve()
+          void fontsReady.then(scheduleInitialSnap)
+        }
       }
     }
 
@@ -1477,6 +1589,9 @@ export default function Hub() {
 
     return () => {
       disposed = true
+      mobileCarouselInitialPositionedRef.current = false
+      initialSnapResizeObserver?.disconnect()
+      cancelInitialSnapFrame()
       resizeObserver.disconnect()
       window.removeEventListener("resize", measureCarousel)
     }
@@ -1667,17 +1782,61 @@ export default function Hub() {
     }
   }, [])
 
-  const normalizeMobileCarouselOffset = (offset: number) => {
+  const normalizeMobileCarouselOffset = useCallback((offset: number) => {
     const cycleWidth = mobileCarouselCycleWidthRef.current
     if (!cycleWidth) return offset
 
+    const baseOffset = mobileCarouselBaseOffsetRef.current
     let normalized = offset
-    while (normalized > cycleWidth / 2) normalized -= cycleWidth
-    while (normalized < -cycleWidth / 2) normalized += cycleWidth
+    while (normalized > baseOffset + cycleWidth / 2) normalized -= cycleWidth
+    while (normalized < baseOffset - cycleWidth / 2) normalized += cycleWidth
     return normalized
-  }
+  }, [])
+
+  const getMobileCarouselSnapOffset = useCallback((offset: number) => {
+    const viewport = mobileCardsRef.current
+    const cycleWidth = mobileCarouselCycleWidthRef.current
+    if (!viewport || !cycleWidth) return normalizeMobileCarouselOffset(offset)
+
+    const viewportRect = viewport.getBoundingClientRect()
+    const viewportCenterX = viewportRect.left + viewportRect.width / 2
+    const cards = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
+    )
+    let closestDelta = 0
+    let closestDistance = Number.POSITIVE_INFINITY
+
+    for (const card of cards) {
+      const cardRect = card.getBoundingClientRect()
+      const cardCenterX = cardRect.left + cardRect.width / 2
+      const delta = cardCenterX - viewportCenterX
+      const distance = Math.abs(delta)
+      if (distance < closestDistance) {
+        closestDelta = delta
+        closestDistance = distance
+      }
+    }
+
+    return normalizeMobileCarouselOffset(offset - closestDelta)
+  }, [normalizeMobileCarouselOffset])
+
+  const snapMobileCardsToCenter = useCallback(() => {
+    if (mobileCardsSnapTimeoutRef.current != null) {
+      window.clearTimeout(mobileCardsSnapTimeoutRef.current)
+    }
+
+    setMobileCarouselOffsetX((offset) => getMobileCarouselSnapOffset(offset))
+    mobileCardsSnapTimeoutRef.current = window.setTimeout(() => {
+      mobileCardsSnapTimeoutRef.current = null
+    }, 0)
+  }, [getMobileCarouselSnapOffset])
 
   const handleMobileCardsPointerDown = (event: React.PointerEvent) => {
+    if (mobileCardsSnapTimeoutRef.current != null) {
+      window.clearTimeout(mobileCardsSnapTimeoutRef.current)
+      mobileCardsSnapTimeoutRef.current = null
+    }
+
     mobileSwipeStartXRef.current = event.clientX
     mobileSwipeStartYRef.current = event.clientY
     mobileSwipeStartOffsetXRef.current = mobileCarouselOffsetX
@@ -1702,13 +1861,34 @@ export default function Hub() {
   }
 
   const handleMobileCardsPointerUp = (event: React.PointerEvent) => {
+    if (
+      mobileSwipePointerIdRef.current != null &&
+      mobileSwipePointerIdRef.current !== event.pointerId
+    ) {
+      return
+    }
+
     mobileSwipeStartXRef.current = null
     mobileSwipeStartYRef.current = null
     mobileSwipePointerIdRef.current = null
     if (!MOBILE_SEO_SECOND_SCREEN_ENABLED) {
       event.currentTarget.releasePointerCapture?.(event.pointerId)
     }
-    setMobileCarouselOffsetX((offset) => normalizeMobileCarouselOffset(offset))
+    snapMobileCardsToCenter()
+  }
+
+  const handleMobileCardsPointerCancel = (event: React.PointerEvent) => {
+    if (
+      mobileSwipePointerIdRef.current != null &&
+      mobileSwipePointerIdRef.current !== event.pointerId
+    ) {
+      return
+    }
+
+    mobileSwipeStartXRef.current = null
+    mobileSwipeStartYRef.current = null
+    mobileSwipePointerIdRef.current = null
+    snapMobileCardsToCenter()
   }
 
   const handleDesktopWheel = (event: React.WheelEvent) => {
@@ -1909,11 +2089,7 @@ export default function Hub() {
               onPointerDown={handleMobileCardsPointerDown}
               onPointerMove={handleMobileCardsPointerMove}
               onPointerUp={handleMobileCardsPointerUp}
-              onPointerCancel={() => {
-                mobileSwipeStartXRef.current = null
-                mobileSwipeStartYRef.current = null
-                mobileSwipePointerIdRef.current = null
-              }}
+              onPointerCancel={handleMobileCardsPointerCancel}
             >
               <div
                 ref={mobileCardRailRef}
