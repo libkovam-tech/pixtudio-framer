@@ -234,6 +234,14 @@ const galleryItems = [
     "Pixel art created from a real photo with soft in-app retouching and an auto-generated palette.",
   ],
   [
+    "Musician portrait",
+    "Expressive musician portrait transformed into bold pixel art with a dramatic custom palette.",
+  ],
+  [
+    "Toy character",
+    "Toy character turned into game-ready pixel art with clean shapes and a playful limited palette.",
+  ],
+  [
     "Fashion portrait",
     "Gallery photo enhanced with editing tools and loaded palette preset.",
   ],

@@ -10,6 +10,8 @@ import {
 import galleryAfter1 from "./assets/gallery/gallery-after-1.png"
 import galleryAfter10 from "./assets/gallery/gallery-after-10.png"
 import galleryAfter11 from "./assets/gallery/gallery-after-11.png"
+import galleryAfter12 from "./assets/gallery/gallery-after-12.jpg"
+import galleryAfter13 from "./assets/gallery/gallery-after-13.png"
 import galleryAfter5 from "./assets/gallery/gallery-after-5.png"
 import galleryAfter6 from "./assets/gallery/gallery-after-6.png"
 import galleryAfter7 from "./assets/gallery/gallery-after-7.png"
@@ -18,6 +20,8 @@ import galleryAfter9 from "./assets/gallery/gallery-after-9.png"
 import galleryBefore1 from "./assets/gallery/gallery-before-1.png"
 import galleryBefore10 from "./assets/gallery/gallery-before-10.png"
 import galleryBefore11 from "./assets/gallery/gallery-before-11.png"
+import galleryBefore12 from "./assets/gallery/gallery-before-12.jpg"
+import galleryBefore13 from "./assets/gallery/gallery-before-13.png"
 import galleryBefore5 from "./assets/gallery/gallery-before-5.png"
 import galleryBefore6 from "./assets/gallery/gallery-before-6.png"
 import galleryBefore7 from "./assets/gallery/gallery-before-7.png"
@@ -120,6 +124,24 @@ const GALLERY_PAIR_11: GalleryImagePair = {
     "Before and after: pixel art created from a real photo with soft in-app retouching and an auto-generated palette",
 }
 
+const GALLERY_PAIR_12: GalleryImagePair = {
+  beforeSrc: galleryBefore12,
+  afterSrc: galleryAfter12,
+  beforeAlt: "Original musician portrait before PIXTUDIO conversion",
+  afterAlt: "Dramatic pixel art musician portrait after PIXTUDIO conversion",
+  caption:
+    "Expressive musician portrait transformed into bold pixel art with a dramatic custom palette",
+}
+
+const GALLERY_PAIR_13: GalleryImagePair = {
+  beforeSrc: galleryBefore13,
+  afterSrc: galleryAfter13,
+  beforeAlt: "Original toy character image before PIXTUDIO conversion",
+  afterAlt: "Game-ready pixel art character after PIXTUDIO conversion",
+  caption:
+    "Toy character turned into game-ready pixel art with clean shapes and a playful limited palette",
+}
+
 export const GALLERY_STRIP_ITEMS: GalleryStripItem[] = [
   {
     src: GALLERY_MAIN_PAIR.afterSrc,
@@ -140,6 +162,16 @@ export const GALLERY_STRIP_ITEMS: GalleryStripItem[] = [
     src: GALLERY_PAIR_11.afterSrc,
     alt: GALLERY_PAIR_11.afterAlt,
     pair: GALLERY_PAIR_11,
+  },
+  {
+    src: GALLERY_PAIR_12.afterSrc,
+    alt: GALLERY_PAIR_12.afterAlt,
+    pair: GALLERY_PAIR_12,
+  },
+  {
+    src: GALLERY_PAIR_13.afterSrc,
+    alt: GALLERY_PAIR_13.afterAlt,
+    pair: GALLERY_PAIR_13,
   },
   {
     src: GALLERY_PAIR_6.afterSrc,
