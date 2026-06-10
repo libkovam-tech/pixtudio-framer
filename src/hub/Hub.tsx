@@ -1740,7 +1740,7 @@ export default function Hub() {
     description: HERO_VIDEO_SCHEMA_DESCRIPTION,
     transcript: HERO_VIDEO_TRANSCRIPT_TEXT,
     thumbnailUrl: [toAbsoluteSiteUrl(LANDING_VIDEO_POSTER_SRC)],
-    uploadDate: "2026-05-11",
+    uploadDate: "2026-05-11T00:00:00Z",
     contentUrl: toAbsoluteSiteUrl(DESKTOP_LANDING_VIDEO_SRC),
     embedUrl: `${toAbsoluteSiteUrl("/")}#hero-video`,
     isPartOf: { "@id": SITE_SCHEMA_IDS.website },
