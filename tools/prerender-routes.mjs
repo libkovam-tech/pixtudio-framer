@@ -759,7 +759,7 @@ function routeStructuredData(routeKey) {
           transcript:
             "Watch how ordinary images transform into structured pixel art in real time. This preview shows the PIXTUDIO editor turning simple shapes, symbols, and colorful compositions into editable pixel-based visuals directly on the canvas.",
           thumbnailUrl: `${SITE_BASE_URL}/media/landing-video-poster.jpg`,
-          uploadDate: "2026-05-11",
+          uploadDate: "2026-05-11T00:00:00Z",
           contentUrl: `${SITE_BASE_URL}/media/landing-preview.mp4?v=20260511-hero43`,
           embedUrl: `${url}#hero-video`,
           publisher: { "@id": `${SITE_BASE_URL}/#organization` },
