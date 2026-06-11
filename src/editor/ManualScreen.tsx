@@ -1345,7 +1345,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                 minWidth: 0,
                             }}
                         >
-                            PIXTUDIO - User Guide
+                            PIXTUDIO — User Guide
                         </h1>
                     </div>
 

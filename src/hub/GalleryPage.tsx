@@ -481,6 +481,7 @@ export default function GalleryPage() {
     >
       <JsonLd id="pixtudio-gallery-jsonld" data={galleryStructuredData} />
       <section className="siteGalleryDesktop" aria-label="PIXTUDIO Gallery">
+        <h1 className="siteVisuallyHidden">PIXTUDIO Gallery</h1>
         <section className="siteGalleryDesktopStrip" aria-label="Gallery images">
           {GALLERY_STRIP_ITEMS.map((item, itemIndex) => (
             <button
@@ -502,8 +503,25 @@ export default function GalleryPage() {
           <BeforeAfterImageSlider pair={activePair} />
         </div>
 
-        <aside className="siteGalleryDesktopCaption" aria-live="polite">
-          <p>{activePair.caption}</p>
+        <aside className="siteGalleryDesktopInfoColumn">
+          <section
+            className="siteGalleryDesktopSeoCopy"
+            aria-label="About the PIXTUDIO gallery"
+          >
+            <p>
+              <strong>
+                Explore before-and-after examples of photos transformed into
+                pixel art with PIXTUDIO.
+              </strong>{" "}
+              Each piece shows how grid size, palettes, source-image
+              adjustments, and final retouching can reshape an ordinary image
+              into a clean pixel artwork.
+            </p>
+          </section>
+
+          <aside className="siteGalleryDesktopCaption" aria-live="polite">
+            <p>{activePair.caption}</p>
+          </aside>
         </aside>
 
         <p className="siteGalleryDesktopDisclaimer siteDisclaimerText">
@@ -513,8 +531,13 @@ export default function GalleryPage() {
       </section>
 
       <section className="siteGalleryMobile" aria-label="PIXTUDIO Gallery">
+        <h1 className="siteVisuallyHidden">PIXTUDIO Gallery</h1>
         <BeforeAfterImageSlider pair={activePair} />
         <p className="siteGalleryCaption">{activePair.caption}</p>
+        <p className="siteGalleryIntro">
+          Before-and-after examples of photos transformed into pixel art with
+          PIXTUDIO tools.
+        </p>
         <section
           className="siteGalleryStrip"
           aria-label="Gallery image strip"

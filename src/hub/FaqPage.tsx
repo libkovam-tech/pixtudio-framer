@@ -27,7 +27,7 @@ export const FAQ_ITEMS = [
     question: "Who is PIXTUDIO made for?",
     tocLabel: "Who is PIXTUDIO for?",
     answer:
-      "PIXTUDIO is made for anyone who wants to turn photos or ideas into stylish pixel art - from complete beginners to indie game developers and content creators.",
+      "PIXTUDIO is made for anyone who wants to turn photos or ideas into stylish pixel art — from complete beginners to indie game developers and content creators.",
   },
   {
     question: "Do I need to know how to draw to use PIXTUDIO?",
@@ -39,7 +39,7 @@ export const FAQ_ITEMS = [
     question: "Can I use PIXTUDIO to create game assets and keep a consistent style?",
     tocLabel: "Can I create consistent game assets?",
     answer:
-      "Yes. PIXTUDIO is especially useful for creating game assets because you can use the same grid size and color palette across all your images. You can import a palette from any photo or previous project and apply it instantly - this makes it easy to create consistent tiles, items, characters, and environments in the same visual style.",
+      "Yes. PIXTUDIO is especially useful for creating game assets because you can use the same grid size and color palette across all your images. You can import a palette from any photo or previous project and apply it instantly — this makes it easy to create consistent tiles, items, characters, and environments in the same visual style.",
   },
   {
     question: "Does the editor support importing custom color palettes?",
@@ -65,7 +65,7 @@ export const FAQ_ITEMS = [
     question: "Can PIXTUDIO record the pixelization process as a video?",
     tocLabel: "Can it record pixelization as video?",
     answer:
-      "Yes. PIXTUDIO lets you record a video of the entire pixelization process. You can adjust speed, add music, and export it as an MP4 file - perfect for sharing your creation.",
+      "Yes. PIXTUDIO lets you record a video of the entire pixelization process. You can adjust speed, add music, and export it as an MP4 file — perfect for sharing your creation.",
   },
   {
     question: "Can I use files exported from PIXTUDIO for publishing online?",
@@ -403,6 +403,7 @@ export default function FaqPage() {
       footerClassName="faqFooter"
     >
       <JsonLd id="pixtudio-faq-jsonld" data={faqStructuredData} />
+      <h1 className="siteVisuallyHidden">Frequently Asked Questions</h1>
       <section className="faqSideColumn faqSideColumnLeft" aria-hidden="true">
         <img
           className="faqSideImage faqSideImageLeft"
@@ -475,6 +476,13 @@ export default function FaqPage() {
                   </article>
                 )
               })}
+              <article className="faqCard faqCtaCard">
+                <h2>Ready to create pixel art?</h2>
+                <p>
+                  Open PIXTUDIO and turn your first image into editable pixel
+                  art directly in the browser.
+                </p>
+              </article>
             </section>
             <div
               className="faqMobileScrollbar"

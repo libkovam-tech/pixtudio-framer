@@ -67,8 +67,10 @@ export default function LinksPage() {
         <h1 className="siteVisuallyHidden">PIXTUDIO Links</h1>
         <h2 id="links-palettes-title">Palettes</h2>
         <p>
-          External palette libraries for color inspiration and custom palette
-          experiments.
+          These resources help you find color ideas before importing or
+          rebuilding palettes in PIXTUDIO. Use them to explore harmonious
+          combinations, compare palette moods, and prepare custom colors for
+          photo-to-pixel-art experiments.
         </p>
         <ul>
           {PALETTE_LINKS.map((link) => (

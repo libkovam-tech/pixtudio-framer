@@ -28,15 +28,15 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Start with a Photo",
     paragraphs: [
-      "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place - choose an image, crop it to a square, rotate or scale if needed.",
-      "PIXTUDIO instantly converts it into beautiful pixel art. Discover your familiar photos from a fresh, unexpected new side - often revealing charm you never noticed before.",
+      "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place — choose an image, crop it to a square, rotate or scale if needed.",
+      "PIXTUDIO instantly converts it into beautiful pixel art. Discover your familiar photos from a fresh, unexpected new side — often revealing charm you never noticed before.",
     ],
   },
   {
     title: "Shoot with Camera",
     paragraphs: [
       "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, crop it to a square, rotate or scale if needed.",
-      "Watch as your photo transforms into pixel art in real time - great for spontaneous ideas and quick creative experiments.",
+      "Watch as your photo transforms into pixel art in real time — great for spontaneous ideas and quick creative experiments.",
     ],
   },
   {
@@ -78,7 +78,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     title: "Add New Custom Colors",
     paragraphs: [
       "Tap the Add Swatch button in the palette.",
-      "Create your own colors that stay exactly where you placed them - giving you full control and creative freedom even when changing grid size.",
+      "Create your own colors that stay exactly where you placed them — giving you full control and creative freedom even when changing grid size.",
     ],
   },
   {
@@ -99,14 +99,14 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     title: "Record Pixelization Video",
     paragraphs: [
       "Tap the Pixelization Record button below the canvas.",
-      "Create a beautiful timelapse video of the pixelization process. Adjust grid and palette ranges, direction, duration, add an audio track, and export as MP4 - perfect for TikTok, Instagram Reels, and YouTube Shorts.",
+      "Create a beautiful timelapse video of the pixelization process. Adjust grid and palette ranges, direction, duration, add an audio track, and export as MP4 — perfect for TikTok, Instagram Reels, and YouTube Shorts.",
     ],
   },
   {
     title: "User Manual",
     paragraphs: [
       "Tap the Manual icon in the top menu.",
-      "Open the full in-app guide that explains every tool and button - always there when you need help.",
+      "Open the full in-app guide that explains every tool and button — always there when you need help.",
     ],
   },
 ]
@@ -125,6 +125,8 @@ const HOW_BLUEPRINT_CARD_CLASSES = [
   "siteHowItWorksBlueprintCardRecordPixelizationVideo",
   "siteHowItWorksBlueprintCardUserManual",
 ] as const
+
+const HOW_TO_STEP_ORDER = [0, 1, 2, 6, 7, 8, 9, 10, 3, 4, 5, 11] as const
 
 export default function HowItWorksPage() {
   usePageSeo(SITE_ROUTE_SEO.how)
@@ -145,6 +147,7 @@ export default function HowItWorksPage() {
   })
   const activeModal =
     activeModalIndex === null ? null : HOW_MODAL_COPY[activeModalIndex]
+  const howToId = `${toAbsoluteSiteUrl("/how-it-works/")}#howto`
   const howItWorksStructuredData = useMemo(
     () => ({
       "@context": "https://schema.org",
@@ -160,7 +163,8 @@ export default function HowItWorksPage() {
           isPartOf: { "@id": SITE_SCHEMA_IDS.website },
           publisher: { "@id": SITE_SCHEMA_IDS.organization },
           about: { "@id": SITE_SCHEMA_IDS.software },
-          mainEntity: {
+          mainEntity: { "@id": howToId },
+          hasPart: {
             "@type": "ItemList",
             name: "PIXTUDIO feature scenarios",
             itemListElement: HOW_MODAL_COPY.map((item, index) => ({
@@ -171,10 +175,29 @@ export default function HowItWorksPage() {
             })),
           },
         },
+        {
+          "@type": "HowTo",
+          "@id": howToId,
+          name: "How to create pixel art with PIXTUDIO",
+          description:
+            "Import or capture a source image, tune colors and palettes, record the process if needed, then save or export the finished pixel art from PIXTUDIO.",
+          image: SITE_OG_IMAGE_URL,
+          step: HOW_TO_STEP_ORDER.map((itemIndex, stepIndex) => {
+            const item = HOW_MODAL_COPY[itemIndex]
+
+            return {
+              "@type": "HowToStep",
+              position: stepIndex + 1,
+              name: item.title,
+              text: item.paragraphs.join(" "),
+              url: `${toAbsoluteSiteUrl("/how-it-works/")}#step-${stepIndex + 1}`,
+            }
+          }),
+        },
         createBreadcrumbList("How It Works", "/how-it-works/"),
       ],
     }),
-    []
+    [howToId]
   )
 
   useEffect(() => {
@@ -363,6 +386,7 @@ export default function HowItWorksPage() {
         id="pixtudio-how-it-works-jsonld"
         data={howItWorksStructuredData}
       />
+      <h1 className="siteVisuallyHidden">How PIXTUDIO Works</h1>
       <section
         className="siteHowItWorksBlueprint"
         aria-label="How It Works card block viewport"

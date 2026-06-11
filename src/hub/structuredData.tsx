@@ -23,61 +23,61 @@ export type SiteRouteSeo = {
 
 export const SITE_ROUTE_SEO = {
   home: {
-    title: "PIXTUDIO - Turn Photos into Pixel Art Online",
+    title: "PIXTUDIO — Turn Photos into Pixel Art Online",
     description:
       "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, PNG, SVG, XLSX, ZIP export, and MP4 process recording.",
     path: "/",
-    ogTitle: "PIXTUDIO - Turn Photos into Pixel Art Online",
+    ogTitle: "PIXTUDIO — Turn Photos into Pixel Art Online",
     ogDescription:
       "Create pixel art from photos in your browser. Control grid size, palettes, colors, export PNG, SVG, XLSX, or ZIP, and record the live process as MP4.",
     ogType: "website",
   },
   faq: {
-    title: "PIXTUDIO FAQ - Pixel Art Editor Questions",
+    title: "PIXTUDIO FAQ — Pixel Art from Photos: Common Questions",
     description:
       "Answers to common questions about PIXTUDIO, including photo-to-pixel-art conversion, palettes, PNG, SVG, XLSX, ZIP export, MP4 recording, mobile use, and saved projects.",
     path: "/faq/",
-    ogTitle: "PIXTUDIO FAQ - Pixel Art Editor Questions",
+    ogTitle: "PIXTUDIO FAQ — Pixel Art from Photos: Common Questions",
     ogDescription:
       "Find answers about PIXTUDIO features, exports, palettes, mobile support, project saving, and browser-based pixel art editing.",
     ogType: "website",
   },
   how: {
-    title: "PIXTUDIO How It Works - Pixel Art Editor Guide",
+    title: "How PIXTUDIO Works — Pixel Art Editor Guide",
     description:
       "Explore PIXTUDIO feature scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording video.",
     path: "/how-it-works/",
-    ogTitle: "PIXTUDIO How It Works - Pixel Art Editor Guide",
+    ogTitle: "How PIXTUDIO Works — Pixel Art Editor Guide",
     ogDescription:
       "See how PIXTUDIO works: open files, draw from scratch, edit palettes, export pixel art, save projects, and record the pixelization process.",
     ogType: "website",
   },
   gallery: {
-    title: "PIXTUDIO Gallery - Pixel Art Inspiration",
+    title: "PIXTUDIO Gallery — Pixel Art Inspiration",
     description:
       "Before-and-after gallery examples showing photos converted into pixel art with PIXTUDIO editing tools, custom palettes, presets, and retouching.",
     path: "/gallery/",
-    ogTitle: "PIXTUDIO Gallery - Pixel Art Inspiration",
+    ogTitle: "PIXTUDIO Gallery — Pixel Art Inspiration",
     ogDescription:
       "Explore before-and-after examples of photos transformed into pixel art with PIXTUDIO.",
     ogType: "website",
   },
   learn: {
-    title: "Pixel Art from Photos - PIXTUDIO Guide",
+    title: "Pixel Art from Photos — PIXTUDIO Online Editor",
     description:
       "A practical guide to turning photos into expressive pixel art online with PIXTUDIO, including photo choice, pixel size, palettes, non-destructive editing, and final refinement.",
     path: "/pixel-art-from-photos/",
-    ogTitle: "Pixel Art from Photos - PIXTUDIO Guide",
+    ogTitle: "Pixel Art from Photos — PIXTUDIO Online Editor",
     ogDescription:
       "Learn how to create powerful retro-style pixel art from photos using PIXTUDIO's grid, palette, and editing workflow.",
     ogType: "article",
   },
   links: {
-    title: "PIXTUDIO Links - Palette Resources",
+    title: "PIXTUDIO Links — Palette Resources",
     description:
       "Useful external palette resources for finding color inspiration and experimenting with custom palettes in PIXTUDIO.",
     path: "/links/",
-    ogTitle: "PIXTUDIO Links - Palette Resources",
+    ogTitle: "PIXTUDIO Links — Palette Resources",
     ogDescription:
       "External palette libraries for color inspiration and custom palette experiments in PIXTUDIO.",
     ogType: "website",
@@ -127,6 +127,7 @@ export function usePageSeo(seo: SiteRouteSeo) {
     const ogDescription = seo.ogDescription ?? seo.description
 
     document.title = seo.title
+    document.head.querySelector('meta[name="robots"]')?.remove()
     upsertMeta('meta[name="description"]', "name", "description", seo.description)
     upsertCanonical(canonicalUrl)
     upsertMeta('meta[property="og:type"]', "property", "og:type", seo.ogType ?? "website")

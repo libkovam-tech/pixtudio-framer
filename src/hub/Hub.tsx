@@ -95,7 +95,7 @@ const MOBILE_INFO_CARDS = [
   },
   {
     title: ["PALETTE CONTROLS", "EVERYTHING"],
-    body: "Change one color – the whole image updates instantly. Import palettes from any photo.",
+    body: "Change one color — the whole image updates instantly. Import palettes from any photo.",
   },
   {
     title: ["NO DRAWING", "SKILLS NEEDED"],
@@ -130,7 +130,7 @@ const DESKTOP_SEO_COPY = [
     accent:
       "Export as PNG, SVG, XLSX, or ZIP, or record the live process as MP4 for social media.",
     text:
-      "No installation needed – everything works in your browser.",
+      "No installation needed — everything works in your browser.",
   },
 ]
 
@@ -583,6 +583,7 @@ function DesktopOrbitCards({
     return (
       <div className="hubDesktopOrbitLayer" aria-hidden="true">
         <DesktopOrbitCard
+          key={`drag-enter-${drag.enteringStep}-${drag.direction}`}
           side={enteringItem.side}
           phase="landed"
           direction={drag.direction}
@@ -595,6 +596,7 @@ function DesktopOrbitCards({
           isDragging={isAnimating}
         />
         <DesktopOrbitCard
+          key={`drag-leave-${drag.leavingStep}-${drag.direction}`}
           side={leavingItem.side}
           phase="landed"
           direction={drag.direction}
@@ -624,6 +626,7 @@ function DesktopOrbitCards({
       <div className="hubDesktopOrbitLayer" aria-hidden="true">
         {showLeaving && leavingItem ? (
           <DesktopOrbitCard
+            key={`orbit-leave-${animation.leavingStep}-${animation.direction}`}
             side={leavingItem.side}
             phase="leave"
             direction={animation.direction}
@@ -632,6 +635,7 @@ function DesktopOrbitCards({
         ) : null}
         {showEntering ? (
           <DesktopOrbitCard
+            key={`orbit-enter-${animation.enteringStep}-${animation.direction}`}
             side={enteringItem.side}
             phase="enter"
             direction={animation.direction}
@@ -647,6 +651,7 @@ function DesktopOrbitCards({
   return (
     <div className="hubDesktopOrbitLayer" aria-hidden="true">
       <DesktopOrbitCard
+        key={`orbit-landed-${activeStep}`}
         side={activeItem.side}
         phase="landed"
         card={getCard(activeItem.index)}

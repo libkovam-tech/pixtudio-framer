@@ -72,6 +72,7 @@ type ArticleImageSource = string | string[]
 
 const ARTICLE_TITLE =
   "Turning Photos into Pixel Art Online: How to Create Powerful Retro-Style Images with PIXTUDIO"
+const ARTICLE_H1 = "Pixel Art from Photos"
 
 const ARTICLE_IMAGE_PAIRS: Record<
   ArticleImagePairKey,
@@ -138,7 +139,7 @@ const INTRO_BLOCKS: ArticleBlock[] = [
   {
     type: "p",
     content:
-      "Why does this happen? Because pixel art consciously sacrifices fine details in favor of emphasizing the very essence of the image. It occupies a special place in visual art - similar to poetry in literature: brevity here is not poverty, but the highest concentration of meaning. An image built from large squares and painted with clean colors forces the artist to speak concisely, powerfully, and emotionally.",
+      "Why does this happen? Because pixel art consciously sacrifices fine details in favor of emphasizing the very essence of the image. It occupies a special place in visual art — similar to poetry in literature: brevity here is not poverty, but the highest concentration of meaning. An image built from large squares and painted with clean colors forces the artist to speak concisely, powerfully, and emotionally.",
   },
 ]
 
@@ -164,12 +165,12 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "p",
         content:
-          "Pixelization is not mere decoration or another button in a social media toolkit. It is a full-fledged visual language - the voice with which the author speaks to the viewer. By simplifying the image into large color blocks, it draws attention to the idea and composition rather than technical perfection of the original photo.",
+          "Pixelization is not mere decoration or another button in a social media toolkit. It is a full-fledged visual language — the voice with which the author speaks to the viewer. By simplifying the image into large color blocks, it draws attention to the idea and composition rather than technical perfection of the original photo.",
       },
       {
         type: "p",
         content:
-          "This is why the genre survived the era of old consoles. Today, games in this aesthetic win prestigious awards, and modern artists deliberately choose limitations that no longer exist technically. Viewers instantly recognize this code and respond to it emotionally - because behind the pixels lies nostalgia for honest, understandable simplicity.",
+          "This is why the genre survived the era of old consoles. Today, games in this aesthetic win prestigious awards, and modern artists deliberately choose limitations that no longer exist technically. Viewers instantly recognize this code and respond to it emotionally — because behind the pixels lies nostalgia for honest, understandable simplicity.",
       },
     ],
   },
@@ -208,7 +209,7 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "p",
         content:
-          "**Expert tip:** When in doubt - just try it. Sometimes the most unexpected photo from your phone gallery produces the strongest artistic result.",
+          "**Expert tip:** When in doubt — just try it. Sometimes the most unexpected photo from your phone gallery produces the strongest artistic result.",
       },
     ],
   },
@@ -252,8 +253,8 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
   },
   {
     id: "working-with-color-palette",
-    tocLabel: "Working with Color Palette - The Heart of Pixel Art",
-    heading: "Working with Color Palette - The Heart of Pixel Art",
+    tocLabel: "Working with Color Palette — The Heart of Pixel Art",
+    heading: "Working with Color Palette — The Heart of Pixel Art",
     imagePairKey: "palette",
     blocks: [
       {
@@ -264,15 +265,15 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "p",
         content:
-          "When you have few colors, each one carries significant weight. Warm and cool tones either harmonize or create tension - and that tension becomes part of your artistic message. A single well-placed accent color in a limited palette can be far more powerful than dozens of subtle gradients.",
+          "When you have few colors, each one carries significant weight. Warm and cool tones either harmonize or create tension — and that tension becomes part of your artistic message. A single well-placed accent color in a limited palette can be far more powerful than dozens of subtle gradients.",
       },
       { type: "p", content: "**Useful techniques in PIXTUDIO:**" },
       {
         type: "ol",
         items: [
-          "**Importing external palettes** - a unique feature of the editor. You can import a color scheme from another photo, a classic game, or a reference. Imagine taking a modern portrait and coloring it with the palette of a neon cyberpunk landscape or an old Game Boy game.",
-          "**Creating consistent series** - applying the same palette to all your works automatically unites them into a cohesive visual series.",
-          "**Manual control** - don't hesitate to change individual color swatches after automatic conversion. If the shadows feel too muddy, replace that color - all related pixels on the canvas will update instantly.",
+          "**Importing external palettes** — a unique feature of the editor. You can import a color scheme from another photo, a classic game, or a reference. Imagine taking a modern portrait and coloring it with the palette of a neon cyberpunk landscape or an old Game Boy game.",
+          "**Creating consistent series** — applying the same palette to all your works automatically unites them into a cohesive visual series.",
+          "**Manual control** — don't hesitate to change individual color swatches after automatic conversion. If the shadows feel too muddy, replace that color — all related pixels on the canvas will update instantly.",
         ],
       },
     ],
@@ -311,14 +312,14 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "p",
         content:
-          "Want cleaner, more neon colors? Increase saturation. Need deeper, cleaner shadows? Adjust the dark areas. Shift the white balance toward blue - and the image instantly gains a cold, melancholic, or nostalgic mood. You see the result immediately in the pixel preview.",
+          "Want cleaner, more neon colors? Increase saturation. Need deeper, cleaner shadows? Adjust the dark areas. Shift the white balance toward blue — and the image instantly gains a cold, melancholic, or nostalgic mood. You see the result immediately in the pixel preview.",
       },
     ],
   },
   {
     id: "manual-refinement",
-    tocLabel: "Manual Refinement - The Artist's Final Touch",
-    heading: "Manual Refinement - The Artist's Final Touch",
+    tocLabel: "Manual Refinement — The Artist's Final Touch",
+    heading: "Manual Refinement — The Artist's Final Touch",
     imagePairKey: "refinement",
     blocks: [
       {
@@ -365,7 +366,7 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
           "**Personal Branding**: Unique avatars and profile pictures for social networks, Telegram, and Discord.",
           "**Content Creation**: Eye-catching visuals for TikTok, Instagram Reels, and YouTube Shorts (especially process videos).",
           "**Merch and Print**: Designs for t-shirts, hoodies, stickers, posters, and postcards.",
-          "**Office & Spreadsheet Art**: Export your pixel art directly to Excel - each pixel becomes a colored cell. Use it to decorate reports, create unusual table headers, or just surprise your colleagues with a pixel masterpiece hidden in a spreadsheet.",
+          "**Office & Spreadsheet Art**: Export your pixel art directly to Excel — each pixel becomes a colored cell. Use it to decorate reports, create unusual table headers, or just surprise your colleagues with a pixel masterpiece hidden in a spreadsheet.",
           "**Branding**: Logos, mascots, and creatives for gaming, retro, and tech brands.",
         ],
       },
@@ -590,6 +591,9 @@ export default function LearnPage() {
           headline: ARTICLE_TITLE,
           name: "Pixel Art from Photos",
           url: toAbsoluteSiteUrl("/pixel-art-from-photos/"),
+          description: SITE_ROUTE_SEO.learn.description,
+          datePublished: "2026-06-09T00:00:00Z",
+          dateModified: "2026-06-11T00:00:00Z",
           image: [
             toAbsoluteSiteUrl(cyclistSrc),
             toAbsoluteSiteUrl(riderSrc),
@@ -944,7 +948,7 @@ export default function LearnPage() {
                     sectionRefs.current[0] = node
                   }}
                 >
-                  <h1>{ARTICLE_TITLE}</h1>
+                  <h1>{ARTICLE_H1}</h1>
                   {INTRO_BLOCKS.map((block, blockIndex) =>
                     renderBlock(block, `intro-${blockIndex}`)
                   )}

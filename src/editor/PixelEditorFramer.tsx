@@ -3093,6 +3093,7 @@ function StartScreen({
                             className="pxUiAnim pxStartActionButton"
                             style={circleButton}
                             aria-label="Open File"
+                            title="Open"
                         >
                             <div style={circleInner}>
                                 <SvgCircle style={circleSvgStyle} />
@@ -3115,6 +3116,7 @@ function StartScreen({
                             className="pxUiAnim pxStartActionButton"
                             style={circleButton}
                             aria-label="Camera"
+                            title="Camera"
                         >
                             <div style={circleInner}>
                                 <SvgCircle style={circleSvgStyle} />
@@ -3134,6 +3136,7 @@ function StartScreen({
                             className="pxUiAnim pxStartActionButton"
                             style={circleButton}
                             aria-label="Draw"
+                            title="Blank Canvas"
                         >
                             <div style={circleInner}>
                                 <SvgCircle style={circleSvgStyle} />
@@ -8487,6 +8490,9 @@ function PixelEditorFramer({
         w: number
         h: number
     }>({ x: 0, y: 0, inside: false, w: 0, h: 0 })
+    const lastPointerClientRef = React.useRef<{ x: number; y: number } | null>(
+        null
+    )
 
     const brushPreviewRef = React.useRef<HTMLDivElement | null>(null)
     const touchPointersRef = React.useRef<Map<number, PinchPoint>>(new Map())
@@ -9187,13 +9193,29 @@ function PixelEditorFramer({
             )
         }
 
+        const isPointerInsideViewport = () => {
+            const viewport = viewportRef.current
+            const pointer = lastPointerClientRef.current
+            if (!viewport || !pointer) return false
+
+            const rect = viewport.getBoundingClientRect()
+
+            return (
+                pointer.x >= rect.left &&
+                pointer.x <= rect.right &&
+                pointer.y >= rect.top &&
+                pointer.y <= rect.bottom
+            )
+        }
+
         const handleSpaceDown = (event: KeyboardEvent) => {
             if (isEditableTarget(event.target)) return
 
             const next = startSpaceHandTool(spaceHandStateRef.current, {
                 enabled: ENABLE_DESKTOP_SPACE_HAND_TOOL,
                 isMobileUI,
-                pointerInside: pointerRef.current.inside,
+                pointerInside:
+                    pointerRef.current.inside || isPointerInsideViewport(),
                 key: event.key,
                 repeat: event.repeat,
             })
@@ -10576,6 +10598,7 @@ function PixelEditorFramer({
     function updatePointerFromEvent(e: any, inside: boolean = true) {
         const viewport = viewportRef.current
         if (!viewport) return
+        lastPointerClientRef.current = { x: e.clientX, y: e.clientY }
 
         const rect = viewport.getBoundingClientRect()
 
@@ -10769,12 +10792,14 @@ function PixelEditorFramer({
     }
 
     function handleCanvasPointerLeave() {
+        lastPointerClientRef.current = null
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
         clearPipetteHoverCell()
     }
 
     function handleCanvasPointerCancel(e: any) {
+        lastPointerClientRef.current = null
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
         clearPipetteHoverCell()
@@ -12716,11 +12741,12 @@ function PixelEditorFramer({
                             aria-label="Pipette tool"
                             title="Color Picker"
                             className="pxUiAnim"
-                            onClick={() =>
+                            onClick={(event) => {
+                                event.currentTarget.blur()
                                 setToolMode((m) =>
                                     m === "pipette" ? "brush" : "pipette"
                                 )
-                            }
+                            }}
                             style={{
                                 ...iconOnlyButton(true),
                                 opacity: toolMode === "pipette" ? 1 : 0.85,
@@ -12738,11 +12764,12 @@ function PixelEditorFramer({
                             aria-label="Hand tool"
                             title="Pan"
                             className="pxUiAnim"
-                            onClick={() =>
+                            onClick={(event) => {
+                                event.currentTarget.blur()
                                 setToolMode((m) =>
                                     m === "hand" ? "brush" : "hand"
                                 )
-                            }
+                            }}
                             style={{
                                 ...iconOnlyButton(false),
                                 opacity: toolMode === "hand" ? 1 : 0.85,

@@ -10,10 +10,10 @@ const routeSeo = {
   home: {
     path: "/",
     output: "dist/index.html",
-    title: "PIXTUDIO - Turn Photos into Pixel Art Online",
+    title: "PIXTUDIO — Turn Photos into Pixel Art Online",
     description:
       "PIXTUDIO is a browser-based pixel art editor that turns photos into pixel art with live grid, palette, color editing, PNG, SVG, XLSX, ZIP export, and MP4 process recording.",
-    ogTitle: "PIXTUDIO - Turn Photos into Pixel Art Online",
+    ogTitle: "PIXTUDIO — Turn Photos into Pixel Art Online",
     ogDescription:
       "Create pixel art from photos in your browser. Control grid size, palettes, colors, export PNG, SVG, XLSX, or ZIP, and record the live process as MP4.",
     ogType: "website",
@@ -21,10 +21,10 @@ const routeSeo = {
   faq: {
     path: "/faq/",
     output: "dist/faq/index.html",
-    title: "PIXTUDIO FAQ - Pixel Art Editor Questions",
+    title: "PIXTUDIO FAQ — Pixel Art from Photos: Common Questions",
     description:
       "Answers to common questions about PIXTUDIO, including photo-to-pixel-art conversion, palettes, PNG, SVG, XLSX, ZIP export, MP4 recording, mobile use, and saved projects.",
-    ogTitle: "PIXTUDIO FAQ - Pixel Art Editor Questions",
+    ogTitle: "PIXTUDIO FAQ — Pixel Art from Photos: Common Questions",
     ogDescription:
       "Find answers about PIXTUDIO features, exports, palettes, mobile support, project saving, and browser-based pixel art editing.",
     ogType: "website",
@@ -32,10 +32,10 @@ const routeSeo = {
   how: {
     path: "/how-it-works/",
     output: "dist/how-it-works/index.html",
-    title: "PIXTUDIO How It Works - Pixel Art Editor Guide",
+    title: "How PIXTUDIO Works — Pixel Art Editor Guide",
     description:
       "Explore PIXTUDIO feature scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording video.",
-    ogTitle: "PIXTUDIO How It Works - Pixel Art Editor Guide",
+    ogTitle: "How PIXTUDIO Works — Pixel Art Editor Guide",
     ogDescription:
       "See how PIXTUDIO works: open files, draw from scratch, edit palettes, export pixel art, save projects, and record the pixelization process.",
     ogType: "website",
@@ -43,10 +43,10 @@ const routeSeo = {
   gallery: {
     path: "/gallery/",
     output: "dist/gallery/index.html",
-    title: "PIXTUDIO Gallery - Pixel Art Inspiration",
+    title: "PIXTUDIO Gallery — Pixel Art Inspiration",
     description:
       "Before-and-after gallery examples showing photos converted into pixel art with PIXTUDIO editing tools, custom palettes, presets, and retouching.",
-    ogTitle: "PIXTUDIO Gallery - Pixel Art Inspiration",
+    ogTitle: "PIXTUDIO Gallery — Pixel Art Inspiration",
     ogDescription:
       "Explore before-and-after examples of photos transformed into pixel art with PIXTUDIO.",
     ogType: "website",
@@ -54,10 +54,10 @@ const routeSeo = {
   learn: {
     path: "/pixel-art-from-photos/",
     output: "dist/pixel-art-from-photos/index.html",
-    title: "Pixel Art from Photos - PIXTUDIO Guide",
+    title: "Pixel Art from Photos — PIXTUDIO Online Editor",
     description:
       "A practical guide to turning photos into expressive pixel art online with PIXTUDIO, including photo choice, pixel size, palettes, non-destructive editing, and final refinement.",
-    ogTitle: "Pixel Art from Photos - PIXTUDIO Guide",
+    ogTitle: "Pixel Art from Photos — PIXTUDIO Online Editor",
     ogDescription:
       "Learn how to create powerful retro-style pixel art from photos using PIXTUDIO's grid, palette, and editing workflow.",
     ogType: "article",
@@ -65,10 +65,10 @@ const routeSeo = {
   links: {
     path: "/links/",
     output: "dist/links/index.html",
-    title: "PIXTUDIO Links - Palette Resources",
+    title: "PIXTUDIO Links — Palette Resources",
     description:
       "Useful external palette resources for finding color inspiration and experimenting with custom palettes in PIXTUDIO.",
-    ogTitle: "PIXTUDIO Links - Palette Resources",
+    ogTitle: "PIXTUDIO Links — Palette Resources",
     ogDescription:
       "External palette libraries for color inspiration and custom palette experiments in PIXTUDIO.",
     ogType: "website",
@@ -102,7 +102,7 @@ const homeCards = [
   ],
   [
     "PALETTE CONTROLS EVERYTHING",
-    "Change one color - the whole image updates instantly. Import palettes from any photo.",
+    "Change one color — the whole image updates instantly. Import palettes from any photo.",
   ],
   [
     "NO DRAWING SKILLS NEEDED",
@@ -117,7 +117,7 @@ const homeCards = [
 const faqItems = [
   [
     "Who is PIXTUDIO made for?",
-    "PIXTUDIO is made for anyone who wants to turn photos or ideas into stylish pixel art - from complete beginners to indie game developers and content creators.",
+    "PIXTUDIO is made for anyone who wants to turn photos or ideas into stylish pixel art — from complete beginners to indie game developers and content creators.",
   ],
   [
     "Do I need to know how to draw to use PIXTUDIO?",
@@ -141,7 +141,7 @@ const faqItems = [
   ],
   [
     "Can PIXTUDIO record the pixelization process as a video?",
-    "Yes. PIXTUDIO lets you record a video of the entire pixelization process. You can adjust speed, add music, and export it as an MP4 file - perfect for sharing your creation.",
+    "Yes. PIXTUDIO lets you record a video of the entire pixelization process. You can adjust speed, add music, and export it as an MP4 file — perfect for sharing your creation.",
   ],
   [
     "Can I use files exported from PIXTUDIO for publishing online?",
@@ -168,7 +168,7 @@ const faqItems = [
 const howItems = [
   [
     "Start with a Photo",
-    "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place - choose an image, crop it to a square, rotate or scale if needed. PIXTUDIO instantly converts it into beautiful pixel art.",
+    "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place — choose an image, crop it to a square, rotate or scale if needed. PIXTUDIO instantly converts it into beautiful pixel art.",
   ],
   [
     "Shoot with Camera",
@@ -215,6 +215,8 @@ const howItems = [
     "Open the full in-app guide that explains every tool and button.",
   ],
 ]
+
+const howToStepOrder = [0, 1, 2, 6, 7, 8, 9, 10, 3, 4, 5, 11]
 
 const galleryItems = [
   [
@@ -267,7 +269,7 @@ const articleSections = [
     title: "Introduction",
     paragraphs: [
       "Pixel art has long since moved beyond being merely a technical limitation of the 8-bit era. Today, it is a conscious artistic choice valued by indie game developers, digital artists, content creators, and anyone who appreciates expressive visuals. Even in the age of hyper-realistic textures and 4K rendering, bold pixels and limited color palettes continue to captivate audiences.",
-      "Why does this happen? Because pixel art consciously sacrifices fine details in favor of emphasizing the very essence of the image. It occupies a special place in visual art - similar to poetry in literature: brevity here is not poverty, but the highest concentration of meaning. An image built from large squares and painted with clean colors forces the artist to speak concisely, powerfully, and emotionally.",
+      "Why does this happen? Because pixel art consciously sacrifices fine details in favor of emphasizing the very essence of the image. It occupies a special place in visual art — similar to poetry in literature: brevity here is not poverty, but the highest concentration of meaning. An image built from large squares and painted with clean colors forces the artist to speak concisely, powerfully, and emotionally.",
     ],
   },
   {
@@ -276,8 +278,8 @@ const articleSections = [
       "Many beginners confuse authentic pixel art with simple pixelation filters. This is a critical mistake that often leads to dull and muddy results.",
       "A regular filter simply overlays an effect: it mechanically breaks the image into squares and blurs the colors without changing the core nature of the shot.",
       "True pixel art in PIXTUDIO works differently: it rebuilds the image from the inside out. The algorithm and the artist work together to decide which details are important, which can be discarded, which color must remain, and which should blend with its neighbor.",
-      "Pixelization is not mere decoration or another button in a social media toolkit. It is a full-fledged visual language - the voice with which the author speaks to the viewer. By simplifying the image into large color blocks, it draws attention to the idea and composition rather than technical perfection of the original photo.",
-      "This is why the genre survived the era of old consoles. Today, games in this aesthetic win prestigious awards, and modern artists deliberately choose limitations that no longer exist technically. Viewers instantly recognize this code and respond to it emotionally - because behind the pixels lies nostalgia for honest, understandable simplicity.",
+      "Pixelization is not mere decoration or another button in a social media toolkit. It is a full-fledged visual language — the voice with which the author speaks to the viewer. By simplifying the image into large color blocks, it draws attention to the idea and composition rather than technical perfection of the original photo.",
+      "This is why the genre survived the era of old consoles. Today, games in this aesthetic win prestigious awards, and modern artists deliberately choose limitations that no longer exist technically. Viewers instantly recognize this code and respond to it emotionally — because behind the pixels lies nostalgia for honest, understandable simplicity.",
     ],
   },
   {
@@ -300,10 +302,10 @@ const articleSections = [
     ],
   },
   {
-    title: "Working with Color Palette - The Heart of Pixel Art",
+    title: "Working with Color Palette — The Heart of Pixel Art",
     paragraphs: [
       "While a regular photo uses millions of colors, authentic pixel art usually works with 8 to 32 colors. At first glance, this may seem like a limitation, but in practice it is a strict creative discipline that forces you to think seriously about color.",
-      "When you have few colors, each one carries significant weight. Warm and cool tones either harmonize or create tension - and that tension becomes part of your artistic message. A single well-placed accent color in a limited palette can be far more powerful than dozens of subtle gradients.",
+      "When you have few colors, each one carries significant weight. Warm and cool tones either harmonize or create tension — and that tension becomes part of your artistic message. A single well-placed accent color in a limited palette can be far more powerful than dozens of subtle gradients.",
       "In PIXTUDIO, importing external palettes is a unique feature of the editor. You can import a color scheme from another photo, a classic game, or a reference and apply it to a modern portrait or object.",
       "Applying the same palette to all your works automatically unites them into a cohesive visual series. Manual color swatch editing lets you replace muddy shadows or weak accents, and all related pixels update instantly.",
     ],
@@ -318,7 +320,7 @@ const articleSections = [
     ],
   },
   {
-    title: "Manual Refinement - The Artist's Final Touch",
+    title: "Manual Refinement — The Artist's Final Touch",
     paragraphs: [
       "Real digital art is born where mathematical algorithms end and the human hand begins.",
       "PIXTUDIO's built-in pixel editor allows you to draw and erase with a square brush, strengthen important lines and accents, clean up unwanted artifacts, and create clean professional contours.",
@@ -391,7 +393,7 @@ function renderHome() {
     ],
     [
       "Export as PNG, SVG, XLSX, or ZIP, or record the live process as MP4 for social media.",
-      "No installation needed - everything works in your browser.",
+      "No installation needed — everything works in your browser.",
     ],
   ]
 
@@ -417,10 +419,11 @@ function renderHome() {
 function renderFaq() {
   return `
     <main class="prerenderPage" data-prerender-route="/faq/">
-      <h1>PIXTUDIO FAQ</h1>
+      <h1>Frequently Asked Questions</h1>
       <section class="prerenderGrid" aria-label="Frequently asked questions">
         ${renderList(faqItems)}
       </section>
+      <p><a class="prerenderCta" href="/editor">Try PIXTUDIO Now</a></p>
     </main>`
 }
 
@@ -439,7 +442,7 @@ function renderGallery() {
   return `
     <main class="prerenderPage" data-prerender-route="/gallery/">
       <h1>PIXTUDIO Gallery</h1>
-      <p>Before-and-after examples of photos converted into pixel art with PIXTUDIO editing tools, custom palettes, presets, and retouching.</p>
+      <p>Explore before-and-after examples of photos transformed into pixel art with PIXTUDIO. Each piece shows how grid size, palettes, source-image adjustments, and final retouching can reshape an ordinary image into a clean pixel artwork.</p>
       <section class="prerenderGrid" aria-label="Pixel art gallery examples">
         ${renderList(galleryItems)}
       </section>
@@ -451,7 +454,7 @@ function renderLearn() {
   return `
     <main class="prerenderPage prerenderArticle" data-prerender-route="/pixel-art-from-photos/">
       <article>
-        <h1>${escapeHtml(articleTitle)}</h1>
+        <h1>Pixel Art from Photos</h1>
         ${articleSections
           .map((section, index) => {
             const heading =
@@ -474,7 +477,7 @@ function renderLinks() {
       <h1>PIXTUDIO Links</h1>
       <section aria-label="Palette resources">
         <h2>Palettes</h2>
-        <p>External palette libraries for color inspiration and custom palette experiments.</p>
+        <p>These resources help you find color ideas before importing or rebuilding palettes in PIXTUDIO. Use them to explore harmonious combinations, compare palette moods, and prepare custom colors for photo-to-pixel-art experiments.</p>
         <ul>
           <li><a href="https://colrd.com/palette/">https://colrd.com/palette/</a></li>
           <li><a href="https://coolors.co/palettes/trending">https://coolors.co/palettes/trending</a></li>
@@ -649,6 +652,8 @@ function routeStructuredData(routeKey) {
   }
 
   if (routeKey === "how") {
+    const howToId = `${url}#howto`
+
     return {
       "@context": "https://schema.org",
       "@graph": [
@@ -658,7 +663,8 @@ function routeStructuredData(routeKey) {
           name: "How PIXTUDIO Works",
           url,
           description: seo.description,
-          mainEntity: {
+          mainEntity: { "@id": howToId },
+          hasPart: {
             "@type": "ItemList",
             name: "PIXTUDIO feature scenarios",
             itemListElement: howItems.map(([name, description], index) => ({
@@ -668,6 +674,25 @@ function routeStructuredData(routeKey) {
               description,
             })),
           },
+        },
+        {
+          "@type": "HowTo",
+          "@id": howToId,
+          name: "How to create pixel art with PIXTUDIO",
+          description:
+            "Import or capture a source image, tune colors and palettes, record the process if needed, then save or export the finished pixel art from PIXTUDIO.",
+          image: SITE_OG_IMAGE_URL,
+          step: howToStepOrder.map((itemIndex, stepIndex) => {
+            const [name, description] = howItems[itemIndex]
+
+            return {
+              "@type": "HowToStep",
+              position: stepIndex + 1,
+              name,
+              text: description,
+              url: `${url}#step-${stepIndex + 1}`,
+            }
+          }),
         },
         breadcrumb,
       ],
@@ -705,6 +730,9 @@ function routeStructuredData(routeKey) {
           headline: articleTitle,
           name: "Pixel Art from Photos",
           url,
+          description: seo.description,
+          datePublished: "2026-06-09T00:00:00Z",
+          dateModified: "2026-06-11T00:00:00Z",
           image: [SITE_OG_IMAGE_URL],
           mainEntityOfPage: url,
           author: { "@id": `${SITE_BASE_URL}/#organization` },

@@ -1093,6 +1093,13 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   font-weight: 800;
 }
 
+.faqCtaCard a {
+  color: #001219;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .linksPage {
   background: #e9d8a6;
 }
@@ -1881,12 +1888,55 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     transform: rotate(135deg);
   }
 
-  .siteGalleryDesktopCaption {
+  .siteGalleryDesktopInfoColumn {
     grid-column: 3;
     grid-row: 1;
-    align-self: center;
+    align-self: stretch;
     justify-self: center;
     width: var(--hub-desktop-cta-w);
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: clamp(18px, 2dvh, 32px);
+    color: #001219;
+  }
+
+  .siteGalleryDesktopSeoCopy {
+    width: calc(100vw * 4 / 13 - 50px - var(--hub-desktop-cta-h));
+    align-self: center;
+    max-height: calc(100% - var(--hub-desktop-cta-h) - 20px);
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    color: #001219;
+    font-family: var(--site-font-content);
+    font-size: var(--site-type-base-size);
+    line-height: var(--site-type-base-line-height);
+    font-weight: var(--site-type-base-weight);
+    letter-spacing: 0;
+  }
+
+  .siteGalleryDesktopSeoCopy p {
+    margin: 0 0 clamp(12px, 1.55vh, 22px);
+  }
+
+  .siteGalleryDesktopSeoCopy p:last-child {
+    margin-bottom: 0;
+  }
+
+  .siteGalleryDesktopSeoCopy strong {
+    font-weight: 700;
+  }
+
+  .siteGalleryDesktopCaption {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
     min-height: clamp(108px, 11dvh, 150px);
     box-sizing: border-box;
     padding: clamp(18px, 1.6vw, 30px);
@@ -1898,6 +1948,7 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     align-items: center;
     justify-content: center;
     text-align: center;
+    transform: translateY(-50%);
   }
 
   .siteGalleryDesktopCaption p {
@@ -2257,6 +2308,17 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     font:
       var(--site-type-base-weight) var(--site-type-base-size) /
         var(--site-type-base-line-height) var(--site-font-content);
+    letter-spacing: 0;
+    text-align: center;
+  }
+
+  .siteGalleryIntro {
+    width: 100%;
+    margin: 0;
+    color: var(--hub-mobile-dark);
+    font:
+      var(--site-type-disclaimer-weight) var(--site-type-disclaimer-size) /
+        var(--site-type-disclaimer-line-height) var(--site-font-content);
     letter-spacing: 0;
     text-align: center;
   }
