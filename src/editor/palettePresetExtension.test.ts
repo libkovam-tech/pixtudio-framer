@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
-    extendImportedPaletteProfile,
-    removeImportedPaletteProfileColor,
-    removeImportedPaletteProfileColorByHex,
+    extendFixedPaletteProfile,
+    removeFixedPaletteProfileColor,
+    removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
 import { prepareImportedPaletteColorsForApplication } from "./importedPaletteStrategy.ts"
 
@@ -17,7 +17,7 @@ describe("palette preset extension", () => {
     }
 
     it("adds a valid color to an imported palette profile", () => {
-        const result = extendImportedPaletteProfile(profile, "#ffffff")
+        const result = extendFixedPaletteProfile(profile, "#ffffff")
 
         expect(result).toEqual({
             profile: {
@@ -29,8 +29,29 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("can extend an editable copy of a built-in fixed palette profile", () => {
+        const builtinProfile = {
+            kind: "fixed" as const,
+            source: "builtin" as const,
+            id: "sunset-10",
+            name: "SUNSET",
+            colors: ["#001219", "#E9D8A6"],
+        }
+
+        const result = extendFixedPaletteProfile(builtinProfile, "#ffffff")
+
+        expect(result).toEqual({
+            profile: {
+                ...builtinProfile,
+                colors: ["#001219", "#E9D8A6", "#FFFFFF"],
+            },
+            colorIndex: 2,
+            added: true,
+        })
+    })
+
     it("reuses an existing color instead of adding a duplicate", () => {
-        const result = extendImportedPaletteProfile(profile, "#e9d8a6")
+        const result = extendFixedPaletteProfile(profile, "#e9d8a6")
 
         expect(result).toEqual({
             profile,
@@ -40,11 +61,11 @@ describe("palette preset extension", () => {
     })
 
     it("rejects invalid colors", () => {
-        expect(extendImportedPaletteProfile(profile, "white")).toBeNull()
+        expect(extendFixedPaletteProfile(profile, "white")).toBeNull()
     })
 
     it("removes a color from an imported palette profile", () => {
-        const result = removeImportedPaletteProfileColor(profile, 0)
+        const result = removeFixedPaletteProfileColor(profile, 0)
 
         expect(result).toEqual({
             profile: {
@@ -66,7 +87,7 @@ describe("palette preset extension", () => {
 
         expect(displayedColors[0]).toBe("#FF0000")
 
-        const result = removeImportedPaletteProfileColorByHex(
+        const result = removeFixedPaletteProfileColorByHex(
             unsortedProfile,
             displayedColors[0]
         )
@@ -81,7 +102,7 @@ describe("palette preset extension", () => {
     })
 
     it("keeps imported palette profiles with at least one color", () => {
-        const result = removeImportedPaletteProfileColor(
+        const result = removeFixedPaletteProfileColor(
             { ...profile, colors: ["#001219"] },
             0
         )
@@ -93,15 +114,15 @@ describe("palette preset extension", () => {
     })
 
     it("ignores invalid color indexes when removing", () => {
-        expect(removeImportedPaletteProfileColor(profile, -1)).toEqual({
+        expect(removeFixedPaletteProfileColor(profile, -1)).toEqual({
             profile,
             removed: false,
         })
-        expect(removeImportedPaletteProfileColor(profile, 99)).toEqual({
+        expect(removeFixedPaletteProfileColor(profile, 99)).toEqual({
             profile,
             removed: false,
         })
-        expect(removeImportedPaletteProfileColorByHex(profile, "white")).toEqual(
+        expect(removeFixedPaletteProfileColorByHex(profile, "white")).toEqual(
             {
                 profile,
                 removed: false,

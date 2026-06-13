@@ -16,7 +16,6 @@ import {
     PipetteIcon,
     HandIconOff,
     SvgCameraNewButton,
-    SvgManualButton,
     SvgSmartObject,
     SvgExportSOButton,
     SvgQuantizationRecorderButton,
@@ -249,29 +248,6 @@ function HandIconInline({ style }: { style?: React.CSSProperties }) {
     return (
         <span style={s}>
             <HandIconOff size={size} />
-        </span>
-    )
-}
-
-function ManualIconInline({ style }: { style?: React.CSSProperties }) {
-    return (
-        <span
-            style={{
-                width: 24,
-                height: 24,
-                display: "grid",
-                placeItems: "center",
-                transform: "translateX(-3px)",
-                ...style,
-            }}
-        >
-            <SvgManualButton
-                style={{
-                    width: 24,
-                    height: 24,
-                    display: "block",
-                }}
-            />
         </span>
     )
 }
@@ -616,7 +592,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             <b>Palette Presets</b> let you apply a different
                             color palette to the image. Built-in presets, such
                             as Sunset, Gray, and Black/White, work as ready-made
-                            styles and do not show their internal swatches.
+                            styles and show their swatches below the preset
+                            buttons.
                         </SectionCopy>
                         <SectionCopy>
                             Palettes loaded from images or saved project files
@@ -635,14 +612,13 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             .
                         </SectionCopy>
                         <SectionCopy>
-                            When an imported preset is active, its swatches are
-                            shown below the preset buttons. You can edit those
-                            swatches, delete a swatch from the active imported
-                            palette, and add a custom color with the same Add
-                            Swatch button used in Auto Palette. Added colors
-                            participate in quantization, so the image can be
-                            rebuilt with the imported palette plus your new
-                            color.
+                            When a preset is active, its swatches are shown
+                            below the preset buttons together with transparency
+                            and custom colors for drawing. Presets can be
+                            extended with the same Add Swatch button used in
+                            Auto Palette. Added colors participate in
+                            quantization, so the image can be rebuilt with the
+                            active preset palette plus your new color.
                         </SectionCopy>
                         <SectionCopy>
                             Imported palette presets exist only during the
@@ -917,28 +893,6 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             Drawing is disabled while this tool is active.
-                        </SectionCopy>
-                    </SectionStack>
-                ),
-            },
-            {
-                id: "manual",
-                title: "Manual",
-                navLabel: "Manual",
-                icon: <ManualIconInline />,
-                content: (
-                    <SectionStack>
-                        <SectionCopy>
-                            Manual opens this user guide inside the editor.
-                        </SectionCopy>
-                        <SectionCopy>
-                            Use it when you want to check what a button does,
-                            review export formats, or refresh the workflow
-                            without leaving the editor.
-                        </SectionCopy>
-                        <SectionCopy>
-                            Press <b>Back to Editor</b> to close the guide and
-                            return to the current project.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -1414,7 +1368,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                         const active = section.id === activeId
                                         const isIconRow = !!section.icon
                                         const addTopGap =
-                                            idx === 5 || idx === 16
+                                            idx === 5 || idx === 15
 
                                         return (
                                             <a

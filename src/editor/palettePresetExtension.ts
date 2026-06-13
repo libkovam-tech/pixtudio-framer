@@ -1,13 +1,13 @@
-export type ImportedFixedPaletteProfile = {
+export type EditableFixedPaletteProfile = {
     kind: "fixed"
-    source: "imported"
+    source: "builtin" | "imported"
     id: string
     name: string
     colors: string[]
 }
 
-export type ImportedPaletteExtensionResult<
-    T extends ImportedFixedPaletteProfile,
+export type FixedPaletteExtensionResult<
+    T extends EditableFixedPaletteProfile,
 > = {
     profile: T
     colorIndex: number
@@ -20,12 +20,12 @@ function normalizeImportedPaletteHex(color: string): string | null {
     return nextColor
 }
 
-export function extendImportedPaletteProfile<
-    T extends ImportedFixedPaletteProfile,
+export function extendFixedPaletteProfile<
+    T extends EditableFixedPaletteProfile,
 >(
     profile: T,
     color: string
-): ImportedPaletteExtensionResult<T> | null {
+): FixedPaletteExtensionResult<T> | null {
     const nextColor = normalizeImportedPaletteHex(color)
     if (!nextColor) return null
 
@@ -51,8 +51,8 @@ export function extendImportedPaletteProfile<
     }
 }
 
-export function removeImportedPaletteProfileColor<
-    T extends ImportedFixedPaletteProfile,
+export function removeFixedPaletteProfileColor<
+    T extends EditableFixedPaletteProfile,
 >(profile: T, colorIndex: number): { profile: T; removed: boolean } {
     if (!Number.isInteger(colorIndex)) {
         return { profile, removed: false }
@@ -73,8 +73,8 @@ export function removeImportedPaletteProfileColor<
     }
 }
 
-export function removeImportedPaletteProfileColorByHex<
-    T extends ImportedFixedPaletteProfile,
+export function removeFixedPaletteProfileColorByHex<
+    T extends EditableFixedPaletteProfile,
 >(profile: T, color: string): { profile: T; removed: boolean } {
     const targetColor = normalizeImportedPaletteHex(color)
     if (!targetColor) {
@@ -85,5 +85,5 @@ export function removeImportedPaletteProfileColorByHex<
         (item) => normalizeImportedPaletteHex(item) === targetColor
     )
 
-    return removeImportedPaletteProfileColor(profile, colorIndex)
+    return removeFixedPaletteProfileColor(profile, colorIndex)
 }

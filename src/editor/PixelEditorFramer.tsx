@@ -26,8 +26,8 @@ import {
 } from "./openFileRouter.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
-    extendImportedPaletteProfile,
-    removeImportedPaletteProfileColorByHex,
+    extendFixedPaletteProfile,
+    removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
@@ -7169,6 +7169,70 @@ function PixelEditorFramer({
         return `imported-${rand}`
     }
 
+    function makeEditableFixedPresetProfile(
+        profile: FixedQuantizationProfile
+    ): FixedQuantizationProfile & { source: "imported" } {
+        if (profile.source === "imported") {
+            return {
+                ...profile,
+                colors: profile.colors.map((color) =>
+                    cssColorToHex(color).toUpperCase()
+                ),
+            } as FixedQuantizationProfile & { source: "imported" }
+        }
+
+        return {
+            kind: "fixed",
+            source: "imported",
+            id: makeImportedPalettePresetId(),
+            name: `${profile.name} Custom`,
+            colors: getFixedProfilePaletteForApplication(profile).map((color) =>
+                cssColorToHex(color).toUpperCase()
+            ),
+        }
+    }
+
+    function upsertImportedPalettePresetRegistry(
+        profile: FixedQuantizationProfile & { source: "imported" },
+        registry: ImportedPalettePreset[] = importedPalettePresets
+    ): ImportedPalettePreset[] {
+        const preset: ImportedPalettePreset = {
+            id: profile.id,
+            name: profile.name,
+            profile,
+        }
+        const exists = registry.some((item) => item.id === profile.id)
+        return exists
+            ? registry.map((item) =>
+                  item.id === profile.id ? { ...item, ...preset } : item
+              )
+            : [...registry, preset]
+    }
+
+    function replaceEditablePresetProfileColorByHex(
+        profile: FixedQuantizationProfile,
+        displayedColor: string,
+        nextColor: string
+    ): FixedQuantizationProfile & { source: "imported" } {
+        const editableProfile = makeEditableFixedPresetProfile(profile)
+        const targetHex = cssColorToHex(displayedColor).toUpperCase()
+        const nextHex = cssColorToHex(nextColor).toUpperCase()
+        let replaced = false
+        const nextColors = editableProfile.colors.map((color) => {
+            const colorHex = cssColorToHex(color).toUpperCase()
+            if (!replaced && colorHex === targetHex) {
+                replaced = true
+                return nextHex
+            }
+            return colorHex
+        })
+
+        return {
+            ...editableProfile,
+            colors: replaced ? nextColors : editableProfile.colors,
+        }
+    }
+
     function openPalettePresetFileDialog() {
         const el = palettePresetFileInputRef.current
         if (!el) return
@@ -11101,7 +11165,6 @@ function PixelEditorFramer({
 
         if (
             quantizationProfile.kind === "fixed" &&
-            quantizationProfile.source === "imported" &&
             editingSwatchId.startsWith("auto-")
         ) {
             const colorIndex = getAutoSwatchIndex(editingSwatchId)
@@ -11109,10 +11172,11 @@ function PixelEditorFramer({
                 handleModalCancel()
                 return
             }
-            const result = removeImportedPaletteProfileColorByHex(
-                quantizationProfile as FixedQuantizationProfile & {
-                    source: "imported"
-                },
+            const editableProfile = makeEditableFixedPresetProfile(
+                quantizationProfile
+            )
+            const result = removeFixedPaletteProfileColorByHex(
+                editableProfile,
                 swatch.color
             )
             if (!result.removed) {
@@ -11130,11 +11194,17 @@ function PixelEditorFramer({
                         ? { ...preset, profile: result.profile }
                         : preset
             )
-            setImportedPalettePresets(nextImportedPalettePresets)
+            const nextPresetRegistry = upsertImportedPalettePresetRegistry(
+                result.profile as FixedQuantizationProfile & {
+                    source: "imported"
+                },
+                nextImportedPalettePresets
+            )
+            setImportedPalettePresets(nextPresetRegistry)
             applyFixedPalettePreset(
                 result.profile,
                 preferred,
-                nextImportedPalettePresets
+                nextPresetRegistry
             )
             closeColorModalAfterCreate()
             return
@@ -11313,6 +11383,31 @@ function PixelEditorFramer({
                 setPendingDelete(false)
                 return
             }
+
+            if (
+                quantizationProfile.kind === "fixed" &&
+                editingSwatchId.startsWith("auto-") &&
+                !pendingTransparent
+            ) {
+                const nextProfile = replaceEditablePresetProfileColorByHex(
+                    quantizationProfile,
+                    currentSwatch.color,
+                    colorUpper
+                )
+                const nextImportedPalettePresets =
+                    upsertImportedPalettePresetRegistry(nextProfile)
+                setImportedPalettePresets(nextImportedPalettePresets)
+                applyFixedPalettePreset(
+                    nextProfile,
+                    editingSwatchId,
+                    nextImportedPalettePresets
+                )
+                setIsColorModalOpen(false)
+                setEditingSwatchId(null)
+                setColorModalMode("edit")
+                setPendingDelete(false)
+                return
+            }
         }
 
         const { nextAuto, nextUser } = buildNextSwatchesForEdit(
@@ -11466,18 +11561,17 @@ function PixelEditorFramer({
     }
 
     function createImportedPresetSwatchFromModal(colorUpper: string) {
-        if (
-            quantizationProfile.kind !== "fixed" ||
-            quantizationProfile.source !== "imported"
-        ) {
+        if (quantizationProfile.kind !== "fixed") {
             closeColorModalAfterCreate()
             return
         }
 
-        const importedProfile = quantizationProfile as FixedQuantizationProfile & {
-            source: "imported"
-        }
-        const extension = extendImportedPaletteProfile(importedProfile, colorUpper)
+        const editableProfile =
+            makeEditableFixedPresetProfile(quantizationProfile)
+        const extension = extendFixedPaletteProfile(
+            editableProfile,
+            colorUpper
+        )
         if (!extension) {
             closeColorModalAfterCreate()
             return
@@ -11486,12 +11580,12 @@ function PixelEditorFramer({
         const selectedPresetSwatch = `auto-${extension.colorIndex}` as SwatchId
 
         if (extension.added) {
-            const nextImportedPalettePresets = importedPalettePresets.map(
-                (preset) =>
-                    preset.id === extension.profile.id
-                        ? { ...preset, profile: extension.profile }
-                        : preset
-            )
+            const nextImportedPalettePresets =
+                upsertImportedPalettePresetRegistry(
+                    extension.profile as FixedQuantizationProfile & {
+                        source: "imported"
+                    }
+                )
             setImportedPalettePresets(nextImportedPalettePresets)
             applyFixedPalettePreset(
                 extension.profile,
@@ -11508,8 +11602,7 @@ function PixelEditorFramer({
     function handleAddSwatchClick() {
         if (
             paletteTabsState.activeTab === "presets" &&
-            quantizationProfile.kind === "fixed" &&
-            quantizationProfile.source === "imported"
+            quantizationProfile.kind === "fixed"
         ) {
             openCreateSwatchModal("create-imported-preset")
             return
@@ -12324,6 +12417,55 @@ function PixelEditorFramer({
         )
     }
 
+    const renderTransparentSwatchButton = () => {
+        const isTransparentSelected = selectedSwatch === "transparent"
+        const isMobileActiveTransparent =
+            isMobileUI && isTransparentSelected
+        const isTransparentPipetteLifted =
+            toolMode === "pipette" && !isMobileUI && isTransparentSelected
+        const transparentTransform = isMobileActiveTransparent
+            ? "scale(1.3)"
+            : isTransparentPipetteLifted
+              ? "scale(1.15)"
+              : "scale(1)"
+
+        return (
+            <button
+                type="button"
+                onClick={() => setSelectedSwatch("transparent")}
+                title={TRANSPARENT_LABEL}
+                style={{
+                    width: SWATCH_PX,
+                    height: SWATCH_PX,
+                    borderRadius: 0,
+                    padding: 0,
+                    cursor: "pointer",
+                    background: checkerBackground,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: isTransparentSelected
+                        ? "2px solid rgba(255,255,255,0.95)"
+                        : "2px solid rgba(255,255,255,0.25)",
+                    boxShadow: isTransparentSelected
+                        ? `0 0 0 2px ${pixtudioInk(0.6)}`
+                        : `0 0 0 2px ${pixtudioInk(0.35)}`,
+                    boxSizing: "border-box",
+                    transform: transparentTransform,
+                    transformOrigin: "center",
+                    transition:
+                        "transform 120ms ease, box-shadow 120ms ease",
+                    position: "relative",
+                    zIndex:
+                        isMobileActiveTransparent ||
+                        isTransparentPipetteLifted
+                            ? 2
+                            : 1,
+                }}
+            />
+        )
+    }
+
     const builtinPresetProfiles: FixedQuantizationProfile[] = [
         QUANTIZATION_PROFILES.sunset,
         QUANTIZATION_PROFILES.grayscale,
@@ -12333,10 +12475,9 @@ function PixelEditorFramer({
         (profile) => !hiddenPresetIds.includes(profile.id)
     )
 
-    const shouldShowImportedPresetSwatches =
+    const shouldShowPresetSwatches =
         paletteTabsState.activeTab === "presets" &&
         quantizationProfile.kind === "fixed" &&
-        quantizationProfile.source === "imported" &&
         activePresetButton === quantizationProfile.id
 
     const getPresetButtonLabel = (profile: FixedQuantizationProfile) =>
@@ -13741,7 +13882,7 @@ function PixelEditorFramer({
                                             {renderLoadPaletteButton()}
                                         </div>
 
-                                        {shouldShowImportedPresetSwatches && (
+                                        {shouldShowPresetSwatches && (
                                             <div
                                                 style={{
                                                     width: "100%",
@@ -13755,6 +13896,7 @@ function PixelEditorFramer({
                                                 {sortedAutoSwatchesForUI.map(
                                                     renderSwatchButton
                                                 )}
+                                                {renderTransparentSwatchButton()}
                                                 <button
                                                     type="button"
                                                     onClick={handleAddSwatchClick}
@@ -13779,6 +13921,9 @@ function PixelEditorFramer({
                                                         size={SWATCH_PX}
                                                     />
                                                 </button>
+                                                {sortedUserSwatchesForUI.map(
+                                                    renderSwatchButton
+                                                )}
                                             </div>
                                         )}
                                     </div>
