@@ -25,6 +25,11 @@ import "./hub.css"
 const DESKTOP_LANDING_VIDEO_SRC = "/media/landing-preview.mp4?v=20260511-hero43"
 const LANDING_VIDEO_ORIGINAL_SRC = "/media/landing-preview.mp4?v=20260511-hero43"
 const LANDING_VIDEO_POSTER_SRC = "/media/landing-video-poster.jpg"
+const LANDING_VIDEO_UPLOAD_DATE = "2026-05-11T00:00:00Z"
+const LANDING_VIDEO_DURATION = "PT30S"
+const LANDING_VIDEO_WIDTH = 256
+const LANDING_VIDEO_HEIGHT = 256
+const LANDING_VIDEO_ENCODING_FORMAT = "video/mp4"
 const DESKTOP_HINT_TEXT =
   "* To scroll the info cards please use a mouse wheel, arrow keys, or swipe"
 const HEADLINE_FIT_TEXT = "INTO PIXEL ART"
@@ -1925,9 +1930,14 @@ export default function Hub() {
     description: HERO_VIDEO_SCHEMA_DESCRIPTION,
     transcript: HERO_VIDEO_TRANSCRIPT_TEXT,
     thumbnailUrl: [toAbsoluteSiteUrl(LANDING_VIDEO_POSTER_SRC)],
-    uploadDate: "2026-05-11T00:00:00Z",
+    uploadDate: LANDING_VIDEO_UPLOAD_DATE,
+    duration: LANDING_VIDEO_DURATION,
+    encodingFormat: LANDING_VIDEO_ENCODING_FORMAT,
+    width: LANDING_VIDEO_WIDTH,
+    height: LANDING_VIDEO_HEIGHT,
     contentUrl: toAbsoluteSiteUrl(DESKTOP_LANDING_VIDEO_SRC),
-    embedUrl: `${toAbsoluteSiteUrl("/")}#hero-video`,
+    isFamilyFriendly: true,
+    inLanguage: "en",
     isPartOf: { "@id": SITE_SCHEMA_IDS.website },
     publisher: { "@id": SITE_SCHEMA_IDS.organization },
   }

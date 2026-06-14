@@ -3,6 +3,13 @@ import { dirname, resolve } from "node:path"
 
 const SITE_BASE_URL = "https://pixtudio.app"
 const SITE_OG_IMAGE_URL = `${SITE_BASE_URL}/og-image.jpg`
+const LANDING_VIDEO_URL = `${SITE_BASE_URL}/media/landing-preview.mp4?v=20260511-hero43`
+const LANDING_VIDEO_POSTER_URL = `${SITE_BASE_URL}/media/landing-video-poster.jpg`
+const LANDING_VIDEO_UPLOAD_DATE = "2026-05-11T00:00:00Z"
+const LANDING_VIDEO_DURATION = "PT30S"
+const LANDING_VIDEO_WIDTH = 256
+const LANDING_VIDEO_HEIGHT = 256
+const LANDING_VIDEO_ENCODING_FORMAT = "video/mp4"
 const DIST_INDEX = resolve("dist/index.html")
 const ROOT_MARKER = '<div id="root"></div>'
 
@@ -794,10 +801,15 @@ function routeStructuredData(routeKey) {
             "Watch ordinary images transform into structured pixel art in real time. This preview shows PIXTUDIO turning simple shapes, symbols, photos, and colorful compositions into editable pixel-based visuals directly on the canvas.",
           transcript:
             "Watch how ordinary images transform into structured pixel art in real time. This preview shows the PIXTUDIO editor turning simple shapes, symbols, and colorful compositions into editable pixel-based visuals directly on the canvas.",
-          thumbnailUrl: `${SITE_BASE_URL}/media/landing-video-poster.jpg`,
-          uploadDate: "2026-05-11T00:00:00Z",
-          contentUrl: `${SITE_BASE_URL}/media/landing-preview.mp4?v=20260511-hero43`,
-          embedUrl: `${url}#hero-video`,
+          thumbnailUrl: [LANDING_VIDEO_POSTER_URL],
+          uploadDate: LANDING_VIDEO_UPLOAD_DATE,
+          duration: LANDING_VIDEO_DURATION,
+          encodingFormat: LANDING_VIDEO_ENCODING_FORMAT,
+          width: LANDING_VIDEO_WIDTH,
+          height: LANDING_VIDEO_HEIGHT,
+          contentUrl: LANDING_VIDEO_URL,
+          isFamilyFriendly: true,
+          inLanguage: "en",
           publisher: { "@id": `${SITE_BASE_URL}/#organization` },
         },
       ],
