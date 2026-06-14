@@ -1,0 +1,5 @@
+/editor
+  X-Robots-Tag: noindex, nofollow
+
+/editor/*
+  X-Robots-Tag: noindex, nofollow

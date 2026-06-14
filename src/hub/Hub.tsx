@@ -2062,29 +2062,31 @@ export default function Hub() {
               />
             </div>
 
-            <div className="hubMobileBlockHeadline">
-              <h1
-                ref={mobileHeadlineRef}
-                className="hubMobileHeadline"
-              >
-                <span className="hubMobileHeadlineJustified">
-                  <b>TURN</b>
-                  <b>PHOTOS</b>
-                  <b>INTO</b>
-                </span>
-                <span>PIXEL ART INSTANTLY</span>
-              </h1>
-            </div>
+            <div className="hubMobileHeroActionGroup">
+              <div className="hubMobileBlockHeadline">
+                <h1
+                  ref={mobileHeadlineRef}
+                  className="hubMobileHeadline"
+                >
+                  <span className="hubMobileHeadlineJustified">
+                    <b>TURN</b>
+                    <b>PHOTOS</b>
+                    <b>INTO</b>
+                  </span>
+                  <span>PIXEL ART INSTANTLY</span>
+                </h1>
+              </div>
 
-            <div className="hubMobileBlockCta">
-              <a
-                className="hubMobileCta hubMobileHomeCta"
-                href={DESKTOP_EDITOR_URL}
-                target="_self"
-                rel="noreferrer"
-              >
-                <span className="hubCtaText">Try PIXTUDIO Now</span>
-              </a>
+              <div className="hubMobileBlockCta">
+                <a
+                  className="hubMobileCta hubMobileHomeCta"
+                  href={DESKTOP_EDITOR_URL}
+                  target="_self"
+                  rel="noreferrer"
+                >
+                  <span className="hubCtaText">Try PIXTUDIO Now</span>
+                </a>
+              </div>
             </div>
 
             <section

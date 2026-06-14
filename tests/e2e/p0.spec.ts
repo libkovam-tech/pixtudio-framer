@@ -57,7 +57,7 @@ test("editor project, export menu, open menu, and manual are stable", async ({
 
   await page.getByRole("button", { name: "Manual button" }).click()
   await expect(
-    page.getByRole("heading", { name: "PIXTUDIO - User Guide" })
+    page.getByRole("heading", { name: /PIXTUDIO.*User Guide/ })
   ).toBeVisible()
   await expect(page).toHaveScreenshot(snapshotName(testInfo, "editor-manual"))
 

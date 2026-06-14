@@ -172,7 +172,7 @@ test("manual screen keeps native viewport zoom locked on mobile", async ({
     await openBearProject(page)
     await page.getByRole("button", { name: "Manual button" }).click()
     await expect(
-        page.getByRole("heading", { name: "PIXTUDIO - User Guide" })
+        page.getByRole("heading", { name: /PIXTUDIO.*User Guide/ })
     ).toBeVisible()
     await expectEditorViewportZoomLocked(page)
 
