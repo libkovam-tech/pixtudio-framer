@@ -140,13 +140,11 @@ const DESKTOP_SEO_COPY = [
 ]
 
 const MOBILE_CARD_TITLE_LINES = MOBILE_INFO_CARDS.flatMap((card) => card.title)
-const MOBILE_CAROUSEL_REPEAT_COUNT = 9
-const MOBILE_CAROUSEL_CENTER_REPEAT = Math.floor(MOBILE_CAROUSEL_REPEAT_COUNT / 2)
 const MOBILE_CAROUSEL_ITEMS = Array.from({
-  length: MOBILE_CAROUSEL_REPEAT_COUNT * MOBILE_INFO_CARDS.length,
+  length: MOBILE_INFO_CARDS.length,
 }).map((_, index) => ({
   itemIndex: index,
-  cardIndex: index % MOBILE_INFO_CARDS.length,
+  cardIndex: index,
 }))
 const DESKTOP_ORBIT_CARDS = MOBILE_INFO_CARDS
 type DesktopOrbitSide = "left" | "right"
@@ -829,10 +827,30 @@ export default function Hub() {
   }, [mobileCardBodyFontSize, mobileCardTitleFontSize])
 
   useLayoutEffect(() => {
-    const rail = mobileCardRailRef.current
-    if (!rail) return
+    const viewport = mobileCardsRef.current
+    if (!viewport) return
 
-    rail.style.transform = `translateX(${mobileCarouselOffsetX}px)`
+    const cards = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
+    )
+    const cycleWidth = mobileCarouselCycleWidthRef.current
+    const viewportCenterX = viewport.clientWidth / 2
+
+    for (const card of cards) {
+      let wrapOffset = 0
+
+      if (cycleWidth > 0 && viewportCenterX > 0) {
+        const cardCenterX = card.offsetLeft + card.offsetWidth / 2
+        wrapOffset =
+          Math.round(
+            (viewportCenterX - (cardCenterX + mobileCarouselOffsetX)) /
+              cycleWidth
+          ) * cycleWidth
+      }
+
+      const translateX = Math.round(mobileCarouselOffsetX + wrapOffset)
+      card.style.transform = `translateX(${translateX}px)`
+    }
   }, [mobileCarouselOffsetX])
 
   useEffect(() => {
@@ -1479,41 +1497,53 @@ export default function Hub() {
       const currentRail = mobileCardRailRef.current
       if (!currentViewport || !currentRail) return
 
-      const currentCycleStart = currentViewport.querySelector<HTMLElement>(
-        `[data-carousel-item="${MOBILE_CAROUSEL_CENTER_REPEAT * MOBILE_INFO_CARDS.length}"]`
+      const currentCards = Array.from(
+        currentViewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
       )
-      const currentNextCycleStart =
-        currentViewport.querySelector<HTMLElement>(
-          `[data-carousel-item="${(MOBILE_CAROUSEL_CENTER_REPEAT + 1) * MOBILE_INFO_CARDS.length}"]`
-        )
-      if (!currentCycleStart || !currentNextCycleStart) return
+      const currentFirstCard = currentCards[0]
+      const currentSecondCard = currentCards[1]
+      const currentLastCard = currentCards[currentCards.length - 1]
+      if (!currentFirstCard || !currentLastCard) return
 
       initialSnapCompleted = true
       initialSnapResizeObserver?.disconnect()
       initialSnapResizeObserver = null
 
+      const currentGap =
+        currentSecondCard
+          ? Math.max(
+              0,
+              currentSecondCard.offsetLeft -
+                currentFirstCard.offsetLeft -
+                currentFirstCard.offsetWidth
+            )
+          : 0
       const currentCycleWidth =
-        currentNextCycleStart.offsetLeft - currentCycleStart.offsetLeft
-      const currentBaseOffset = -currentCycleStart.offsetLeft
+        currentLastCard.offsetLeft +
+        currentLastCard.offsetWidth +
+        currentGap -
+        currentFirstCard.offsetLeft
+      const currentViewportCenterX = currentViewport.clientWidth / 2
+      const currentBaseOffset =
+        currentViewportCenterX -
+        (currentFirstCard.offsetLeft + currentFirstCard.offsetWidth / 2)
       mobileCarouselCycleWidthRef.current = currentCycleWidth
       mobileCarouselBaseOffsetRef.current = currentBaseOffset
-      currentRail.style.setProperty(
-        "transform",
-        `translateX(${currentBaseOffset}px)`
-      )
-
-      const viewportRect = currentViewport.getBoundingClientRect()
-      const viewportCenterX = viewportRect.left + viewportRect.width / 2
-      const cards = Array.from(
-        currentViewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
-      )
       let closestDelta = 0
       let closestDistance = Number.POSITIVE_INFINITY
 
-      for (const card of cards) {
-        const cardRect = card.getBoundingClientRect()
-        const cardCenterX = cardRect.left + cardRect.width / 2
-        const delta = cardCenterX - viewportCenterX
+      for (const card of currentCards) {
+        const cardCenterX = card.offsetLeft + card.offsetWidth / 2
+        const wrapOffset =
+          currentCycleWidth > 0
+            ? Math.round(
+                (currentViewportCenterX -
+                  (cardCenterX + currentBaseOffset)) /
+                  currentCycleWidth
+              ) * currentCycleWidth
+            : 0
+        const delta =
+          cardCenterX + currentBaseOffset + wrapOffset - currentViewportCenterX
         const distance = Math.abs(delta)
         if (distance < closestDistance) {
           closestDelta = delta
@@ -1528,7 +1558,6 @@ export default function Hub() {
       while (normalized < currentBaseOffset - currentCycleWidth / 2) {
         normalized += currentCycleWidth
       }
-      currentRail.style.setProperty("transform", `translateX(${normalized}px)`)
       setMobileCarouselOffsetX(normalized)
     }
 
@@ -1555,27 +1584,35 @@ export default function Hub() {
       const viewport = mobileCardsRef.current
       if (!viewport) return
 
-      const cycleStart = viewport.querySelector<HTMLElement>(
-        `[data-carousel-item="${MOBILE_CAROUSEL_CENTER_REPEAT * MOBILE_INFO_CARDS.length}"]`
+      const cards = Array.from(
+        viewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
       )
-      const nextCycleStart = viewport.querySelector<HTMLElement>(
-        `[data-carousel-item="${(MOBILE_CAROUSEL_CENTER_REPEAT + 1) * MOBILE_INFO_CARDS.length}"]`
-      )
-      if (!cycleStart || !nextCycleStart) return
-      const cycleWidth = nextCycleStart.offsetLeft - cycleStart.offsetLeft
+      const firstCard = cards[0]
+      const secondCard = cards[1]
+      const lastCard = cards[cards.length - 1]
+      if (!firstCard || !lastCard) return
+      const gap =
+        secondCard
+          ? Math.max(
+              0,
+              secondCard.offsetLeft -
+                firstCard.offsetLeft -
+                firstCard.offsetWidth
+            )
+          : 0
+      const cycleWidth =
+        lastCard.offsetLeft + lastCard.offsetWidth + gap - firstCard.offsetLeft
 
       if (!disposed) {
         mobileCarouselCycleWidthRef.current = cycleWidth
 
         if (!mobileCarouselInitialPositionedRef.current) {
           mobileCarouselInitialPositionedRef.current = true
-          const baseOffset = -cycleStart.offsetLeft
+          const baseOffset =
+            viewport.clientWidth / 2 -
+            (firstCard.offsetLeft + firstCard.offsetWidth / 2)
           mobileCarouselBaseOffsetRef.current = baseOffset
           setMobileCarouselOffsetX(baseOffset)
-          mobileCardRailRef.current?.style.setProperty(
-            "transform",
-            `translateX(${baseOffset}px)`
-          )
 
           initialSnapResizeObserver = new ResizeObserver(scheduleInitialSnap)
           viewport
@@ -1809,7 +1846,7 @@ export default function Hub() {
     if (!viewport || !cycleWidth) return normalizeMobileCarouselOffset(offset)
 
     const viewportRect = viewport.getBoundingClientRect()
-    const viewportCenterX = viewportRect.left + viewportRect.width / 2
+    const viewportCenterX = viewportRect.width / 2
     const cards = Array.from(
       viewport.querySelectorAll<HTMLElement>("[data-carousel-item]")
     )
@@ -1817,9 +1854,11 @@ export default function Hub() {
     let closestDistance = Number.POSITIVE_INFINITY
 
     for (const card of cards) {
-      const cardRect = card.getBoundingClientRect()
-      const cardCenterX = cardRect.left + cardRect.width / 2
-      const delta = cardCenterX - viewportCenterX
+      const cardCenterX = card.offsetLeft + card.offsetWidth / 2
+      const wrapOffset =
+        Math.round((viewportCenterX - (cardCenterX + offset)) / cycleWidth) *
+        cycleWidth
+      const delta = cardCenterX + offset + wrapOffset - viewportCenterX
       const distance = Math.abs(delta)
       if (distance < closestDistance) {
         closestDelta = delta

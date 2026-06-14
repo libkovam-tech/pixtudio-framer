@@ -195,9 +195,6 @@ export const GALLERY_STRIP_ITEMS: GalleryStripItem[] = [
   },
 ]
 
-const GALLERY_STRIP_REPEAT_COUNT = 5
-const GALLERY_STRIP_CENTER_REPEAT = 2
-
 function normalizeLoopOffset(offset: number, cycleWidth: number) {
   if (!cycleWidth) return offset
 
@@ -336,18 +333,15 @@ export default function GalleryPage() {
   const stripStartOffsetRef = useRef(0)
   const pairSelectionRequestRef = useRef(0)
   const [activePair, setActivePair] = useState(GALLERY_MAIN_PAIR)
-  const [stripAnchorX, setStripAnchorX] = useState(0)
-  const [stripCenterX, setStripCenterX] = useState(0)
+  const [stripCycleWidth, setStripCycleWidth] = useState(0)
   const [stripOffsetX, setStripOffsetX] = useState(0)
 
   const stripItems = useMemo(
     () =>
-      Array.from({ length: GALLERY_STRIP_REPEAT_COUNT }, (_, repeatIndex) =>
-        GALLERY_STRIP_ITEMS.map((item, itemIndex) => ({
-          ...item,
-          itemIndex: repeatIndex * GALLERY_STRIP_ITEMS.length + itemIndex,
-        }))
-      ).flat(),
+      GALLERY_STRIP_ITEMS.map((item, itemIndex) => ({
+        ...item,
+        itemIndex,
+      })),
     []
   )
   const galleryStructuredData = useMemo(
@@ -395,23 +389,28 @@ export default function GalleryPage() {
       const viewport = stripViewportRef.current
       if (!viewport) return
 
-      const targetIndex = GALLERY_STRIP_CENTER_REPEAT * GALLERY_STRIP_ITEMS.length
-      const target = viewport.querySelector<HTMLElement>(
-        `[data-gallery-strip-item="${targetIndex}"]`
+      const items = Array.from(
+        viewport.querySelectorAll<HTMLElement>("[data-gallery-strip-item]")
       )
-      const cycleStart = viewport.querySelector<HTMLElement>(
-        `[data-gallery-strip-item="${GALLERY_STRIP_CENTER_REPEAT * GALLERY_STRIP_ITEMS.length}"]`
-      )
-      const nextCycleStart = viewport.querySelector<HTMLElement>(
-        `[data-gallery-strip-item="${(GALLERY_STRIP_CENTER_REPEAT + 1) * GALLERY_STRIP_ITEMS.length}"]`
-      )
-      if (!target || !cycleStart || !nextCycleStart) return
+      const firstItem = items[0]
+      const secondItem = items[1]
+      const lastItem = items[items.length - 1]
+      if (!firstItem || !lastItem) return
+
+      const gap =
+        secondItem
+          ? Math.max(
+              0,
+              secondItem.offsetLeft - firstItem.offsetLeft - firstItem.offsetWidth
+            )
+          : 0
+      const cycleWidth =
+        lastItem.offsetLeft + lastItem.offsetWidth + gap - firstItem.offsetLeft
 
       if (!disposed) {
-        stripCycleWidthRef.current =
-          nextCycleStart.offsetLeft - cycleStart.offsetLeft
-        setStripAnchorX(target.offsetLeft)
-        setStripCenterX(0)
+        stripCycleWidthRef.current = cycleWidth
+        setStripCycleWidth(cycleWidth)
+        setStripOffsetX((offset) => normalizeLoopOffset(offset, cycleWidth))
       }
     }
 
@@ -429,6 +428,31 @@ export default function GalleryPage() {
       window.removeEventListener("resize", measureStrip)
     }
   }, [])
+
+  useLayoutEffect(() => {
+    const viewport = stripViewportRef.current
+    if (!viewport) return
+
+    const items = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-gallery-strip-item]")
+    )
+    const viewportCenterX = viewport.clientWidth / 2
+
+    for (const item of items) {
+      let wrapOffset = 0
+
+      if (stripCycleWidth > 0 && viewportCenterX > 0) {
+        const itemCenterX = item.offsetLeft + item.offsetWidth / 2
+        wrapOffset =
+          Math.round(
+            (viewportCenterX - (itemCenterX + stripOffsetX)) / stripCycleWidth
+          ) * stripCycleWidth
+      }
+
+      const translateX = Math.round(stripOffsetX + wrapOffset)
+      item.style.transform = `translateX(${translateX}px)`
+    }
+  }, [stripCycleWidth, stripOffsetX])
 
   const handleStripPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     stripPointerStartXRef.current = event.clientX
@@ -547,12 +571,7 @@ export default function GalleryPage() {
           onPointerUp={handleStripPointerUp}
           onPointerCancel={handleStripPointerUp}
         >
-          <div
-            className="siteGalleryStripRail"
-            style={{
-              transform: `translateX(${stripCenterX - stripAnchorX + stripOffsetX}px)`,
-            }}
-          >
+          <div className="siteGalleryStripRail">
             {stripItems.map((item) => (
               <button
                 className="siteGalleryStripItem"

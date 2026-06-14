@@ -37,6 +37,11 @@ const SITE_MENU_LINKS: SiteMenuLink[] = [
   { page: "faq", label: SITE_PAGE_LABELS.faq, to: "/faq/" },
   { page: "how", label: SITE_PAGE_LABELS.how, to: "/how-it-works/" },
   { page: "gallery", label: SITE_PAGE_LABELS.gallery, to: "/gallery/" },
+  {
+    page: "learn",
+    label: SITE_PAGE_LABELS.learn,
+    to: "/pixel-art-from-photos/",
+  },
 ]
 
 const SITE_MOBILE_MENU_LINKS: SiteMenuLink[] = [
@@ -235,9 +240,6 @@ export function SiteFooter({ className = "" }: { className?: string }) {
       <div className="siteFooterContent">
         <span className="siteFooterText">PIXTUDIO {"\u00a9"}2026</span>
         <div className="siteFooterLinks">
-          <Link className="siteFooterLink" to="/pixel-art-from-photos/">
-            Pixel Art from Photos
-          </Link>
           <Link className="siteFooterLink" to="/links/">
             Links
           </Link>
