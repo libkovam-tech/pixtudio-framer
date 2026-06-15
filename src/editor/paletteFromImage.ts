@@ -3,6 +3,7 @@ import {
     extractImportedPaletteColors,
     shouldUseObjectiveImportedPaletteSampling,
 } from "./importedPaletteStrategy.ts"
+import { decodeAndValidateRasterImageFile } from "./fileIntakeSecurity.ts"
 
 const DEFAULT_TARGET_COLORS = 32
 const DEFAULT_SAMPLE_MAX_SIDE = 160
@@ -41,19 +42,7 @@ function getImageSampleSize(width: number, height: number, maxSide: number) {
 }
 
 async function decodeImageFile(file: File): Promise<ImageBitmap> {
-    if (!file.type.startsWith("image/")) {
-        throw new Error("paletteFromImage: expected an image file")
-    }
-
-    if (typeof createImageBitmap !== "function") {
-        throw new Error("paletteFromImage: createImageBitmap is unavailable")
-    }
-
-    try {
-        return await createImageBitmap(file, { imageOrientation: "from-image" })
-    } catch {
-        return await createImageBitmap(file)
-    }
+    return await decodeAndValidateRasterImageFile(file)
 }
 
 function imageBitmapToSamplePixels(

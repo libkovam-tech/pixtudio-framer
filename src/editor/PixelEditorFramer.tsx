@@ -24,6 +24,12 @@ import {
     isLikelyRasterImageFile,
     routeOpenFile,
 } from "./openFileRouter.ts"
+import {
+    FILE_INTAKE_MESSAGES,
+    assertProjectSaveFileSize,
+    decodeAndValidateRasterImageFile,
+    getFileIntakeUserMessage,
+} from "./fileIntakeSecurity.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendFixedPaletteProfile,
@@ -133,27 +139,7 @@ export type SourceImage = ImageBitmap
 // --- P2: Decode gallery File -> SourceImage (decode only; fail-closed; no resize; no presets) ---
 
 export async function decodeToSourceImage(file: File): Promise<SourceImage> {
-    // Fail-closed: images only
-    if (!file || !isLikelyRasterImageFile(file)) {
-        throw new Error("decodeToSourceImage: only image files are allowed")
-    }
-
-    // We standardize on ImageBitmap as SourceImage.
-    if (typeof createImageBitmap !== "function") {
-        throw new Error(
-            "decodeToSourceImage: createImageBitmap is not available in this environment"
-        )
-    }
-
-    // Try to respect EXIF orientation where supported.
-    try {
-        return await createImageBitmap(file, {
-            imageOrientation: "from-image",
-        } as any)
-    } catch {
-        // Fallback: decode without orientation options.
-        return await createImageBitmap(file)
-    }
+    return await decodeAndValidateRasterImageFile(file)
 }
 
 const ENABLE_PREP_LOGS = false
@@ -4089,7 +4075,9 @@ function PixelEditorFramer({
         fileName?: string
     }
 
-    type LoadLetter = { ok: true; payload: LoadPayload } | { ok: false }
+    type LoadLetter =
+        | { ok: true; payload: LoadPayload }
+        | { ok: false; message?: string }
 
     async function buildLoadLetterFromPixtudioFile(
         file: File
@@ -4100,6 +4088,7 @@ function PixelEditorFramer({
             // ==========================
             // LOAD CAPSULE: read + parse
             // ==========================
+            assertProjectSaveFileSize(file)
             const jsonText = await file.text()
 
             const parsed = parseProjectSnapshotV2Json(jsonText)
@@ -4109,7 +4098,10 @@ function PixelEditorFramer({
                     code: parsed.error.code,
                     message: parsed.error.message,
                 })
-                return { ok: false }
+                return {
+                    ok: false,
+                    message: FILE_INTAKE_MESSAGES.damagedProject,
+                }
             }
 
             // ==========================
@@ -4148,12 +4140,18 @@ function PixelEditorFramer({
             })
 
             return { ok: true, payload }
-        } catch {
+        } catch (error) {
             coreLifecycleLog("load:rejected", {
                 fileName: file.name,
                 code: "E_READ",
             })
-            return { ok: false }
+            return {
+                ok: false,
+                message: getFileIntakeUserMessage(
+                    error,
+                    FILE_INTAKE_MESSAGES.damagedProject
+                ),
+            }
         }
     }
 
@@ -4166,7 +4164,9 @@ function PixelEditorFramer({
         if (!letter.ok) {
             coreLifecycleLog("load:apply-rejected")
             // ✅ ЕДИНАЯ модалка "Неправильный импорт" (как и для неверного изображения)
-            onShowImportError?.("Import failed. Please try again.")
+            onShowImportError?.(
+                letter.message ?? FILE_INTAKE_MESSAGES.damagedProject
+            )
 
             // (опционально) оставляем legacy-стейт, если он ещё где-то используется логикой
             //setImportStatus("error")
@@ -7248,10 +7248,11 @@ function PixelEditorFramer({
 
     async function importPalettePresetFromPixtudioFile(file: File) {
         try {
+            assertProjectSaveFileSize(file)
             const text = await file.text()
             const parsed = parseProjectSnapshotV2Json(text)
             if (!parsed.ok) {
-                showImportError("Import failed. Please try again.")
+                showImportError(FILE_INTAKE_MESSAGES.damagedProject)
                 return
             }
 
@@ -7288,8 +7289,13 @@ function PixelEditorFramer({
                     colors: profile.colors.length,
                 })
             }
-        } catch {
-            showImportError("Import failed. Please try again.")
+        } catch (error) {
+            showImportError(
+                getFileIntakeUserMessage(
+                    error,
+                    FILE_INTAKE_MESSAGES.damagedProject
+                )
+            )
         }
     }
 
@@ -7328,16 +7334,14 @@ function PixelEditorFramer({
                     colors: profile.colors.length,
                 })
             }
-        } catch {
-            showImportError("Import failed. Please try again.")
+        } catch (error) {
+            showImportError(
+                getFileIntakeUserMessage(
+                    error,
+                    FILE_INTAKE_MESSAGES.imageDecodeFailed
+                )
+            )
         }
-    }
-
-    function isPaletteSourceImageFile(file: File) {
-        return (
-            file.type.startsWith("image/") ||
-            /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(file.name)
-        )
     }
 
     function handlePalettePresetFilePicked(
@@ -7347,12 +7351,18 @@ function PixelEditorFramer({
         event.target.value = ""
         if (!file) return
 
-        if (isPaletteSourceImageFile(file)) {
+        const route = routeOpenFile(file)
+        if (route === "image") {
             void importPalettePresetFromImageFile(file)
             return
         }
 
-        void importPalettePresetFromPixtudioFile(file)
+        if (route === "project") {
+            void importPalettePresetFromPixtudioFile(file)
+            return
+        }
+
+        showImportError(FILE_INTAKE_MESSAGES.unsupportedFile)
     }
 
     function deletePalettePreset(profileId: string) {
@@ -12672,7 +12682,7 @@ function PixelEditorFramer({
             <input
                 ref={palettePresetFileInputRef}
                 type="file"
-                accept=".pixtudio,application/json,image/*"
+                accept=".pixtudio,application/json,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
                 style={{ display: "none" }}
                 onChange={handlePalettePresetFilePicked}
             />
@@ -16014,7 +16024,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                     size: file.size,
                 })
 
-                failImport("Import failed. Please try again.")
+                failImport(FILE_INTAKE_MESSAGES.unsupportedFile)
                 return
             }
 
@@ -16029,7 +16039,12 @@ export default function PIXTUDIO_Mobile_MVP() {
                 openCropFlow(sourceImage)
             } catch (e: any) {
                 console.warn("[IMPORT][GALLERY] decodeToSourceImage failed", e)
-                failImport("Import failed. Please try again.")
+                failImport(
+                    getFileIntakeUserMessage(
+                        e,
+                        FILE_INTAKE_MESSAGES.imageDecodeFailed
+                    )
+                )
             }
         },
         []
@@ -17526,7 +17541,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 return
             }
 
-            failImport("Import failed. Please try again.")
+            failImport(FILE_INTAKE_MESSAGES.unsupportedFile)
             setScreen(pendingProjectOpenFromStartRef.current ? "start" : "editor")
             return
 
@@ -17646,7 +17661,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
                 style={{ display: "none" }}
                 onChange={handlePickedImage}
             />
@@ -17654,7 +17669,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             <input
                 ref={loadFileInputRef}
                 type="file"
-                accept=".pixtudio,application/json,image/*,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
+                accept=".pixtudio,application/json,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
                 style={{ display: "none" }}
                 onChange={handlePickedProjectFile}
             />

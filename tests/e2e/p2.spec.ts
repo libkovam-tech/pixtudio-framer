@@ -11,6 +11,7 @@ import {
 } from "./helpers"
 
 const unsupportedFilePath = path.join(fixturesDir, "unsupported-open-file.txt")
+const damagedProjectPath = path.join(fixturesDir, "damaged-project.pixtudio")
 
 test.beforeEach(async ({ page }) => {
     await installStableVisualEnvironment(page)
@@ -59,9 +60,32 @@ test("open pipeline rejects unsupported files", async ({ page }) => {
     await fileChooser.setFiles(unsupportedFilePath)
 
     await expect(page.getByText("IMPORT ERROR")).toBeVisible()
-    await expect(page.getByText("Import failed. Please try again.")).toBeVisible()
+    await expect(
+        page.getByText("This file is not supported by PIXTUDIO.")
+    ).toBeVisible()
     await page.getByRole("button", { name: "OK" }).click()
     await expect(page.getByRole("button", { name: "Open File" })).toBeVisible()
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("open pipeline rejects damaged pixtudio projects without image fallback", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    const fileChooserPromise = page.waitForEvent("filechooser")
+    await page.getByRole("button", { name: "Open File" }).click()
+    const fileChooser = await fileChooserPromise
+    await fileChooser.setFiles(damagedProjectPath)
+
+    await expect(page.getByText("IMPORT ERROR")).toBeVisible()
+    await expect(
+        page.getByText("This PIXTUDIO project file appears to be damaged.")
+    ).toBeVisible()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible()
 
     expect(errors.flush()).toEqual([])
 })

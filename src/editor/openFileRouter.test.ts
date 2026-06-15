@@ -31,6 +31,12 @@ describe("open file router", () => {
         expect(routeOpenFile({ name: "photo.PNG", type: "" })).toBe("image")
     })
 
+    it("does not route SVG through the raster image pipe", () => {
+        expect(routeOpenFile({ name: "vector.svg", type: "image/svg+xml" })).toBe(
+            "unsupported"
+        )
+    })
+
     it("rejects unsupported files", () => {
         expect(routeOpenFile({ name: "notes.txt", type: "text/plain" })).toBe(
             "unsupported"

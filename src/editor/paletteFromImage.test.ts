@@ -89,7 +89,7 @@ describe("paletteFromImage", () => {
 
         await expect(
             extractPaletteFromImageFile(makeImageFile("application/json"))
-        ).rejects.toThrow("expected an image file")
+        ).rejects.toThrow("not supported")
         expect(createImageBitmap).not.toHaveBeenCalled()
     })
 })
