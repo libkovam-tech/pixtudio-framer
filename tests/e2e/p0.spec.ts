@@ -83,3 +83,16 @@ for (const route of promoRoutes) {
     expect(errors.flush()).toEqual([])
   })
 }
+
+test("how-it-works modal keeps production backdrop blur", async ({ page }) => {
+  const errors = collectBrowserErrors(page)
+
+  await page.goto("/how-it-works/")
+  await page.getByRole("button", { name: "Draw from a Blank Canvas" }).click()
+
+  const overlay = page.locator(".siteHowItWorksModalOverlay")
+  await expect(overlay).toBeVisible()
+  await expect(overlay).toHaveCSS("backdrop-filter", /blur\(/)
+
+  expect(errors.flush()).toEqual([])
+})
