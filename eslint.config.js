@@ -27,12 +27,20 @@ export default defineConfig([
   },
   {
     files: [
+      'src/editor/**/*.{ts,tsx}',
       'src/editor/PixelEditorFramer.tsx',
       'src/editor/SmartReferenceEditor.tsx',
     ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       'react-hooks/exhaustive-deps': 'off',
+      // React Compiler is not enabled yet. Keep these refactor-heavy rules
+      // out of the baseline until the editor is decomposed in smaller steps.
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
       'react-refresh/only-export-components': 'off',
     },
   },
