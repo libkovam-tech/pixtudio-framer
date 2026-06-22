@@ -7,8 +7,11 @@ import {
     V2_CELL_TRANSPARENT,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
+    decodeProjectSnapshotBytesBase64,
+    decodeProjectSnapshotRefBytes,
     encodeProjectSnapshotBytesBase64,
     parseProjectSnapshotV2Json,
+    resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
@@ -145,6 +148,95 @@ describe("ProjectSnapshotV2 invariants", () => {
                 new Uint8ClampedArray([0, 255, 16, 128])
             )
         ).toBe("AP8QgA==")
+    })
+
+    it("decodes snapshot reference bytes without constructing browser ImageData", () => {
+        const bytes = new Uint8ClampedArray([0, 255, 16, 128])
+        const b64 = encodeProjectSnapshotBytesBase64(bytes)
+        const decoded = decodeProjectSnapshotBytesBase64(b64)
+
+        expect([...decoded]).toEqual([...bytes])
+        expect(
+            decodeProjectSnapshotRefBytes({
+                w: 512,
+                h: 512,
+                ext: "rgba8",
+                b64,
+            })
+        ).toEqual(decoded)
+        expect(decodeProjectSnapshotRefBytes(null)).toBeNull()
+    })
+
+    it("resolves loaded quantization profile markers for restore", () => {
+        const fallback = { kind: "extract" as const }
+        const builtinProfile = {
+            kind: "fixed" as const,
+            source: "builtin" as const,
+            id: "neon-cold-32",
+            name: "NEON",
+            colors: ["#000000", "#FFFFFF"],
+        }
+        const resolveBuiltin = (id: string) =>
+            id === builtinProfile.id ? builtinProfile : undefined
+
+        expect(
+            resolveProjectSnapshotV2QuantizationProfile(
+                { quantizationProfile: undefined },
+                { fallback, resolveBuiltin }
+            )
+        ).toBe(fallback)
+        expect(
+            resolveProjectSnapshotV2QuantizationProfile(
+                { quantizationProfile: { kind: "extract" } },
+                { fallback, resolveBuiltin }
+            )
+        ).toBe(fallback)
+        expect(
+            resolveProjectSnapshotV2QuantizationProfile(
+                {
+                    quantizationProfile: {
+                        kind: "fixed",
+                        source: "builtin",
+                        id: "neon-cold-32",
+                        name: "NEON",
+                    },
+                },
+                { fallback, resolveBuiltin }
+            )
+        ).toBe(builtinProfile)
+        expect(
+            resolveProjectSnapshotV2QuantizationProfile(
+                {
+                    quantizationProfile: {
+                        kind: "fixed",
+                        source: "builtin",
+                        id: "missing",
+                        name: "Missing",
+                    },
+                },
+                { fallback, resolveBuiltin }
+            )
+        ).toBe(fallback)
+        expect(
+            resolveProjectSnapshotV2QuantizationProfile(
+                {
+                    quantizationProfile: {
+                        kind: "fixed",
+                        source: "imported",
+                        id: "custom",
+                        name: "Custom",
+                        colors: ["#010203", "#AABBCC"],
+                    },
+                },
+                { fallback, resolveBuiltin }
+            )
+        ).toEqual({
+            kind: "fixed",
+            source: "imported",
+            id: "custom",
+            name: "Custom",
+            colors: ["#010203", "#AABBCC"],
+        })
     })
 
     it("preserves the active built-in preset marker when present", () => {

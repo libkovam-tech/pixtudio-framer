@@ -24,8 +24,10 @@ import {
     V2_CELL_TRANSPARENT,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
+    decodeProjectSnapshotRefBytes,
     encodeProjectSnapshotBytesBase64,
     parseProjectSnapshotV2Json,
+    resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
@@ -4495,20 +4497,11 @@ function PixelEditorFramer({
         return Math.min(max, Math.max(min, n))
     }
 
-    function base64ToBytes(b64: string): Uint8ClampedArray<ArrayBuffer> {
-        // L0 уже проверил формат и длину decoded bytes, здесь можно декодировать смело
-        const bin = atob(b64)
-        const out = new Uint8ClampedArray(bin.length)
-        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-        return out
-    }
-
     function decodeRefToImageData(
         ref: ProjectSnapshotV2["ref"]
     ): ImageData | null {
-        if (!ref) return null
-        // ref.ext строго "rgba8", ref.w/h строго 512 — L0 уже гарантировал
-        const bytes = base64ToBytes(ref.b64)
+        const bytes = decodeProjectSnapshotRefBytes(ref)
+        if (!bytes) return null
         // ImageData ждёт Uint8ClampedArray
         return new ImageData(bytes, 512, 512)
     }
@@ -4516,26 +4509,15 @@ function PixelEditorFramer({
     function resolveLoadedQuantizationProfile(
         validated: ValidatedSnapshotV2
     ): QuantizationProfile {
-        const saved = validated.quantizationProfile
-        if (!saved || saved.kind === "extract") {
-            return EXTRACT_QUANTIZATION_PROFILE
-        }
-
-        if (saved.source === "builtin") {
-            const builtin = Object.values(QUANTIZATION_PROFILES).find(
-                (profile) => profile.kind === "fixed" && profile.id === saved.id
-            )
-            if (builtin?.kind === "fixed") return builtin
-            return EXTRACT_QUANTIZATION_PROFILE
-        }
-
-        return {
-            kind: "fixed",
-            source: "imported",
-            id: saved.id,
-            name: saved.name,
-            colors: saved.colors,
-        }
+        return resolveProjectSnapshotV2QuantizationProfile(validated, {
+            fallback: EXTRACT_QUANTIZATION_PROFILE,
+            resolveBuiltin: (id) => {
+                const builtin = Object.values(QUANTIZATION_PROFILES).find(
+                    (profile) => profile.kind === "fixed" && profile.id === id
+                )
+                return builtin?.kind === "fixed" ? builtin : undefined
+            },
+        })
     }
 
     function buildNextStateFromValidatedSnapshotV2(

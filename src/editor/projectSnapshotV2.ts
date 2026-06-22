@@ -93,6 +93,15 @@ export type ProjectSnapshotV2BuildInput = Omit<
 export type ProjectSnapshotV2QuantizationProfileInput = NonNullable<
     ProjectSnapshotV2["quantizationProfile"]
 >
+export type ProjectSnapshotV2ResolvedQuantizationProfile =
+    | { kind: "extract" }
+    | {
+          kind: "fixed"
+          id: string
+          name: string
+          source: "builtin" | "imported"
+          colors: string[]
+      }
 
 export type LoadGateErrorCode =
     | "E_READ"
@@ -266,6 +275,22 @@ export function encodeProjectSnapshotBytesBase64(bytes: Uint8ClampedArray) {
     return btoa(bin)
 }
 
+export function decodeProjectSnapshotBytesBase64(
+    b64: string
+): Uint8ClampedArray<ArrayBuffer> {
+    const bin = atob(b64)
+    const out = new Uint8ClampedArray(bin.length)
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+}
+
+export function decodeProjectSnapshotRefBytes(
+    ref: ProjectSnapshotV2["ref"]
+): Uint8ClampedArray<ArrayBuffer> | null {
+    if (!ref) return null
+    return decodeProjectSnapshotBytesBase64(ref.b64)
+}
+
 export function serializeQuantizationProfileForSnapshot(
     profile: ProjectSnapshotV2QuantizationProfileInput | undefined,
     normalizeColor: (color: string) => string = (color) => color.toUpperCase()
@@ -289,6 +314,33 @@ export function serializeQuantizationProfileForSnapshot(
         id: profile.id,
         name: profile.name,
         colors: profile.colors.map((color) => normalizeColor(color)),
+    }
+}
+
+export function resolveProjectSnapshotV2QuantizationProfile(
+    snapshot: Pick<ValidatedSnapshotV2, "quantizationProfile">,
+    options: {
+        fallback: ProjectSnapshotV2ResolvedQuantizationProfile
+        resolveBuiltin: (
+            id: string
+        ) => ProjectSnapshotV2ResolvedQuantizationProfile | undefined
+    }
+): ProjectSnapshotV2ResolvedQuantizationProfile {
+    const saved = snapshot.quantizationProfile
+    if (!saved || saved.kind === "extract") {
+        return options.fallback
+    }
+
+    if (saved.source === "builtin") {
+        return options.resolveBuiltin(saved.id) ?? options.fallback
+    }
+
+    return {
+        kind: "fixed",
+        source: "imported",
+        id: saved.id,
+        name: saved.name,
+        colors: saved.colors,
     }
 }
 
