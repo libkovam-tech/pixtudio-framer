@@ -8,6 +8,23 @@ export const PROJECT_SNAPSHOT_V2_PALETTE_MAX = 32
 export const V2_CELL_NULL = -1 as const
 export const V2_CELL_TRANSPARENT = -2 as const
 
+export const PROJECT_SNAPSHOT_V2_REQUIRED_ROOT_KEYS = [
+    "magic",
+    "version",
+    "gridSize",
+    "palette",
+    "paletteCount",
+    "importLayer",
+    "strokeLayer",
+    "ref",
+] as const
+
+export const PROJECT_SNAPSHOT_V2_OPTIONAL_ROOT_KEYS = [
+    "autoOverrides",
+    "smartObjectState",
+    "quantizationProfile",
+] as const
+
 export type ImportCellV2 = typeof V2_CELL_NULL | typeof V2_CELL_TRANSPARENT | number
 export type StrokeSwatchIndexV2 = typeof V2_CELL_TRANSPARENT | number
 
@@ -69,6 +86,13 @@ export type ProjectSnapshotV2 = {
 }
 
 export type ValidatedSnapshotV2 = ProjectSnapshotV2
+export type ProjectSnapshotV2BuildInput = Omit<
+    ProjectSnapshotV2,
+    "magic" | "version"
+>
+export type ProjectSnapshotV2QuantizationProfileInput = NonNullable<
+    ProjectSnapshotV2["quantizationProfile"]
+>
 
 export type LoadGateErrorCode =
     | "E_READ"
@@ -134,6 +158,31 @@ function assertExactKeys(
         }
     }
 }
+
+function encodeRootKeys(keys: readonly string[]) {
+    return [...keys].sort().join("|")
+}
+
+function buildAllowedRootKeySets(
+    required: readonly string[],
+    optional: readonly string[]
+) {
+    const out = new Set<string>()
+    const count = 1 << optional.length
+    for (let mask = 0; mask < count; mask++) {
+        const keys = [...required]
+        for (let i = 0; i < optional.length; i++) {
+            if (mask & (1 << i)) keys.push(optional[i])
+        }
+        out.add(encodeRootKeys(keys))
+    }
+    return out
+}
+
+const PROJECT_SNAPSHOT_V2_ALLOWED_ROOT_KEY_SETS = buildAllowedRootKeySets(
+    PROJECT_SNAPSHOT_V2_REQUIRED_ROOT_KEYS,
+    PROJECT_SNAPSHOT_V2_OPTIONAL_ROOT_KEYS
+)
 
 function isInt(n: unknown) {
     return Number.isInteger(n)
@@ -201,6 +250,56 @@ function base64DecodedLenOrThrow(
     }
     const pad = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0
     return (b64.length / 4) * 3 - pad
+}
+
+export function encodeProjectSnapshotBytesBase64(bytes: Uint8ClampedArray) {
+    let bin = ""
+    const chunk = 0x8000
+    for (let i = 0; i < bytes.length; i += chunk) {
+        const sub = bytes.subarray(i, i + chunk)
+        let s = ""
+        for (let j = 0; j < sub.length; j++) {
+            s += String.fromCharCode(sub[j])
+        }
+        bin += s
+    }
+    return btoa(bin)
+}
+
+export function serializeQuantizationProfileForSnapshot(
+    profile: ProjectSnapshotV2QuantizationProfileInput | undefined,
+    normalizeColor: (color: string) => string = (color) => color.toUpperCase()
+): ProjectSnapshotV2["quantizationProfile"] | undefined {
+    if (!profile || profile.kind === "extract") {
+        return undefined
+    }
+
+    if (profile.source === "builtin") {
+        return {
+            kind: "fixed",
+            source: "builtin",
+            id: profile.id,
+            name: profile.name,
+        }
+    }
+
+    return {
+        kind: "fixed",
+        source: "imported",
+        id: profile.id,
+        name: profile.name,
+        colors: profile.colors.map((color) => normalizeColor(color)),
+    }
+}
+
+export function createProjectSnapshotV2(
+    input: ProjectSnapshotV2BuildInput
+): ProjectSnapshotV2 {
+    return canonicalizeSnapshotV2({
+        magic: PROJECT_SNAPSHOT_V2_MAGIC,
+        version: PROJECT_SNAPSHOT_V2_VERSION,
+        ...input,
+    })
 }
 
 export function canonicalizeSnapshotV2(
@@ -301,31 +400,9 @@ export function validateProjectSnapshotV2OrThrow(
         throw makeLoadGateError("E_ROOT_KEYS", "root: not an object")
     }
 
-    const keys = Object.keys(raw).sort().join("|")
-    const allowBase = [
-        "magic",
-        "version",
-        "gridSize",
-        "palette",
-        "importLayer",
-        "strokeLayer",
-        "ref",
-        "paletteCount",
-    ]
-    const allowedRootKeySets = new Set([
-        [...allowBase].sort().join("|"),
-        [...allowBase, "autoOverrides"].sort().join("|"),
-        [...allowBase, "smartObjectState"].sort().join("|"),
-        [...allowBase, "autoOverrides", "smartObjectState"].sort().join("|"),
-        [...allowBase, "quantizationProfile"].sort().join("|"),
-        [...allowBase, "autoOverrides", "quantizationProfile"].sort().join("|"),
-        [...allowBase, "smartObjectState", "quantizationProfile"].sort().join("|"),
-        [...allowBase, "autoOverrides", "smartObjectState", "quantizationProfile"]
-            .sort()
-            .join("|"),
-    ])
+    const keys = encodeRootKeys(Object.keys(raw))
 
-    if (!allowedRootKeySets.has(keys)) {
+    if (!PROJECT_SNAPSHOT_V2_ALLOWED_ROOT_KEY_SETS.has(keys)) {
         throw makeLoadGateError("E_ROOT_KEYS", "root: unexpected keys")
     }
 

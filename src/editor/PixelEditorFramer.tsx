@@ -23,7 +23,10 @@ import {
     V2_CELL_NULL,
     V2_CELL_TRANSPARENT,
     canonicalizeSnapshotV2,
+    createProjectSnapshotV2,
+    encodeProjectSnapshotBytesBase64,
     parseProjectSnapshotV2Json,
+    serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
     type ValidatedSnapshotV2,
@@ -4275,48 +4278,6 @@ function PixelEditorFramer({
         return hx
     }
 
-    function bytesToBase64(bytes: Uint8ClampedArray): string {
-        // base64 encode без внешних зависимостей
-        // (да, это проход по данным — но в S0 это допустимо, потому что ref.data обязателен)
-        let bin = ""
-        const chunk = 0x8000
-        for (let i = 0; i < bytes.length; i += chunk) {
-            const sub = bytes.subarray(i, i + chunk)
-            let s = ""
-            for (let j = 0; j < sub.length; j++)
-                s += String.fromCharCode(sub[j])
-            bin += s
-        }
-        return btoa(bin)
-    }
-
-    function serializeQuantizationProfileForSave():
-        | ProjectSnapshotV2["quantizationProfile"]
-        | undefined {
-        if (quantizationProfile.kind === "extract") {
-            return undefined
-        }
-
-        if (quantizationProfile.source === "builtin") {
-            return {
-                kind: "fixed",
-                source: "builtin",
-                id: quantizationProfile.id,
-                name: quantizationProfile.name,
-            }
-        }
-
-        return {
-            kind: "fixed",
-            source: "imported",
-            id: quantizationProfile.id,
-            name: quantizationProfile.name,
-            colors: quantizationProfile.colors.map((color) =>
-                toHexUpperSafe(color)
-            ),
-        }
-    }
-
     function buildProjectSnapshotV2(): ProjectSnapshotV2 {
         const g = gridSize
 
@@ -4383,13 +4344,14 @@ function PixelEditorFramer({
         const hasAutoOverrides =
             autoOverrides && Object.keys(autoOverrides).length > 0
 
-        return {
-            magic: "PIXTUDIO",
-            version: 2,
+        return createProjectSnapshotV2({
             gridSize: g,
             palette: { swatches },
             paletteCount: clampInt(paletteCount, PALETTE_MIN, PALETTE_MAX),
-            quantizationProfile: serializeQuantizationProfileForSave(),
+            quantizationProfile: serializeQuantizationProfileForSnapshot(
+                quantizationProfile,
+                toHexUpperSafe
+            ),
             smartObjectState:
                 smartReferenceBaseForSave && smartAdjustmentsForSave
                     ? {
@@ -4407,10 +4369,12 @@ function PixelEditorFramer({
                       w: 512,
                       h: 512,
                       ext: "rgba8",
-                      b64: bytesToBase64(smartReferenceBaseForSave.data),
+                      b64: encodeProjectSnapshotBytesBase64(
+                          smartReferenceBaseForSave.data
+                      ),
                   }
                 : null,
-        }
+        })
     }
 
     function downloadTextFile(params: {

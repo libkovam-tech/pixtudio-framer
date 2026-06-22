@@ -6,7 +6,10 @@ import {
     V2_CELL_NULL,
     V2_CELL_TRANSPARENT,
     canonicalizeSnapshotV2,
+    createProjectSnapshotV2,
+    encodeProjectSnapshotBytesBase64,
     parseProjectSnapshotV2Json,
+    serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
 } from "./projectSnapshotV2.ts"
@@ -69,6 +72,79 @@ describe("ProjectSnapshotV2 invariants", () => {
         const twice = canonicalizeSnapshotV2(validateProjectSnapshotV2OrThrow(once))
 
         expect(twice).toEqual(once)
+    })
+
+    it("creates V2 snapshots through a single format entry point", () => {
+        const project = canonicalProject()
+        const snapshot = createProjectSnapshotV2({
+            gridSize: project.gridSize,
+            paletteCount: project.paletteCount,
+            palette: project.palette,
+            quantizationProfile: project.quantizationProfile,
+            smartObjectState: project.smartObjectState,
+            importLayer: project.importLayer,
+            ref: project.ref,
+            autoOverrides: {},
+            strokeLayer: {
+                cells: [
+                    { cellIndex: 15, swatchIndex: 1 },
+                    { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
+                ],
+            },
+        })
+
+        expect(snapshot.magic).toBe(PROJECT_SNAPSHOT_V2_MAGIC)
+        expect(snapshot.version).toBe(PROJECT_SNAPSHOT_V2_VERSION)
+        expect(snapshot.autoOverrides).toBeUndefined()
+        expect(snapshot.strokeLayer.cells).toEqual([
+            { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
+            { cellIndex: 15, swatchIndex: 1 },
+        ])
+    })
+
+    it("serializes quantization profile markers for saves", () => {
+        expect(
+            serializeQuantizationProfileForSnapshot({ kind: "extract" })
+        ).toBeUndefined()
+        expect(
+            serializeQuantizationProfileForSnapshot({
+                kind: "fixed",
+                source: "builtin",
+                id: "neon-cold-32",
+                name: "NEON",
+            })
+        ).toEqual({
+            kind: "fixed",
+            source: "builtin",
+            id: "neon-cold-32",
+            name: "NEON",
+        })
+        expect(
+            serializeQuantizationProfileForSnapshot(
+                {
+                    kind: "fixed",
+                    source: "imported",
+                    id: "custom",
+                    name: "Custom",
+                    colors: ["rgb(1, 2, 3)", "#aabbcc"],
+                },
+                (color) => (color.startsWith("rgb") ? "#010203" : color.toUpperCase())
+            )
+        ).toEqual({
+            kind: "fixed",
+            source: "imported",
+            id: "custom",
+            name: "Custom",
+            colors: ["#010203", "#AABBCC"],
+        })
+    })
+
+    it("encodes reference bytes as base64 for snapshot refs", () => {
+        expect(
+            encodeProjectSnapshotBytesBase64(
+                new Uint8ClampedArray([0, 255, 16, 128])
+            )
+        ).toBe("AP8QgA==")
     })
 
     it("preserves the active built-in preset marker when present", () => {
