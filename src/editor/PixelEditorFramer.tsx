@@ -20,8 +20,7 @@ import { buildPixelArtXlsxBlob } from "./PixelArtXlsxExport.tsx"
 import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 
 import {
-    V2_CELL_NULL,
-    V2_CELL_TRANSPARENT,
+    buildProjectSnapshotV2RuntimeLayers,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
     decodeProjectSnapshotRefBytes,
@@ -4523,123 +4522,39 @@ function PixelEditorFramer({
     function buildNextStateFromValidatedSnapshotV2(
         validated: ValidatedSnapshotV2
     ): LoadNextState {
-        const g = validated.gridSize
-        const cellsN = g * g
-
-        // 0) порядок палитры ровно как в файле (важно для будущего checksum/слепка)
-        const paletteOrderIds: string[] = validated.palette.swatches.map(
-            (s) => s.id
-        )
-
-        // 1) палитра V2: только цветовые свотчи (прозрачности здесь нет)
-        const allSwatches: Swatch[] = validated.palette.swatches.map((s) => ({
-            id: s.id,
-            color: s.hex, // hex уже в файле
-            isTransparent: false,
-            isUser: !!s.isUser,
-        }))
-
-        // runtime хранит два массива, порядок внутри каждого сохраняем как в файле
-        const nextAutoSwatches = allSwatches.filter((s) => !s.isUser)
-        const nextUserSwatches = allSwatches.filter((s) => s.isUser)
-
-        void (
-            typeof (validated as any).paletteCount === "number"
-                ? (validated as any).paletteCount
-                : computePaletteCountFromSwatches(
-                      nextAutoSwatches,
-                      nextUserSwatches
-                  )
-        )
-
-        void computePaletteCountFromSwatches(
-            nextAutoSwatches,
-            nextUserSwatches
-        )
-
-        // если файл просит pc, который не совпадает с реальным набором свотчей —
-        // мы не можем “создать” цвета из воздуха, поэтому фиксируем реальность
-        const nextPaletteCount =
-            typeof (validated as any).paletteCount === "number"
-                ? clampInt(
-                      (validated as any).paletteCount,
-                      PALETTE_MIN,
-                      PALETTE_MAX
-                  )
-                : clampInt(
-                      allSwatches.length || PALETTE_MIN,
-                      PALETTE_MIN,
-                      PALETTE_MAX
-                  )
-
-        // 2) importLayer: -2 => TRANSPARENT_PIXEL, -1 => null, >=0 => swatches[idx].id
-        const imagePixelsNext: PixelValue[][] = createEmptyPixels(g)
-
-        const idxToPixelValue = (cell: number): PixelValue => {
-            if (cell === V2_CELL_NULL) return null
-            if (cell === V2_CELL_TRANSPARENT) return TRANSPARENT_PIXEL
-            if (cell < 0) return null
-            const sw = validated.palette.swatches[cell]
-            return sw ? (sw.id as PixelValue) : null
-        }
-
-        const imp = validated.importLayer.cells
-        for (let i = 0; i < cellsN; i++) {
-            const pv = idxToPixelValue(imp[i] as number)
-            const r = Math.floor(i / g)
-            const c = i - r * g
-            imagePixelsNext[r][c] = pv
-        }
-
-        // 3) strokeLayer: sparse -> grid, swatchIndex может быть -2
-        const overlayPixelsNext: PixelValue[][] = createEmptyPixels(g)
-        const st = validated.strokeLayer.cells
-        for (let i = 0; i < st.length; i++) {
-            const cellIndex = st[i].cellIndex
-            const swatchIndex = st[i].swatchIndex as number
-            const r = Math.floor(cellIndex / g)
-            const c = cellIndex - r * g
-            if (r < 0 || c < 0 || r >= g || c >= g) continue
-            overlayPixelsNext[r][c] = idxToPixelValue(swatchIndex)
-        }
+        const runtimeLayers = buildProjectSnapshotV2RuntimeLayers(validated, {
+            transparentPixel: TRANSPARENT_PIXEL,
+            paletteMin: PALETTE_MIN,
+            paletteMax: PALETTE_MAX,
+        })
 
         // 4) ref (формат тот же, что V1)
         // decodeRefToImageData уже принимает ref с {w,h,ext,b64}; если тип узкий — см. патч T2-B ниже.
         const original = decodeRefToImageData(validated.ref as any)
 
-        // selectedSwatch: первый цветовой (если нет — "transparent" как инструмент)
-        const firstPaintable = allSwatches[0]?.id
-        const selectedSwatchNext: SwatchId | "transparent" = firstPaintable
-            ? (firstPaintable as SwatchId)
-            : "transparent"
-
         const hasOriginal = original != null
 
         const loadedAutoOverrides: AutoSwatchOverridesMap =
-            (validated as any).autoOverrides &&
-            typeof (validated as any).autoOverrides === "object" &&
-            !Array.isArray((validated as any).autoOverrides)
-                ? ((validated as any).autoOverrides as AutoSwatchOverridesMap)
-                : {}
+            runtimeLayers.autoOverrides
 
         const nextAutoEffective = applyAutoOverrides(
-            nextAutoSwatches,
+            runtimeLayers.autoSwatches,
             loadedAutoOverrides
         )
         const resolvedQuantizationProfile =
             resolveLoadedQuantizationProfile(validated)
 
         const project: ProjectState = {
-            gridSize: g,
-            paletteCount: nextPaletteCount,
+            gridSize: runtimeLayers.gridSize,
+            paletteCount: runtimeLayers.paletteCount,
             brushSize: DEFAULT_BRUSH_SIZE,
-            imagePixels: imagePixelsNext,
-            overlayPixels: overlayPixelsNext,
+            imagePixels: runtimeLayers.imagePixels,
+            overlayPixels: runtimeLayers.overlayPixels,
             showImage: hasOriginal ? true : false,
             hasOriginalImageData: hasOriginal,
             autoSwatches: nextAutoEffective,
-            userSwatches: nextUserSwatches,
-            selectedSwatch: selectedSwatchNext,
+            userSwatches: runtimeLayers.userSwatches,
+            selectedSwatch: runtimeLayers.selectedSwatch,
             quantizationProfile:
                 cloneQuantizationProfileForHistory(resolvedQuantizationProfile),
             importedPalettePresets:
@@ -4659,7 +4574,7 @@ function PixelEditorFramer({
         return {
             project,
             smartObjectBaseForRestore: original,
-            paletteOrderIds: paletteOrderIds,
+            paletteOrderIds: runtimeLayers.paletteOrderIds,
             quantizationProfile: resolvedQuantizationProfile,
         }
     }

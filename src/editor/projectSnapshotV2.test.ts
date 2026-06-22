@@ -5,6 +5,7 @@ import {
     PROJECT_SNAPSHOT_V2_VERSION,
     V2_CELL_NULL,
     V2_CELL_TRANSPARENT,
+    buildProjectSnapshotV2RuntimeLayers,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
     decodeProjectSnapshotBytesBase64,
@@ -237,6 +238,54 @@ describe("ProjectSnapshotV2 invariants", () => {
             name: "Custom",
             colors: ["#010203", "#AABBCC"],
         })
+    })
+
+    it("builds runtime palette and pixel layers from a validated snapshot", () => {
+        const layers = buildProjectSnapshotV2RuntimeLayers(canonicalProject(), {
+            transparentPixel: "__TRANSPARENT__",
+            paletteMin: 2,
+            paletteMax: 32,
+        })
+
+        expect(layers.gridSize).toBe(4)
+        expect(layers.paletteOrderIds).toEqual(["auto-0", "user-1"])
+        expect(layers.paletteCount).toBe(10)
+        expect(layers.allSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#112233",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "user-1",
+                color: "#AABBCC",
+                isTransparent: false,
+                isUser: true,
+            },
+        ])
+        expect(layers.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+        ])
+        expect(layers.userSwatches.map((swatch) => swatch.id)).toEqual([
+            "user-1",
+        ])
+        expect(layers.selectedSwatch).toBe("auto-0")
+        expect(layers.autoOverrides).toEqual({
+            "auto-0": { hex: "#445566" },
+        })
+        expect(layers.imagePixels).toEqual([
+            ["auto-0", "user-1", null, "__TRANSPARENT__"],
+            [null, null, null, null],
+            [null, null, null, null],
+            ["__TRANSPARENT__", "auto-0", "user-1", null],
+        ])
+        expect(layers.overlayPixels).toEqual([
+            [null, null, null, "__TRANSPARENT__"],
+            [null, null, null, null],
+            [null, null, null, null],
+            [null, null, null, "user-1"],
+        ])
     })
 
     it("preserves the active built-in preset marker when present", () => {

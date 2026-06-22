@@ -102,6 +102,28 @@ export type ProjectSnapshotV2ResolvedQuantizationProfile =
           source: "builtin" | "imported"
           colors: string[]
       }
+export type ProjectSnapshotV2RuntimeSwatch = {
+    id: string
+    color: string
+    isTransparent: false
+    isUser: boolean
+}
+export type ProjectSnapshotV2RuntimePixel<TTransparent> =
+    | string
+    | null
+    | TTransparent
+export type ProjectSnapshotV2RuntimeLayers<TTransparent> = {
+    gridSize: number
+    paletteOrderIds: string[]
+    allSwatches: ProjectSnapshotV2RuntimeSwatch[]
+    autoSwatches: ProjectSnapshotV2RuntimeSwatch[]
+    userSwatches: ProjectSnapshotV2RuntimeSwatch[]
+    paletteCount: number
+    imagePixels: ProjectSnapshotV2RuntimePixel<TTransparent>[][]
+    overlayPixels: ProjectSnapshotV2RuntimePixel<TTransparent>[][]
+    selectedSwatch: string | "transparent"
+    autoOverrides: AutoSwatchOverridesMapV2
+}
 
 export type LoadGateErrorCode =
     | "E_READ"
@@ -140,6 +162,17 @@ export function makeLoadGateError(
 
 function clampInt(n: number, min: number, max: number) {
     return Math.min(max, Math.max(min, n))
+}
+
+function createRuntimePixelGrid<TTransparent>(
+    size: number
+): ProjectSnapshotV2RuntimePixel<TTransparent>[][] {
+    return Array.from({ length: size }, () =>
+        Array.from(
+            { length: size },
+            () => null as ProjectSnapshotV2RuntimePixel<TTransparent>
+        )
+    )
 }
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
@@ -341,6 +374,75 @@ export function resolveProjectSnapshotV2QuantizationProfile(
         id: saved.id,
         name: saved.name,
         colors: saved.colors,
+    }
+}
+
+export function buildProjectSnapshotV2RuntimeLayers<TTransparent>(
+    snapshot: ValidatedSnapshotV2,
+    options: {
+        transparentPixel: TTransparent
+        paletteMin?: number
+        paletteMax?: number
+    }
+): ProjectSnapshotV2RuntimeLayers<TTransparent> {
+    const gridSize = snapshot.gridSize
+    const cellsN = gridSize * gridSize
+    const paletteMin = options.paletteMin ?? PROJECT_SNAPSHOT_V2_PALETTE_MIN
+    const paletteMax = options.paletteMax ?? PROJECT_SNAPSHOT_V2_PALETTE_MAX
+
+    const paletteOrderIds = snapshot.palette.swatches.map((s) => s.id)
+    const allSwatches: ProjectSnapshotV2RuntimeSwatch[] =
+        snapshot.palette.swatches.map((s) => ({
+            id: s.id,
+            color: s.hex,
+            isTransparent: false,
+            isUser: !!s.isUser,
+        }))
+    const autoSwatches = allSwatches.filter((s) => !s.isUser)
+    const userSwatches = allSwatches.filter((s) => s.isUser)
+
+    const paletteCount =
+        typeof snapshot.paletteCount === "number"
+            ? clampInt(snapshot.paletteCount, paletteMin, paletteMax)
+            : clampInt(allSwatches.length || paletteMin, paletteMin, paletteMax)
+
+    const idxToPixelValue = (
+        cell: ImportCellV2 | StrokeSwatchIndexV2
+    ): ProjectSnapshotV2RuntimePixel<TTransparent> => {
+        if (cell === V2_CELL_NULL) return null
+        if (cell === V2_CELL_TRANSPARENT) return options.transparentPixel
+        if (cell < 0) return null
+        const sw = snapshot.palette.swatches[cell]
+        return sw ? sw.id : null
+    }
+
+    const imagePixels = createRuntimePixelGrid<TTransparent>(gridSize)
+    const importCells = snapshot.importLayer.cells
+    for (let i = 0; i < cellsN; i++) {
+        const r = Math.floor(i / gridSize)
+        const c = i - r * gridSize
+        imagePixels[r][c] = idxToPixelValue(importCells[i])
+    }
+
+    const overlayPixels = createRuntimePixelGrid<TTransparent>(gridSize)
+    for (const cell of snapshot.strokeLayer.cells) {
+        const r = Math.floor(cell.cellIndex / gridSize)
+        const c = cell.cellIndex - r * gridSize
+        if (r < 0 || c < 0 || r >= gridSize || c >= gridSize) continue
+        overlayPixels[r][c] = idxToPixelValue(cell.swatchIndex)
+    }
+
+    return {
+        gridSize,
+        paletteOrderIds,
+        allSwatches,
+        autoSwatches,
+        userSwatches,
+        paletteCount,
+        imagePixels,
+        overlayPixels,
+        selectedSwatch: allSwatches[0]?.id ?? "transparent",
+        autoOverrides: snapshot.autoOverrides ?? {},
     }
 }
 
