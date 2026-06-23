@@ -36,7 +36,6 @@ import {
     isLikelyRasterImageFile,
     routeOpenFile,
 } from "./openFileRouter.ts"
-import { preserveTransparentOverlayPixels } from "./overlayTransparentCells.ts"
 import {
     FILE_INTAKE_MESSAGES,
     assertProjectSaveFileSize,
@@ -3747,8 +3746,9 @@ function PixelEditorFramer({
         // Никаких “пересъёмов” эталона из overlayPixels здесь быть не должно.
 
         // Если эталона нет — значит и восстанавливать нечего (оверлей пустой/нефиксированный)
-        const refSnap = paintRefImageData ?? null
-        if (!refSnap) {
+        const colorRefSnap = paintRefImageData ?? null
+        const transparentRefSnap = paintTransparentRefImageData ?? null
+        if (!colorRefSnap && !transparentRefSnap) {
             setOverlayPixels(createEmptyPixels(gridSize))
             return
         }
@@ -3756,8 +3756,9 @@ function PixelEditorFramer({
         // Важно: используем те же autoEffective, что реально в UI/логике
         const autoEffective = applyAutoOverrides(autoSwatches, autoOverrides)
 
-        const overlayNext = requantizePaintSnapshotToOverlayPixels({
-            snapshot: refSnap,
+        const overlayNext = requantizePaintRefsToOverlayPixels({
+            colorSnapshot: colorRefSnap,
+            transparentSnapshot: transparentRefSnap,
             gridSize,
             baseAuto: autoEffective,
             user: userSwatches,
@@ -4008,7 +4009,7 @@ function PixelEditorFramer({
         // 3) Undo/Redo — чистый новый проект
         // 4) NEW PROJECT = новая сессия:
         // очищаем эталон слоя штрихов и ключи пайплайна, чтобы старое не “приехало” после repixelize.
-        setPaintRefImageData(null)
+        clearPaintRefs()
         overlayDirtyRef.current = false
         paintSnapshotNonceRef.current = 0
         p25LastKeyRef.current = null
@@ -4535,6 +4536,11 @@ function PixelEditorFramer({
     // Будет обновляться только при реальном рисовании (в следующих шагах).
     const [paintRefImageData, setPaintRefImageData] =
         React.useState<ImageData | null>(null)
+    const [paintTransparentRefImageData, setPaintTransparentRefImageData] =
+        React.useState<ImageData | null>(null)
+    const paintTransparentRefValueByHexRef = React.useRef<
+        Map<string, PixelValue>
+    >(new Map())
 
     // Nonce для защиты/ключей в следующих шагах (пока нигде не используется)
     const paintSnapshotNonceRef = React.useRef(0)
@@ -4554,6 +4560,35 @@ function PixelEditorFramer({
     // =====================
     const p3LastProcessedKeyRef = React.useRef<string | null>(null)
     const p3InFlightKeyRef = React.useRef<string | null>(null)
+
+    function clearPaintRefs() {
+        setPaintRefImageData(null)
+        setPaintTransparentRefImageData(null)
+        paintTransparentRefValueByHexRef.current = new Map()
+    }
+
+    function capturePaintRefsFromOverlay(params: {
+        overlay: PixelValue[][]
+        autoSwatches: Swatch[]
+        userSwatches: Swatch[]
+    }) {
+        const colorSnap = renderPaintGridToImageData({
+            paintGrid: params.overlay,
+            autoSwatches: params.autoSwatches,
+            userSwatches: params.userSwatches,
+        })
+        const transparentSnap = renderTransparentPaintGridToImageData({
+            paintGrid: params.overlay,
+            autoSwatches: params.autoSwatches,
+            userSwatches: params.userSwatches,
+        })
+
+        setPaintRefImageData(colorSnap)
+        setPaintTransparentRefImageData(
+            transparentSnap.count > 0 ? transparentSnap.imageData : null
+        )
+        paintTransparentRefValueByHexRef.current = transparentSnap.valueByHex
+    }
 
     function fnv1a32_u32(str: string): number {
         let h = 0x811c9dc5
@@ -4651,14 +4686,13 @@ function PixelEditorFramer({
         const autoSwatchesForRef = snapshot?.autoSwatches ?? autoSwatches
         const userSwatchesForRef = snapshot?.userSwatches ?? userSwatches
 
-        // Снимаем эталон ОДИН РАЗ на завершение штриха
-        const snap = renderPaintGridToImageData({
-            paintGrid: overlayForRef,
+        // Capture both color and transparent stroke references once per stroke end.
+        capturePaintRefsFromOverlay({
+            overlay: overlayForRef,
             autoSwatches: autoSwatchesForRef,
             userSwatches: userSwatchesForRef,
         })
 
-        setPaintRefImageData(snap)
         paintSnapshotNonceRef.current += 1
         overlayDirtyRef.current = false
 
@@ -4684,7 +4718,7 @@ function PixelEditorFramer({
         // если overlay пустой — эталон должен быть null (иначе он “воскресит прошлое”)
         const nn = countNonNull(overlay)
         if (nn === 0) {
-            setPaintRefImageData(null)
+            clearPaintRefs()
             overlayDirtyRef.current = false
             if (ENABLE_PREP_LOGS) {
                 console.log(`[PAINT_REF][SYNC] reason=${reason} -> null`)
@@ -4692,13 +4726,13 @@ function PixelEditorFramer({
             return
         }
 
-        const snap = renderPaintGridToImageData({
-            paintGrid: overlay,
+        capturePaintRefsFromOverlay({
+            overlay,
             autoSwatches: autoEffective,
             userSwatches: user,
         })
 
-        setPaintRefImageData(snap)
+        paintSnapshotNonceRef.current += 1
         overlayDirtyRef.current = false
 
         if (ENABLE_PREP_LOGS) {
@@ -4780,6 +4814,100 @@ function PixelEditorFramer({
         return ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE)
     }
 
+    function transparentMaskHexForIndex(index: number): string {
+        const code = Math.max(1, index + 1)
+        const r = (code & 0x0f) * 16
+        const g = ((code >> 4) & 0x0f) * 16
+        const b = ((code >> 8) & 0x0f) * 16
+        const toHex = (value: number) =>
+            value.toString(16).toUpperCase().padStart(2, "0")
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+    }
+
+    function renderTransparentPaintGridToImageData(params: {
+        paintGrid: PixelValue[][]
+        autoSwatches: Swatch[]
+        userSwatches: Swatch[]
+    }): {
+        imageData: ImageData
+        valueByHex: Map<string, PixelValue>
+        count: number
+    } {
+        const { paintGrid, autoSwatches, userSwatches } = params
+
+        const rows = paintGrid?.length ?? 0
+        const cols = rows > 0 ? (paintGrid[0]?.length ?? 0) : 0
+        const canvas =
+            offscreenRef.current ||
+            (offscreenRef.current = document.createElement("canvas"))
+        canvas.width = CANVAS_SIZE
+        canvas.height = CANVAS_SIZE
+
+        const ctx = get2dReadFrequentlyContext(canvas)
+        if (!ctx) {
+            return {
+                imageData: new ImageData(CANVAS_SIZE, CANVAS_SIZE),
+                valueByHex: new Map(),
+                count: 0,
+            }
+        }
+
+        ctx.imageSmoothingEnabled = false
+        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+
+        const swatchById = buildSwatchByIdMap(autoSwatches, userSwatches)
+        const hexByValue = new Map<PixelValue, string>()
+        const valueByHex = new Map<string, PixelValue>()
+        let count = 0
+
+        const getMaskHex = (value: PixelValue) => {
+            const existing = hexByValue.get(value)
+            if (existing) return existing
+
+            const hex = transparentMaskHexForIndex(hexByValue.size)
+            hexByValue.set(value, hex)
+            valueByHex.set(hex, value)
+            return hex
+        }
+
+        for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
+            const y0 = Math.floor((rowIndex * CANVAS_SIZE) / rows)
+            const y1 =
+                Math.floor(((rowIndex + 1) * CANVAS_SIZE) / rows) || y0 + 1
+            const row = paintGrid[rowIndex] || []
+
+            for (let column = 0; column < cols; column++) {
+                const x0 = Math.floor((column * CANVAS_SIZE) / cols)
+                const x1 =
+                    Math.floor(((column + 1) * CANVAS_SIZE) / cols) || x0 + 1
+                const value = (row[column] ?? null) as PixelValue
+
+                if (value == null) continue
+
+                const isTransparentTool = value === TRANSPARENT_PIXEL
+                const isTransparentSwatch =
+                    typeof value === "string" &&
+                    !!swatchById.get(value)?.isTransparent
+                if (!isTransparentTool && !isTransparentSwatch) continue
+
+                ctx.fillStyle = getMaskHex(value)
+                ctx.fillRect(
+                    x0,
+                    y0,
+                    Math.max(1, x1 - x0),
+                    Math.max(1, y1 - y0)
+                )
+                count++
+            }
+        }
+
+        return {
+            imageData: ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE),
+            valueByHex,
+            count,
+        }
+    }
+
     // =====================
     // P2 — Paint Snapshot requantize helpers
     // =====================
@@ -4788,6 +4916,58 @@ function PixelEditorFramer({
         if (!css) return null
         const hx = (cssColorToHex(css) || "").toUpperCase()
         return hx || null
+    }
+
+    function requantizeTransparentPaintSnapshotToOverlayPixels(params: {
+        snapshot: ImageData
+        gridSize: number
+        valueByHex: ReadonlyMap<string, PixelValue>
+    }): PixelValue[][] {
+        const maskPixels = pixelizeFromImageDominant(
+            params.snapshot,
+            params.gridSize,
+            16
+        )
+        const out: PixelValue[][] = Array.from(
+            { length: params.gridSize },
+            () => Array.from({ length: params.gridSize }, () => null as PixelValue)
+        )
+
+        for (let row = 0; row < params.gridSize; row++) {
+            const sourceRow = maskPixels[row] || []
+            const outRow = out[row]
+            for (let column = 0; column < params.gridSize; column++) {
+                const hex = toHexUpperOrNull(sourceRow[column] ?? null)
+                outRow[column] = hex
+                    ? params.valueByHex.get(hex) ?? null
+                    : null
+            }
+        }
+
+        return out
+    }
+
+    function overlayTransparentSnapshotOverColor(params: {
+        colorOverlay: PixelValue[][]
+        transparentOverlay: PixelValue[][]
+    }): PixelValue[][] {
+        let changed = false
+        const out = params.colorOverlay.map((row) => row.slice())
+
+        for (let row = 0; row < out.length; row++) {
+            const transparentRow = params.transparentOverlay[row] || []
+            const outRow = out[row]
+            for (let column = 0; column < outRow.length; column++) {
+                const transparentValue = transparentRow[column] ?? null
+                if (transparentValue == null) continue
+                if (outRow[column] !== transparentValue) {
+                    outRow[column] = transparentValue
+                    changed = true
+                }
+            }
+        }
+
+        return changed ? out : params.colorOverlay
     }
 
     function buildFixedPaletteHexAndIdMap(params: {
@@ -4868,10 +5048,44 @@ function PixelEditorFramer({
         return out
     }
 
+    function requantizePaintRefsToOverlayPixels(params: {
+        colorSnapshot: ImageData | null
+        transparentSnapshot: ImageData | null
+        transparentValueByHex?: ReadonlyMap<string, PixelValue>
+        gridSize: number
+        baseAuto: Swatch[]
+        user: Swatch[]
+    }): PixelValue[][] {
+        const colorOverlay = params.colorSnapshot
+            ? requantizePaintSnapshotToOverlayPixels({
+                  snapshot: params.colorSnapshot,
+                  gridSize: params.gridSize,
+                  baseAuto: params.baseAuto,
+                  user: params.user,
+              })
+            : createEmptyPixels(params.gridSize)
+
+        if (!params.transparentSnapshot) return colorOverlay
+
+        const transparentOverlay =
+            requantizeTransparentPaintSnapshotToOverlayPixels({
+                snapshot: params.transparentSnapshot,
+                gridSize: params.gridSize,
+                valueByHex:
+                    params.transparentValueByHex ??
+                    paintTransparentRefValueByHexRef.current,
+            })
+
+        return overlayTransparentSnapshotOverColor({
+            colorOverlay,
+            transparentOverlay,
+        })
+    }
+
     function applyOverlayAfterBaseRebuild(params: {
         imagePixelsNext: PixelValue[][]
         nextAuto: Swatch[]
-        logicalOverlay: PixelValue[][]
+        nextUser: Swatch[]
         // snapshotMode: если есть snapshot — пересчитываем overlay из snapshot
         // иначе — АВАРИЙНЫЙ legacy resize (строго с warn)
         hasSnap: boolean
@@ -4883,7 +5097,7 @@ function PixelEditorFramer({
         const {
             imagePixelsNext,
             nextAuto,
-            logicalOverlay,
+            nextUser,
             hasSnap,
             snapshot,
             reason,
@@ -4891,18 +5105,19 @@ function PixelEditorFramer({
 
         // Step 4: источник overlay-переквантования — ТОЛЬКО эталон paintRefImageData, если он есть.
         // Источник переквантования overlay — только paintRefImageData. GRID SIZE / PALETTE SIZE не создают эталон. Эталон обновляется только по завершению рисования.
-        const refSnap = paintRefImageData ?? null
-        const snapToUse = refSnap ?? snapshot
-        const hasSnapToUse = snapToUse != null
+        const colorSnapToUse = paintRefImageData ?? snapshot
+        const transparentSnapToUse = paintTransparentRefImageData ?? null
+        const hasSnapToUse = colorSnapToUse != null || transparentSnapToUse != null
 
         let overlayNext: PixelValue[][]
 
-        if (hasSnapToUse && snapToUse) {
-            overlayNext = requantizePaintSnapshotToOverlayPixels({
-                snapshot: snapToUse,
+        if (hasSnapToUse) {
+            overlayNext = requantizePaintRefsToOverlayPixels({
+                colorSnapshot: colorSnapToUse,
+                transparentSnapshot: transparentSnapToUse,
                 gridSize,
                 baseAuto: nextAuto,
-                user: userSwatches,
+                user: nextUser,
             })
 
             if (ENABLE_PREP_LOGS) {
@@ -4941,19 +5156,6 @@ function PixelEditorFramer({
                 overlayNext = resizePixels(overlayPixels, gridSize)
             }
         }
-
-        const logicalTransparentSource =
-            logicalOverlay.length === gridSize &&
-            logicalOverlay[0]?.length === gridSize
-                ? logicalOverlay
-                : resizePixels(logicalOverlay, gridSize)
-
-        overlayNext = preserveTransparentOverlayPixels({
-            overlay: overlayNext,
-            transparentSource: logicalTransparentSource,
-            transparentPixel: TRANSPARENT_PIXEL,
-            swatches: [...nextAuto, ...userSwatches],
-        }) as PixelValue[][]
 
         publishCanvasFrameAtomic({
             base: imagePixelsNext,
@@ -6458,6 +6660,12 @@ function PixelEditorFramer({
 
             const frozenOverlaySnapshot =
                 cloneImageDataSnapshot(paintRefImageData)
+            const frozenTransparentOverlaySnapshot = cloneImageDataSnapshot(
+                paintTransparentRefImageData
+            )
+            const frozenTransparentValueByHex = new Map(
+                paintTransparentRefValueByHexRef.current
+            )
             const frozenAutoSwatches = cloneSwatches(autoSwatches)
             const frozenUserSwatches = cloneSwatches(userSwatches)
             const frozenAutoOverrides = { ...autoOverrides }
@@ -6556,14 +6764,19 @@ function PixelEditorFramer({
                     selectedSwatch: "transparent",
                 })
 
-                const overlayPixelsNext = frozenOverlaySnapshot
-                    ? requantizePaintSnapshotToOverlayPixels({
-                          snapshot: frozenOverlaySnapshot,
-                          gridSize: nextGridSize,
-                          baseAuto: collapsed.autoSwatches,
-                          user: collapsed.userSwatches,
-                      })
-                    : createEmptyPixels(nextGridSize)
+                const overlayPixelsNext =
+                    frozenOverlaySnapshot || frozenTransparentOverlaySnapshot
+                        ? requantizePaintRefsToOverlayPixels({
+                              colorSnapshot: frozenOverlaySnapshot,
+                              transparentSnapshot:
+                                  frozenTransparentOverlaySnapshot,
+                              transparentValueByHex:
+                                  frozenTransparentValueByHex,
+                              gridSize: nextGridSize,
+                              baseAuto: collapsed.autoSwatches,
+                              user: collapsed.userSwatches,
+                          })
+                        : createEmptyPixels(nextGridSize)
 
                 const imageData = renderRecorderExportFrameImageData({
                     imagePixels: collapsed.imagePixels,
@@ -6878,7 +7091,7 @@ function PixelEditorFramer({
         setOriginalImageData(null)
         setShowImage(false)
         setHasImportContext(false)
-        setPaintRefImageData(null)
+        clearPaintRefs()
 
         overlayDirtyRef.current = false
         paintSnapshotNonceRef.current = 0
@@ -8757,7 +8970,7 @@ function PixelEditorFramer({
 
             // Очищаем overlay и его эталон, чтобы старые штрихи
             // не переехали на новое импортированное изображение.
-            setPaintRefImageData(null)
+            clearPaintRefs()
             overlayDirtyRef.current = false
             paintSnapshotNonceRef.current = 0
             p25LastKeyRef.current = null
@@ -8917,7 +9130,8 @@ function PixelEditorFramer({
             return
         }
 
-        const hasSnap = paintRefImageData != null
+        const hasSnap =
+            paintRefImageData != null || paintTransparentRefImageData != null
 
         // P3: ключ и SKIP — только для snap-режима
         const p3Key = hasSnap
@@ -9092,8 +9306,8 @@ function PixelEditorFramer({
                 applyOverlayAfterBaseRebuild({
                     imagePixelsNext: collapsed.imagePixels,
                     nextAuto: collapsed.autoSwatches,
-                    logicalOverlay: collapsed.overlayPixels,
-                    hasSnap: paintRefImageData != null,
+                    nextUser: collapsed.userSwatches,
+                    hasSnap,
                     snapshot: paintRefImageData,
                     reason: "repixelize:with-original",
                 })
@@ -9193,8 +9407,8 @@ function PixelEditorFramer({
                 applyOverlayAfterBaseRebuild({
                     imagePixelsNext: collapsed.imagePixels,
                     nextAuto: collapsed.autoSwatches,
-                    logicalOverlay: collapsed.overlayPixels,
-                    hasSnap: paintRefImageData != null,
+                    nextUser: collapsed.userSwatches,
+                    hasSnap,
                     snapshot: paintRefImageData,
                     reason: "repixelize:no-original",
                 })
@@ -10301,6 +10515,13 @@ function PixelEditorFramer({
         setSelectedSwatch(nextSelected)
         setDeletedAutoPaletteColors(nextDeletedColors)
         setAutoOverrides(afterState.autoOverrides)
+        syncPaintRefToOverlay({
+            overlay: afterState.overlayPixels,
+            auto: afterState.autoSwatches,
+            user: afterState.userSwatches,
+            autoOverrides: afterState.autoOverrides,
+            reason: "swatch-delete",
+        })
         latestProjectStateRef.current = afterState
         pushCommit(before, { afterState })
         closeColorModalAfterCreate()
@@ -10465,6 +10686,13 @@ function PixelEditorFramer({
         setOverlayPixels(collapsed.overlayPixels)
         setAutoOverrides(collapsed.autoOverrides)
         setSelectedSwatch(collapsed.selectedSwatch as any)
+        syncPaintRefToOverlay({
+            overlay: afterState.overlayPixels,
+            auto: afterState.autoSwatches,
+            user: afterState.userSwatches,
+            autoOverrides: afterState.autoOverrides,
+            reason: "swatch-edit",
+        })
 
         postCommitGridHook(
             {

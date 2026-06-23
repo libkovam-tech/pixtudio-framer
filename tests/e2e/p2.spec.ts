@@ -214,6 +214,16 @@ test("transparent auto swatch project saves reopen without damaged-file error", 
         )
     ).toBe(true)
 
+    const expectedGridSizeAfterRebuild = await bumpGridSize(page)
+    const saveAfterGridRebuild = await downloadProjectSave(page)
+    const snapshotAfterGridRebuild = JSON.parse(
+        await readFile(saveAfterGridRebuild.path, "utf8")
+    )
+    expect(snapshotAfterGridRebuild.gridSize).toBe(expectedGridSizeAfterRebuild)
+    expect(transparentStrokeCellCount(snapshotAfterGridRebuild)).toBeGreaterThan(
+        0
+    )
+
     expect(errors.flush()).toEqual([])
 })
 
@@ -740,6 +750,37 @@ async function bumpPaletteSize(page: Page) {
     })
     await settle(page)
     return nextValue
+}
+
+async function bumpGridSize(page: Page) {
+    const gridSlider = page.locator('input[type="range"][max="128"]').first()
+    await expect(gridSlider).toBeVisible()
+    const nextValue = await gridSlider.evaluate((element) => {
+        const input = element as HTMLInputElement
+        const max = Number(input.max)
+        const min = Number(input.min)
+        const current = Number(input.value)
+
+        const next = current > min ? current - 1 : Math.min(max, current + 1)
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value"
+        )?.set
+        valueSetter?.call(input, String(next))
+        input.dispatchEvent(new Event("input", { bubbles: true }))
+        input.dispatchEvent(new Event("change", { bubbles: true }))
+        return next
+    })
+    await settle(page)
+    return nextValue
+}
+
+function transparentStrokeCellCount(snapshot: {
+    strokeLayer?: { cells?: Array<{ swatchIndex: number }> }
+}) {
+    return (snapshot.strokeLayer?.cells ?? []).filter(
+        (cell) => cell.swatchIndex === -2
+    ).length
 }
 
 async function fileSize(filePath: string) {
