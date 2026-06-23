@@ -7,6 +7,7 @@ import {
     V2_CELL_TRANSPARENT,
     applyProjectSnapshotV2AutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
+    buildProjectSnapshotV2SavePalette,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
     decodeProjectSnapshotBytesBase64,
@@ -107,6 +108,44 @@ describe("ProjectSnapshotV2 invariants", () => {
             { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
             { cellIndex: 15, swatchIndex: 1 },
         ])
+    })
+
+    it("builds save palette indexes while keeping transparent swatches out of saved colors", () => {
+        const palette = buildProjectSnapshotV2SavePalette(
+            [
+                {
+                    id: "auto-0",
+                    color: "#112233",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#445566",
+                    isTransparent: true,
+                    isUser: false,
+                },
+            ],
+            [
+                {
+                    id: "user-0",
+                    color: "rgb(1, 2, 3)",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            (color) => (color.startsWith("rgb") ? "#010203" : color.toUpperCase())
+        )
+
+        expect(palette.swatches).toEqual([
+            { index: 0, id: "auto-0", hex: "#112233", isUser: false },
+            { index: 1, id: "user-0", hex: "#010203", isUser: true },
+        ])
+        expect([...palette.indexById.entries()]).toEqual([
+            ["auto-0", 0],
+            ["user-0", 1],
+        ])
+        expect([...palette.transparentSwatchIds]).toEqual(["auto-1"])
     })
 
     it("serializes quantization profile markers for saves", () => {

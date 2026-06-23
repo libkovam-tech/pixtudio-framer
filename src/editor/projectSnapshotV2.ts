@@ -108,6 +108,17 @@ export type ProjectSnapshotV2RuntimeSwatch = {
     isTransparent: boolean
     isUser: boolean
 }
+export type ProjectSnapshotV2SavePaletteSwatch = {
+    id: string
+    color: string
+    isTransparent: boolean
+    isUser: boolean
+}
+export type ProjectSnapshotV2SavePalette = {
+    swatches: ProjectSnapshotV2["palette"]["swatches"]
+    indexById: ReadonlyMap<string, number>
+    transparentSwatchIds: ReadonlySet<string>
+}
 export type ProjectSnapshotV2AutoOverrideSwatch = {
     id: string
     color: string
@@ -355,6 +366,36 @@ export function serializeQuantizationProfileForSnapshot(
         id: profile.id,
         name: profile.name,
         colors: profile.colors.map((color) => normalizeColor(color)),
+    }
+}
+
+export function buildProjectSnapshotV2SavePalette(
+    autoSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>,
+    userSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>,
+    normalizeColor: (color: string) => string = (color) => color.toUpperCase()
+): ProjectSnapshotV2SavePalette {
+    const swatches: ProjectSnapshotV2["palette"]["swatches"] = []
+    const transparentSwatchIds = new Set<string>()
+
+    let index = 0
+    for (const swatch of [...autoSwatches, ...userSwatches]) {
+        if (swatch.isTransparent) {
+            transparentSwatchIds.add(swatch.id)
+            continue
+        }
+
+        swatches.push({
+            index: index++,
+            id: swatch.id,
+            hex: normalizeColor(swatch.color),
+            isUser: !!swatch.isUser,
+        })
+    }
+
+    return {
+        swatches,
+        indexById: new Map(swatches.map((swatch) => [swatch.id, swatch.index])),
+        transparentSwatchIds,
     }
 }
 

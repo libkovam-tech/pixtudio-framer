@@ -22,6 +22,7 @@ import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 import {
     applyProjectSnapshotV2AutoOverrides as applyAutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
+    buildProjectSnapshotV2SavePalette,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
     decodeProjectSnapshotRefBytes,
@@ -4274,11 +4275,11 @@ function PixelEditorFramer({
     }
 
     // =====================
-    // SAVE/LOAD — STRICT SNAPSHOT
+    // SAVE/LOAD - STRICT SNAPSHOT
     // =====================
 
-    // Единственный допустимый формат — V2
-    // sRGB hex normalize (без вычислений “умной палитры” — просто чтение)
+    // V2 is the only accepted project save format.
+    // Normalize to sRGB hex without smart-palette recomputation.
     function toHexUpperSafe(css: string | null): string {
         const hx = (cssColorToHex(css) || "#FF0000").toUpperCase()
         return hx
@@ -4302,34 +4303,17 @@ function PixelEditorFramer({
                   }
                 : null
 
-        // palette V2 — только цветовые свотчи
-        const swatchById = new Map<string, Swatch>()
-        for (const s of autoSwatches) swatchById.set(s.id, s)
-        for (const s of userSwatches) swatchById.set(s.id, s)
-
-        const swatches: ProjectSnapshotV2["palette"]["swatches"] = []
-        const transparentSwatchIds = new Set<string>()
-        let idx = 0
-        for (const sw of [...autoSwatches, ...userSwatches]) {
-            if (sw.isTransparent) {
-                transparentSwatchIds.add(sw.id)
-                continue
-            }
-            swatches.push({
-                index: idx++,
-                id: sw.id,
-                hex: toHexUpperSafe(sw.color),
-                isUser: !!sw.isUser,
-            })
-        }
-
-        const indexById = new Map(swatches.map((s) => [s.id, s.index]))
+        const savePalette = buildProjectSnapshotV2SavePalette(
+            autoSwatches,
+            userSwatches,
+            toHexUpperSafe
+        )
 
         const mapPixel = (v: PixelValue): number => {
             return mapProjectSnapshotV2PixelToCell(v, {
-                indexById,
+                indexById: savePalette.indexById,
                 transparentPixel: TRANSPARENT_PIXEL,
-                transparentSwatchIds,
+                transparentSwatchIds: savePalette.transparentSwatchIds,
             })
         }
 
@@ -4360,7 +4344,7 @@ function PixelEditorFramer({
 
         return createProjectSnapshotV2({
             gridSize: g,
-            palette: { swatches },
+            palette: { swatches: savePalette.swatches },
             paletteCount: clampInt(paletteCount, PALETTE_MIN, PALETTE_MAX),
             quantizationProfile: serializeQuantizationProfileForSnapshot(
                 quantizationProfile,
