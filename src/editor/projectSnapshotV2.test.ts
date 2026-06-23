@@ -6,6 +6,7 @@ import {
     V2_CELL_NULL,
     V2_CELL_TRANSPARENT,
     applyProjectSnapshotV2AutoOverrides,
+    buildProjectSnapshotV2ForSave,
     buildProjectSnapshotV2RuntimeLayers,
     buildProjectSnapshotV2SaveLayers,
     buildProjectSnapshotV2SavePalette,
@@ -187,6 +188,93 @@ describe("ProjectSnapshotV2 invariants", () => {
             { cellIndex: 4, swatchIndex: V2_CELL_TRANSPARENT },
             { cellIndex: 7, swatchIndex: 1 },
         ])
+    })
+
+    it("builds a complete save snapshot from editor state inputs", () => {
+        const snapshot = buildProjectSnapshotV2ForSave({
+            gridSize: 2,
+            paletteCount: 99,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#112233",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-transparent",
+                    color: "#445566",
+                    isTransparent: true,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#AABBCC",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            imagePixels: [
+                ["auto-0", "auto-transparent"],
+                ["__TRANSPARENT__", "user-0"],
+            ],
+            overlayPixels: [
+                [null, "user-0"],
+                ["missing", "auto-transparent"],
+            ],
+            autoOverrides: {
+                "auto-transparent": { isTransparent: true },
+            },
+            quantizationProfile: {
+                kind: "fixed",
+                source: "imported",
+                id: "custom",
+                name: "Custom",
+                colors: ["#112233", "#aabbcc"],
+            },
+            smartReferenceBytes: new Uint8ClampedArray([0, 255, 16, 128]),
+            smartAdjustments: {
+                exposure: 0,
+                whiteBalance: 0.5,
+                contrast: 0,
+                saturation: 0,
+                shadows: 0,
+                midtones: 0,
+                highlights: 0,
+            },
+            normalizeColor: (color) => color.toUpperCase(),
+            transparentPixel: "__TRANSPARENT__",
+        })
+
+        expect(snapshot.paletteCount).toBe(32)
+        expect(snapshot.palette.swatches).toEqual([
+            { index: 0, id: "auto-0", hex: "#112233", isUser: false },
+            { index: 1, id: "user-0", hex: "#AABBCC", isUser: true },
+        ])
+        expect(snapshot.importLayer.cells).toEqual([
+            0,
+            V2_CELL_TRANSPARENT,
+            V2_CELL_TRANSPARENT,
+            1,
+        ])
+        expect(snapshot.strokeLayer.cells).toEqual([
+            { cellIndex: 1, swatchIndex: 1 },
+            { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
+        ])
+        expect(snapshot.autoOverrides).toEqual({
+            "auto-transparent": { isTransparent: true },
+        })
+        expect(snapshot.quantizationProfile).toEqual({
+            kind: "fixed",
+            source: "imported",
+            id: "custom",
+            name: "Custom",
+            colors: ["#112233", "#AABBCC"],
+        })
+        expect(snapshot.ref?.b64).toBe("AP8QgA==")
+        expect(snapshot.smartObjectState?.adjustments.whiteBalance).toBe(0.5)
     })
 
     it("serializes quantization profile markers for saves", () => {

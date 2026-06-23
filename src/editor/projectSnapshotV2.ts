@@ -127,6 +127,26 @@ export type ProjectSnapshotV2SaveLayers = Pick<
     ProjectSnapshotV2,
     "importLayer" | "strokeLayer"
 >
+export type ProjectSnapshotV2ForSaveInput<TTransparent> = {
+    gridSize: number
+    paletteCount: number
+    autoSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>
+    userSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>
+    imagePixels: ReadonlyArray<
+        ReadonlyArray<ProjectSnapshotV2SavePixel<TTransparent>>
+    >
+    overlayPixels: ReadonlyArray<
+        ReadonlyArray<ProjectSnapshotV2SavePixel<TTransparent>>
+    >
+    autoOverrides?: AutoSwatchOverridesMapV2 | null
+    quantizationProfile?: ProjectSnapshotV2QuantizationProfileInput
+    smartReferenceBytes?: Uint8ClampedArray | null
+    smartAdjustments?: SmartReferenceAdjustments | null
+    normalizeColor?: (color: string) => string
+    transparentPixel: TTransparent
+    paletteMin?: number
+    paletteMax?: number
+}
 export type ProjectSnapshotV2AutoOverrideSwatch = {
     id: string
     color: string
@@ -464,6 +484,65 @@ export function buildProjectSnapshotV2SaveLayers<TTransparent>(params: {
         importLayer: { cells: importCells },
         strokeLayer: { cells: strokeCells },
     }
+}
+
+export function buildProjectSnapshotV2ForSave<TTransparent>(
+    input: ProjectSnapshotV2ForSaveInput<TTransparent>
+): ProjectSnapshotV2 {
+    const normalizeColor =
+        input.normalizeColor ?? ((color: string) => color.toUpperCase())
+    const paletteMin = input.paletteMin ?? PROJECT_SNAPSHOT_V2_PALETTE_MIN
+    const paletteMax = input.paletteMax ?? PROJECT_SNAPSHOT_V2_PALETTE_MAX
+
+    const savePalette = buildProjectSnapshotV2SavePalette(
+        input.autoSwatches,
+        input.userSwatches,
+        normalizeColor
+    )
+    const saveLayers = buildProjectSnapshotV2SaveLayers({
+        gridSize: input.gridSize,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        indexById: savePalette.indexById,
+        transparentPixel: input.transparentPixel,
+        transparentSwatchIds: savePalette.transparentSwatchIds,
+    })
+    const hasAutoOverrides =
+        input.autoOverrides && Object.keys(input.autoOverrides).length > 0
+    const smartReferenceBytes =
+        input.smartReferenceBytes && input.smartReferenceBytes.length > 0
+            ? input.smartReferenceBytes
+            : null
+
+    return createProjectSnapshotV2({
+        gridSize: input.gridSize,
+        palette: { swatches: savePalette.swatches },
+        paletteCount: clampInt(input.paletteCount, paletteMin, paletteMax),
+        quantizationProfile: serializeQuantizationProfileForSnapshot(
+            input.quantizationProfile,
+            normalizeColor
+        ),
+        smartObjectState:
+            smartReferenceBytes && input.smartAdjustments
+                ? {
+                      version: PROJECT_SNAPSHOT_V2_SMART_REFERENCE_VERSION,
+                      adjustments: { ...input.smartAdjustments },
+                  }
+                : undefined,
+        importLayer: saveLayers.importLayer,
+        strokeLayer: saveLayers.strokeLayer,
+        autoOverrides: hasAutoOverrides
+            ? input.autoOverrides ?? undefined
+            : undefined,
+        ref: smartReferenceBytes
+            ? {
+                  w: 512,
+                  h: 512,
+                  ext: "rgba8",
+                  b64: encodeProjectSnapshotBytesBase64(smartReferenceBytes),
+              }
+            : null,
+    })
 }
 
 export function resolveProjectSnapshotV2QuantizationProfile(

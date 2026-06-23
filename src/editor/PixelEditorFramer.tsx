@@ -6,7 +6,6 @@ import { ManualScreen } from "./ManualScreen.tsx"
 
 import SmartReferenceEditor, {
     ZERO_SMART_REFERENCE_ADJUSTMENTS,
-    SMART_REFERENCE_VERSION_1,
     type SmartReferenceAdjustments,
     type SmartObjectCommittedState,
     type SmartObjectCommittedStateBridge,
@@ -21,17 +20,13 @@ import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 
 import {
     applyProjectSnapshotV2AutoOverrides as applyAutoOverrides,
+    buildProjectSnapshotV2ForSave,
     buildProjectSnapshotV2RuntimeLayers,
-    buildProjectSnapshotV2SaveLayers,
-    buildProjectSnapshotV2SavePalette,
     canonicalizeSnapshotV2,
-    createProjectSnapshotV2,
     decodeProjectSnapshotRefBytes,
-    encodeProjectSnapshotBytesBase64,
     parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides as pruneAutoOverridesForCurrentAuto,
     resolveProjectSnapshotV2QuantizationProfile,
-    serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
     type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
@@ -4302,53 +4297,21 @@ function PixelEditorFramer({
                   }
                 : null
 
-        const savePalette = buildProjectSnapshotV2SavePalette(
+        return buildProjectSnapshotV2ForSave({
+            gridSize: g,
+            paletteCount,
             autoSwatches,
             userSwatches,
-            toHexUpperSafe
-        )
-        const saveLayers = buildProjectSnapshotV2SaveLayers({
-            gridSize: g,
             imagePixels,
             overlayPixels,
-            indexById: savePalette.indexById,
+            autoOverrides,
+            quantizationProfile,
+            smartReferenceBytes: smartReferenceBaseForSave?.data ?? null,
+            smartAdjustments: smartAdjustmentsForSave,
+            normalizeColor: toHexUpperSafe,
             transparentPixel: TRANSPARENT_PIXEL,
-            transparentSwatchIds: savePalette.transparentSwatchIds,
-        })
-
-        const hasAutoOverrides =
-            autoOverrides && Object.keys(autoOverrides).length > 0
-
-        return createProjectSnapshotV2({
-            gridSize: g,
-            palette: { swatches: savePalette.swatches },
-            paletteCount: clampInt(paletteCount, PALETTE_MIN, PALETTE_MAX),
-            quantizationProfile: serializeQuantizationProfileForSnapshot(
-                quantizationProfile,
-                toHexUpperSafe
-            ),
-            smartObjectState:
-                smartReferenceBaseForSave && smartAdjustmentsForSave
-                    ? {
-                          version: SMART_REFERENCE_VERSION_1,
-                          adjustments: {
-                              ...smartAdjustmentsForSave,
-                          },
-                      }
-                    : undefined,
-            importLayer: saveLayers.importLayer,
-            strokeLayer: saveLayers.strokeLayer,
-            autoOverrides: hasAutoOverrides ? autoOverrides : undefined,
-            ref: smartReferenceBaseForSave
-                ? {
-                      w: 512,
-                      h: 512,
-                      ext: "rgba8",
-                      b64: encodeProjectSnapshotBytesBase64(
-                          smartReferenceBaseForSave.data
-                      ),
-                  }
-                : null,
+            paletteMin: PALETTE_MIN,
+            paletteMax: PALETTE_MAX,
         })
     }
 
