@@ -22,17 +22,16 @@ import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 import {
     applyProjectSnapshotV2AutoOverrides as applyAutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
+    buildProjectSnapshotV2SaveLayers,
     buildProjectSnapshotV2SavePalette,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
     decodeProjectSnapshotRefBytes,
     encodeProjectSnapshotBytesBase64,
-    mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides as pruneAutoOverridesForCurrentAuto,
     resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
-    V2_CELL_NULL,
     validateProjectSnapshotV2OrThrow,
     type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
@@ -4308,36 +4307,14 @@ function PixelEditorFramer({
             userSwatches,
             toHexUpperSafe
         )
-
-        const mapPixel = (v: PixelValue): number => {
-            return mapProjectSnapshotV2PixelToCell(v, {
-                indexById: savePalette.indexById,
-                transparentPixel: TRANSPARENT_PIXEL,
-                transparentSwatchIds: savePalette.transparentSwatchIds,
-            })
-        }
-
-        const importCells = new Array(g * g)
-        for (let r = 0; r < g; r++) {
-            for (let c = 0; c < g; c++) {
-                importCells[r * g + c] = mapPixel(imagePixels[r][c])
-            }
-        }
-
-        const strokeCells: Array<{ cellIndex: number; swatchIndex: number }> =
-            []
-        for (let r = 0; r < g; r++) {
-            for (let c = 0; c < g; c++) {
-                const v = overlayPixels[r][c]
-                if (v == null) continue
-                const swatchIndex = mapPixel(v)
-                if (swatchIndex === V2_CELL_NULL) continue
-                strokeCells.push({
-                    cellIndex: r * g + c,
-                    swatchIndex,
-                })
-            }
-        }
+        const saveLayers = buildProjectSnapshotV2SaveLayers({
+            gridSize: g,
+            imagePixels,
+            overlayPixels,
+            indexById: savePalette.indexById,
+            transparentPixel: TRANSPARENT_PIXEL,
+            transparentSwatchIds: savePalette.transparentSwatchIds,
+        })
 
         const hasAutoOverrides =
             autoOverrides && Object.keys(autoOverrides).length > 0
@@ -4359,8 +4336,8 @@ function PixelEditorFramer({
                           },
                       }
                     : undefined,
-            importLayer: { cells: importCells },
-            strokeLayer: { cells: strokeCells },
+            importLayer: saveLayers.importLayer,
+            strokeLayer: saveLayers.strokeLayer,
             autoOverrides: hasAutoOverrides ? autoOverrides : undefined,
             ref: smartReferenceBaseForSave
                 ? {

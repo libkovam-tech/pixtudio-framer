@@ -119,6 +119,14 @@ export type ProjectSnapshotV2SavePalette = {
     indexById: ReadonlyMap<string, number>
     transparentSwatchIds: ReadonlySet<string>
 }
+export type ProjectSnapshotV2SavePixel<TTransparent> =
+    | string
+    | null
+    | TTransparent
+export type ProjectSnapshotV2SaveLayers = Pick<
+    ProjectSnapshotV2,
+    "importLayer" | "strokeLayer"
+>
 export type ProjectSnapshotV2AutoOverrideSwatch = {
     id: string
     color: string
@@ -396,6 +404,65 @@ export function buildProjectSnapshotV2SavePalette(
         swatches,
         indexById: new Map(swatches.map((swatch) => [swatch.id, swatch.index])),
         transparentSwatchIds,
+    }
+}
+
+export function buildProjectSnapshotV2SaveLayers<TTransparent>(params: {
+    gridSize: number
+    imagePixels: ReadonlyArray<
+        ReadonlyArray<ProjectSnapshotV2SavePixel<TTransparent>>
+    >
+    overlayPixels: ReadonlyArray<
+        ReadonlyArray<ProjectSnapshotV2SavePixel<TTransparent>>
+    >
+    indexById: ReadonlyMap<string, number>
+    transparentPixel: TTransparent
+    transparentSwatchIds?: ReadonlySet<string>
+}): ProjectSnapshotV2SaveLayers {
+    const {
+        gridSize,
+        imagePixels,
+        overlayPixels,
+        indexById,
+        transparentPixel,
+        transparentSwatchIds,
+    } = params
+
+    const mapPixel = (value: ProjectSnapshotV2SavePixel<TTransparent>) =>
+        mapProjectSnapshotV2PixelToCell(value, {
+            indexById,
+            transparentPixel,
+            transparentSwatchIds,
+        })
+
+    const importCells: ImportCellV2[] = new Array(gridSize * gridSize)
+    for (let row = 0; row < gridSize; row++) {
+        for (let column = 0; column < gridSize; column++) {
+            importCells[row * gridSize + column] = mapPixel(
+                imagePixels[row][column]
+            )
+        }
+    }
+
+    const strokeCells: ProjectSnapshotV2["strokeLayer"]["cells"] = []
+    for (let row = 0; row < gridSize; row++) {
+        for (let column = 0; column < gridSize; column++) {
+            const value = overlayPixels[row][column]
+            if (value == null) continue
+
+            const swatchIndex = mapPixel(value)
+            if (swatchIndex === V2_CELL_NULL) continue
+
+            strokeCells.push({
+                cellIndex: row * gridSize + column,
+                swatchIndex,
+            })
+        }
+    }
+
+    return {
+        importLayer: { cells: importCells },
+        strokeLayer: { cells: strokeCells },
     }
 }
 

@@ -7,6 +7,7 @@ import {
     V2_CELL_TRANSPARENT,
     applyProjectSnapshotV2AutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
+    buildProjectSnapshotV2SaveLayers,
     buildProjectSnapshotV2SavePalette,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
@@ -146,6 +147,46 @@ describe("ProjectSnapshotV2 invariants", () => {
             ["user-0", 1],
         ])
         expect([...palette.transparentSwatchIds]).toEqual(["auto-1"])
+    })
+
+    it("builds save layers from editor pixel grids", () => {
+        const layers = buildProjectSnapshotV2SaveLayers({
+            gridSize: 3,
+            imagePixels: [
+                ["auto-0", "auto-transparent", null],
+                ["__TRANSPARENT__", "user-0", "missing"],
+                [null, null, "auto-0"],
+            ],
+            overlayPixels: [
+                [null, "auto-0", "missing"],
+                ["auto-transparent", "__TRANSPARENT__", null],
+                [null, "user-0", null],
+            ],
+            indexById: new Map([
+                ["auto-0", 0],
+                ["user-0", 1],
+            ]),
+            transparentPixel: "__TRANSPARENT__",
+            transparentSwatchIds: new Set(["auto-transparent"]),
+        })
+
+        expect(layers.importLayer.cells).toEqual([
+            0,
+            V2_CELL_TRANSPARENT,
+            V2_CELL_NULL,
+            V2_CELL_TRANSPARENT,
+            1,
+            V2_CELL_NULL,
+            V2_CELL_NULL,
+            V2_CELL_NULL,
+            0,
+        ])
+        expect(layers.strokeLayer.cells).toEqual([
+            { cellIndex: 1, swatchIndex: 0 },
+            { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
+            { cellIndex: 4, swatchIndex: V2_CELL_TRANSPARENT },
+            { cellIndex: 7, swatchIndex: 1 },
+        ])
     })
 
     it("serializes quantization profile markers for saves", () => {
