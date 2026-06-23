@@ -28,10 +28,12 @@ import {
     encodeProjectSnapshotBytesBase64,
     mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
+    pruneProjectSnapshotV2AutoOverrides as pruneAutoOverridesForCurrentAuto,
     resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
     V2_CELL_NULL,
     validateProjectSnapshotV2OrThrow,
+    type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
     type ValidatedSnapshotV2,
 } from "./projectSnapshotV2.ts"
@@ -5531,42 +5533,7 @@ function PixelEditorFramer({
         keyboardActive: boolean
     }
 
-    type AutoSwatchOverride = {
-        // если поле отсутствует — значит "не переопределяем"
-        hex?: string
-        isTransparent?: boolean
-    }
-
-    type AutoSwatchOverridesMap = Record<string, AutoSwatchOverride>
-
-    // ВАЖНО: prune вызываем ТОЛЬКО НА COMMIT (не в preview/drag).
-    function pruneAutoOverridesForCurrentAuto(
-        currentAuto: Swatch[],
-        overrides: AutoSwatchOverridesMap
-    ): AutoSwatchOverridesMap {
-        if (!overrides) return {}
-        const keep = new Set<string>()
-        for (const sw of currentAuto || []) {
-            if (sw?.id && sw.id.startsWith("auto-")) keep.add(sw.id)
-        }
-
-        const out: AutoSwatchOverridesMap = {}
-        for (const k of Object.keys(overrides)) {
-            if (!k.startsWith("auto-")) continue
-            if (!keep.has(k)) continue
-            const v = overrides[k]
-            if (!v) continue
-            // сохраняем только реальные diff-поля
-            const hasHex = typeof v.hex === "string" && v.hex.length > 0
-            const hasTr = typeof v.isTransparent === "boolean"
-            if (!hasHex && !hasTr) continue
-            out[k] = {
-                ...(hasHex ? { hex: v.hex } : null),
-                ...(hasTr ? { isTransparent: v.isTransparent } : null),
-            } as any
-        }
-        return out
-    }
+    type AutoSwatchOverridesMap = AutoSwatchOverridesMapV2
 
     // S2 LEGACY:
     // но больше не считаются канонической пользовательской историей.

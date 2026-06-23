@@ -14,6 +14,7 @@ import {
     encodeProjectSnapshotBytesBase64,
     mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
+    pruneProjectSnapshotV2AutoOverrides,
     resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
@@ -349,6 +350,48 @@ describe("ProjectSnapshotV2 invariants", () => {
             },
         ])
         expect(result[2]).toBe(swatches[2])
+    })
+
+    it("prunes auto overrides to the current auto swatch ids", () => {
+        const overrides = {
+            "auto-0": { hex: "#FF0000" },
+            "auto-1": { isTransparent: true },
+            "auto-stale": { hex: "#00FF00" },
+            "user-0": { hex: "#0000FF", isTransparent: true },
+            autoEmpty: {},
+        }
+
+        expect(
+            pruneProjectSnapshotV2AutoOverrides(
+                [{ id: "auto-0" }, { id: "auto-1" }, { id: "user-0" }],
+                overrides
+            )
+        ).toEqual({
+            "auto-0": { hex: "#FF0000" },
+            "auto-1": { isTransparent: true },
+        })
+    })
+
+    it("copies meaningful auto overrides without mutating the input map", () => {
+        const overrides = {
+            "auto-0": { hex: "#FF0000", isTransparent: false },
+            "auto-1": { hex: "" },
+        }
+
+        const result = pruneProjectSnapshotV2AutoOverrides(
+            [{ id: "auto-0" }, { id: "auto-1" }],
+            overrides
+        )
+
+        expect(result).toEqual({
+            "auto-0": { hex: "#FF0000", isTransparent: false },
+        })
+        expect(result).not.toBe(overrides)
+        expect(result["auto-0"]).not.toBe(overrides["auto-0"])
+        expect(overrides).toEqual({
+            "auto-0": { hex: "#FF0000", isTransparent: false },
+            "auto-1": { hex: "" },
+        })
     })
 
     it("maps transparent saved swatch ids to transparent cells", () => {

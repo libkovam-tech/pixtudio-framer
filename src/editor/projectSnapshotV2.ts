@@ -113,6 +113,9 @@ export type ProjectSnapshotV2AutoOverrideSwatch = {
     color: string
     isTransparent: boolean
 }
+export type ProjectSnapshotV2AutoOverrideSource = {
+    id?: string | null
+}
 export type ProjectSnapshotV2RuntimePixel<TTransparent> =
     | string
     | null
@@ -482,6 +485,41 @@ export function applyProjectSnapshotV2AutoOverrides<
     })
 
     return changed ? out : nextAuto
+}
+
+export function pruneProjectSnapshotV2AutoOverrides(
+    currentAuto: ReadonlyArray<ProjectSnapshotV2AutoOverrideSource> | null | undefined,
+    overrides: AutoSwatchOverridesMapV2 | null | undefined
+): AutoSwatchOverridesMapV2 {
+    if (!overrides) return {}
+
+    const keep = new Set<string>()
+    for (const swatch of currentAuto ?? []) {
+        if (swatch?.id && swatch.id.startsWith("auto-")) keep.add(swatch.id)
+    }
+
+    const out: AutoSwatchOverridesMapV2 = {}
+    for (const key of Object.keys(overrides)) {
+        if (!key.startsWith("auto-")) continue
+        if (!keep.has(key)) continue
+
+        const override = overrides[key]
+        if (!override) continue
+
+        const hasHex =
+            typeof override.hex === "string" && override.hex.length > 0
+        const hasTransparent = typeof override.isTransparent === "boolean"
+        if (!hasHex && !hasTransparent) continue
+
+        out[key] = {
+            ...(hasHex ? { hex: override.hex } : {}),
+            ...(hasTransparent
+                ? { isTransparent: override.isTransparent }
+                : {}),
+        }
+    }
+
+    return out
 }
 
 export function mapProjectSnapshotV2PixelToCell<TTransparent>(
