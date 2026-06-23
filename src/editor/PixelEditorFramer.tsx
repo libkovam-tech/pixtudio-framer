@@ -20,6 +20,7 @@ import { buildPixelArtXlsxBlob } from "./PixelArtXlsxExport.tsx"
 import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 
 import {
+    applyProjectSnapshotV2AutoOverrides as applyAutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
@@ -5527,37 +5528,6 @@ function PixelEditorFramer({
     }
 
     type AutoSwatchOverridesMap = Record<string, AutoSwatchOverride>
-
-    // NO-OP helpers (Step 1): НЕ вызываем в repixelize пока.
-    function applyAutoOverrides(
-        nextAuto: Swatch[],
-        overrides: AutoSwatchOverridesMap
-    ): Swatch[] {
-        if (!overrides) return nextAuto
-        if (!Array.isArray(nextAuto) || nextAuto.length === 0) return nextAuto
-
-        // возвращаем новый массив, но только если реально есть что применять
-        let changed = false
-        const out = nextAuto.map((sw) => {
-            if (!sw?.id || !sw.id.startsWith("auto-")) return sw
-            const ov = overrides[sw.id]
-            if (!ov) return sw
-
-            const next: Swatch = { ...sw }
-            if (typeof ov.hex === "string" && ov.hex) {
-                // sw.color хранится как CSS-цвет (обычно #RRGGBB или rgb(...)).
-                next.color = ov.hex
-                changed = true
-            }
-            if (typeof ov.isTransparent === "boolean") {
-                next.isTransparent = ov.isTransparent
-                changed = true
-            }
-            return next
-        })
-
-        return changed ? out : nextAuto
-    }
 
     // ВАЖНО: prune вызываем ТОЛЬКО НА COMMIT (не в preview/drag).
     function pruneAutoOverridesForCurrentAuto(

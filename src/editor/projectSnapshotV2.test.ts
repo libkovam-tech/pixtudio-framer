@@ -5,6 +5,7 @@ import {
     PROJECT_SNAPSHOT_V2_VERSION,
     V2_CELL_NULL,
     V2_CELL_TRANSPARENT,
+    applyProjectSnapshotV2AutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
     canonicalizeSnapshotV2,
     createProjectSnapshotV2,
@@ -286,6 +287,67 @@ describe("ProjectSnapshotV2 invariants", () => {
             [null, null, null, null],
             [null, null, null, "user-1"],
         ])
+    })
+
+    it("applies auto swatch overrides without touching unrelated swatches", () => {
+        const swatches = [
+            {
+                id: "auto-0",
+                color: "#112233",
+                isTransparent: false,
+                isUser: false,
+                label: "kept",
+            },
+            {
+                id: "auto-1",
+                color: "#445566",
+                isTransparent: false,
+                isUser: false,
+                label: "transparent",
+            },
+            {
+                id: "user-1",
+                color: "#AABBCC",
+                isTransparent: false,
+                isUser: true,
+                label: "user",
+            },
+        ]
+
+        expect(applyProjectSnapshotV2AutoOverrides(swatches, {})).toBe(swatches)
+
+        const result = applyProjectSnapshotV2AutoOverrides(swatches, {
+            "auto-0": { hex: "#FF0000" },
+            "auto-1": { isTransparent: true },
+            "user-1": { hex: "#00FF00", isTransparent: true },
+            missing: { hex: "#0000FF" },
+        })
+
+        expect(result).not.toBe(swatches)
+        expect(result).toEqual([
+            {
+                id: "auto-0",
+                color: "#FF0000",
+                isTransparent: false,
+                isUser: false,
+                label: "kept",
+            },
+            {
+                id: "auto-1",
+                color: "#445566",
+                isTransparent: true,
+                isUser: false,
+                label: "transparent",
+            },
+            {
+                id: "user-1",
+                color: "#AABBCC",
+                isTransparent: false,
+                isUser: true,
+                label: "user",
+            },
+        ])
+        expect(result[2]).toBe(swatches[2])
     })
 
     it("preserves the active built-in preset marker when present", () => {

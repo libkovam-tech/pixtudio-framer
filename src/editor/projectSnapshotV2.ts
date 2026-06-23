@@ -105,8 +105,13 @@ export type ProjectSnapshotV2ResolvedQuantizationProfile =
 export type ProjectSnapshotV2RuntimeSwatch = {
     id: string
     color: string
-    isTransparent: false
+    isTransparent: boolean
     isUser: boolean
+}
+export type ProjectSnapshotV2AutoOverrideSwatch = {
+    id: string
+    color: string
+    isTransparent: boolean
 }
 export type ProjectSnapshotV2RuntimePixel<TTransparent> =
     | string
@@ -444,6 +449,39 @@ export function buildProjectSnapshotV2RuntimeLayers<TTransparent>(
         selectedSwatch: allSwatches[0]?.id ?? "transparent",
         autoOverrides: snapshot.autoOverrides ?? {},
     }
+}
+
+export function applyProjectSnapshotV2AutoOverrides<
+    TSwatch extends ProjectSnapshotV2AutoOverrideSwatch,
+>(
+    nextAuto: TSwatch[],
+    overrides: AutoSwatchOverridesMapV2 | null | undefined
+): TSwatch[] {
+    if (!overrides) return nextAuto
+    if (!Array.isArray(nextAuto) || nextAuto.length === 0) return nextAuto
+
+    let changed = false
+    const out = nextAuto.map((swatch) => {
+        if (!swatch?.id || !swatch.id.startsWith("auto-")) return swatch
+        const override = overrides[swatch.id]
+        if (!override) return swatch
+
+        let next: TSwatch | undefined
+        if (typeof override.hex === "string" && override.hex) {
+            next = { ...(next ?? swatch), color: override.hex } as TSwatch
+            changed = true
+        }
+        if (typeof override.isTransparent === "boolean") {
+            next = {
+                ...(next ?? swatch),
+                isTransparent: override.isTransparent,
+            } as TSwatch
+            changed = true
+        }
+        return next ?? swatch
+    })
+
+    return changed ? out : nextAuto
 }
 
 export function createProjectSnapshotV2(
