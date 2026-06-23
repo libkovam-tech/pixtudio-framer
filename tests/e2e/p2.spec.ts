@@ -156,6 +156,53 @@ test("deleting an active palette preset saves the auto-palette world", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("transparent auto swatch project saves reopen without damaged-file error", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    const autoSwatch = page.locator('button[title="#7DA8C2"]')
+    await autoSwatch.click()
+    await page.locator("canvas").first().click({ position: { x: 180, y: 180 } })
+    await settle(page)
+
+    await autoSwatch.click({ button: "right" })
+    await expect(page.getByText("SWATCH EDIT")).toBeVisible()
+    await page.getByLabel("Transparent").check()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByText("SWATCH EDIT")).toHaveCount(0)
+
+    const save = await downloadProjectSave(page)
+    expect(save.suggestedFilename).toBe("project.pixtudio")
+
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    expect(
+        Object.values(snapshot.autoOverrides ?? {}).some(
+            (override) =>
+                !!override &&
+                typeof override === "object" &&
+                (override as { isTransparent?: unknown }).isTransparent === true
+        )
+    ).toBe(true)
+    expect(
+        snapshot.strokeLayer.cells.some(
+            (cell: { swatchIndex: number }) => cell.swatchIndex === -1
+        )
+    ).toBe(false)
+    expect(
+        snapshot.strokeLayer.cells.some(
+            (cell: { swatchIndex: number }) => cell.swatchIndex === -2
+        )
+    ).toBe(true)
+
+    await openProjectPathFromEditor(page, save.path, save.suggestedFilename)
+    await expect(page.getByText("IMPORT ERROR")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Export" })).toBeVisible()
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("swatch edit repaint is visible on the canvas immediately", async ({
     page,
 }) => {
@@ -515,13 +562,29 @@ async function setSyntheticVisualViewport(
 }
 
 async function openProjectFileFromEditor(page: Page) {
+    await openProjectPathFromEditor(page, bearProjectPath)
+}
+
+async function openProjectPathFromEditor(
+    page: Page,
+    projectPath: string,
+    filename?: string
+) {
     await page.getByRole("button", { name: "Open" }).click()
     await expect(page.getByRole("button", { name: "Open file" })).toBeVisible()
 
     const fileChooserPromise = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "Open file" }).click()
     const fileChooser = await fileChooserPromise
-    await fileChooser.setFiles(bearProjectPath)
+    if (filename) {
+        await fileChooser.setFiles({
+            name: filename,
+            mimeType: "application/json",
+            buffer: await readFile(projectPath),
+        })
+    } else {
+        await fileChooser.setFiles(projectPath)
+    }
 
     await expect(page.getByRole("button", { name: "Export" })).toBeVisible({
         timeout: 20_000,
