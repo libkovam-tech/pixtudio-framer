@@ -12,6 +12,7 @@ import {
     decodeProjectSnapshotBytesBase64,
     decodeProjectSnapshotRefBytes,
     encodeProjectSnapshotBytesBase64,
+    mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
     resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
@@ -348,6 +349,68 @@ describe("ProjectSnapshotV2 invariants", () => {
             },
         ])
         expect(result[2]).toBe(swatches[2])
+    })
+
+    it("maps transparent saved swatch ids to transparent cells", () => {
+        const indexById = new Map([
+            ["auto-0", 0],
+            ["auto-2", 1],
+        ])
+        const transparentSwatchIds = new Set(["auto-1"])
+
+        expect(
+            mapProjectSnapshotV2PixelToCell(null, {
+                indexById,
+                transparentPixel: "__TRANSPARENT__",
+                transparentSwatchIds,
+            })
+        ).toBe(V2_CELL_NULL)
+        expect(
+            mapProjectSnapshotV2PixelToCell("__TRANSPARENT__", {
+                indexById,
+                transparentPixel: "__TRANSPARENT__",
+                transparentSwatchIds,
+            })
+        ).toBe(V2_CELL_TRANSPARENT)
+        expect(
+            mapProjectSnapshotV2PixelToCell("auto-1", {
+                indexById,
+                transparentPixel: "__TRANSPARENT__",
+                transparentSwatchIds,
+            })
+        ).toBe(V2_CELL_TRANSPARENT)
+        expect(
+            mapProjectSnapshotV2PixelToCell("auto-2", {
+                indexById,
+                transparentPixel: "__TRANSPARENT__",
+                transparentSwatchIds,
+            })
+        ).toBe(1)
+        expect(
+            mapProjectSnapshotV2PixelToCell("missing", {
+                indexById,
+                transparentPixel: "__TRANSPARENT__",
+                transparentSwatchIds,
+            })
+        ).toBe(V2_CELL_NULL)
+    })
+
+    it("drops legacy null stroke cells during canonicalization", () => {
+        const snapshot = canonicalProject()
+        snapshot.strokeLayer.cells = [
+            { cellIndex: 0, swatchIndex: V2_CELL_NULL },
+            { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
+            { cellIndex: 15, swatchIndex: 1 },
+        ]
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(true)
+        if (!parsed.ok) return
+        expect(parsed.canonical.strokeLayer.cells).toEqual([
+            { cellIndex: 3, swatchIndex: V2_CELL_TRANSPARENT },
+            { cellIndex: 15, swatchIndex: 1 },
+        ])
     })
 
     it("preserves the active built-in preset marker when present", () => {

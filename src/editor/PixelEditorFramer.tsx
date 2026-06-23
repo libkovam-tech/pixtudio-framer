@@ -26,9 +26,11 @@ import {
     createProjectSnapshotV2,
     decodeProjectSnapshotRefBytes,
     encodeProjectSnapshotBytesBase64,
+    mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
     resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
+    V2_CELL_NULL,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
     type ValidatedSnapshotV2,
@@ -4304,9 +4306,13 @@ function PixelEditorFramer({
         for (const s of userSwatches) swatchById.set(s.id, s)
 
         const swatches: ProjectSnapshotV2["palette"]["swatches"] = []
+        const transparentSwatchIds = new Set<string>()
         let idx = 0
         for (const sw of [...autoSwatches, ...userSwatches]) {
-            if (sw.isTransparent) continue
+            if (sw.isTransparent) {
+                transparentSwatchIds.add(sw.id)
+                continue
+            }
             swatches.push({
                 index: idx++,
                 id: sw.id,
@@ -4318,9 +4324,11 @@ function PixelEditorFramer({
         const indexById = new Map(swatches.map((s) => [s.id, s.index]))
 
         const mapPixel = (v: PixelValue): number => {
-            if (v === null) return -1
-            if (v === TRANSPARENT_PIXEL) return -2
-            return indexById.get(v) ?? -1
+            return mapProjectSnapshotV2PixelToCell(v, {
+                indexById,
+                transparentPixel: TRANSPARENT_PIXEL,
+                transparentSwatchIds,
+            })
         }
 
         const importCells = new Array(g * g)
@@ -4336,9 +4344,11 @@ function PixelEditorFramer({
             for (let c = 0; c < g; c++) {
                 const v = overlayPixels[r][c]
                 if (v == null) continue
+                const swatchIndex = mapPixel(v)
+                if (swatchIndex === V2_CELL_NULL) continue
                 strokeCells.push({
                     cellIndex: r * g + c,
-                    swatchIndex: mapPixel(v),
+                    swatchIndex,
                 })
             }
         }

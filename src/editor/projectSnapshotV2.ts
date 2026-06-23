@@ -484,6 +484,21 @@ export function applyProjectSnapshotV2AutoOverrides<
     return changed ? out : nextAuto
 }
 
+export function mapProjectSnapshotV2PixelToCell<TTransparent>(
+    value: string | null | TTransparent,
+    options: {
+        indexById: ReadonlyMap<string, number>
+        transparentPixel: TTransparent
+        transparentSwatchIds?: ReadonlySet<string>
+    }
+): ImportCellV2 {
+    if (value === null) return V2_CELL_NULL
+    if (value === options.transparentPixel) return V2_CELL_TRANSPARENT
+    if (typeof value !== "string") return V2_CELL_NULL
+    if (options.transparentSwatchIds?.has(value)) return V2_CELL_TRANSPARENT
+    return options.indexById.get(value) ?? V2_CELL_NULL
+}
+
 export function createProjectSnapshotV2(
     input: ProjectSnapshotV2BuildInput
 ): ProjectSnapshotV2 {
@@ -498,10 +513,12 @@ export function canonicalizeSnapshotV2(
     s: ProjectSnapshotV2
 ): ProjectSnapshotV2 {
     const sw = [...s.palette.swatches].sort((a, b) => a.index - b.index)
-    const st = [...s.strokeLayer.cells].sort((a, b) => {
-        if (a.cellIndex !== b.cellIndex) return a.cellIndex - b.cellIndex
-        return a.swatchIndex - b.swatchIndex
-    })
+    const st = [...s.strokeLayer.cells]
+        .filter((cell) => cell.swatchIndex !== V2_CELL_NULL)
+        .sort((a, b) => {
+            if (a.cellIndex !== b.cellIndex) return a.cellIndex - b.cellIndex
+            return a.swatchIndex - b.swatchIndex
+        })
 
     let autoOverridesCanon: AutoSwatchOverridesMapV2 | undefined
     if (s.autoOverrides && Object.keys(s.autoOverrides).length > 0) {
@@ -909,7 +926,7 @@ export function validateProjectSnapshotV2OrThrow(
                 `strokeLayer.cells[${i}].swatchIndex: not int`
             )
         }
-        if (si === V2_CELL_TRANSPARENT) continue
+        if (si === V2_CELL_NULL || si === V2_CELL_TRANSPARENT) continue
         assertIntInRange(
             si,
             0,
