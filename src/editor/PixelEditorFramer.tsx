@@ -36,6 +36,7 @@ import {
     isLikelyRasterImageFile,
     routeOpenFile,
 } from "./openFileRouter.ts"
+import { preserveTransparentOverlayPixels } from "./overlayTransparentCells.ts"
 import {
     FILE_INTAKE_MESSAGES,
     assertProjectSaveFileSize,
@@ -4870,6 +4871,7 @@ function PixelEditorFramer({
     function applyOverlayAfterBaseRebuild(params: {
         imagePixelsNext: PixelValue[][]
         nextAuto: Swatch[]
+        logicalOverlay: PixelValue[][]
         // snapshotMode: если есть snapshot — пересчитываем overlay из snapshot
         // иначе — АВАРИЙНЫЙ legacy resize (строго с warn)
         hasSnap: boolean
@@ -4878,7 +4880,14 @@ function PixelEditorFramer({
         // кто вызвал (чтобы ловить “как мы сюда попали”)
         reason: string
     }) {
-        const { imagePixelsNext, nextAuto, hasSnap, snapshot, reason } = params
+        const {
+            imagePixelsNext,
+            nextAuto,
+            logicalOverlay,
+            hasSnap,
+            snapshot,
+            reason,
+        } = params
 
         // Step 4: источник overlay-переквантования — ТОЛЬКО эталон paintRefImageData, если он есть.
         // Источник переквантования overlay — только paintRefImageData. GRID SIZE / PALETTE SIZE не создают эталон. Эталон обновляется только по завершению рисования.
@@ -4932,6 +4941,19 @@ function PixelEditorFramer({
                 overlayNext = resizePixels(overlayPixels, gridSize)
             }
         }
+
+        const logicalTransparentSource =
+            logicalOverlay.length === gridSize &&
+            logicalOverlay[0]?.length === gridSize
+                ? logicalOverlay
+                : resizePixels(logicalOverlay, gridSize)
+
+        overlayNext = preserveTransparentOverlayPixels({
+            overlay: overlayNext,
+            transparentSource: logicalTransparentSource,
+            transparentPixel: TRANSPARENT_PIXEL,
+            swatches: [...nextAuto, ...userSwatches],
+        }) as PixelValue[][]
 
         publishCanvasFrameAtomic({
             base: imagePixelsNext,
@@ -9070,6 +9092,7 @@ function PixelEditorFramer({
                 applyOverlayAfterBaseRebuild({
                     imagePixelsNext: collapsed.imagePixels,
                     nextAuto: collapsed.autoSwatches,
+                    logicalOverlay: collapsed.overlayPixels,
                     hasSnap: paintRefImageData != null,
                     snapshot: paintRefImageData,
                     reason: "repixelize:with-original",
@@ -9170,6 +9193,7 @@ function PixelEditorFramer({
                 applyOverlayAfterBaseRebuild({
                     imagePixelsNext: collapsed.imagePixels,
                     nextAuto: collapsed.autoSwatches,
+                    logicalOverlay: collapsed.overlayPixels,
                     hasSnap: paintRefImageData != null,
                     snapshot: paintRefImageData,
                     reason: "repixelize:no-original",

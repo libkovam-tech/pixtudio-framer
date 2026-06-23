@@ -200,6 +200,20 @@ test("transparent auto swatch project saves reopen without damaged-file error", 
     await expect(page.getByText("IMPORT ERROR")).toHaveCount(0)
     await expect(page.getByRole("button", { name: "Export" })).toBeVisible()
 
+    const expectedPaletteCountAfterRebuild = await bumpPaletteSize(page)
+    const saveAfterRebuild = await downloadProjectSave(page)
+    const snapshotAfterRebuild = JSON.parse(
+        await readFile(saveAfterRebuild.path, "utf8")
+    )
+    expect(snapshotAfterRebuild.paletteCount).toBe(
+        expectedPaletteCountAfterRebuild
+    )
+    expect(
+        snapshotAfterRebuild.strokeLayer.cells.some(
+            (cell: { swatchIndex: number }) => cell.swatchIndex === -2
+        )
+    ).toBe(true)
+
     expect(errors.flush()).toEqual([])
 })
 
@@ -703,6 +717,29 @@ async function downloadProjectSave(page: Page) {
         path: downloadPath as string,
         suggestedFilename: download.suggestedFilename(),
     }
+}
+
+async function bumpPaletteSize(page: Page) {
+    const paletteSlider = page.locator('input[type="range"][max="32"]').first()
+    await expect(paletteSlider).toBeVisible()
+    const nextValue = await paletteSlider.evaluate((element) => {
+        const input = element as HTMLInputElement
+        const max = Number(input.max)
+        const min = Number(input.min)
+        const current = Number(input.value)
+
+        const next = current < max ? current + 1 : Math.max(min, current - 1)
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value"
+        )?.set
+        valueSetter?.call(input, String(next))
+        input.dispatchEvent(new Event("input", { bubbles: true }))
+        input.dispatchEvent(new Event("change", { bubbles: true }))
+        return next
+    })
+    await settle(page)
+    return nextValue
 }
 
 async function fileSize(filePath: string) {
