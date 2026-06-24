@@ -10,6 +10,7 @@ import {
 import {
     loadProjectSnapshotFromFile,
     migrateProjectSnapshotToCurrent,
+    prepareProjectSnapshotForSave,
     type ProjectFileLike,
 } from "./projectPersistence.ts"
 
@@ -111,5 +112,46 @@ describe("projectPersistence", () => {
 
         expect(result.value.snapshotVersion).toBe(2)
         expect(result.value.validated.version).toBe(PROJECT_SNAPSHOT_V2_VERSION)
+    })
+
+    it("prepares a valid V2 project snapshot for save without browser adapters", () => {
+        const result = prepareProjectSnapshotForSave(projectSnapshot(), {
+            checksumJsonString,
+            suggestedName: "custom.pixtudio",
+            mime: "application/pixtudio+json",
+        })
+
+        expect(result.ok).toBe(true)
+        if (!result.ok) return
+
+        expect(result.value.suggestedName).toBe("custom.pixtudio")
+        expect(result.value.mime).toBe("application/pixtudio+json")
+        expect(result.value.summary).toEqual({
+            gridSize: 2,
+            paletteSize: 2,
+            hasRef: false,
+            hasSmartObjectState: false,
+        })
+        expect(result.value.canonicalChecksum).toBe(
+            checksumJsonString(result.value.jsonText)
+        )
+        expect(JSON.parse(result.value.jsonText)).toEqual(result.value.canonical)
+    })
+
+    it("rejects invalid save snapshots as controlled save errors", () => {
+        const invalidSnapshot = {
+            ...projectSnapshot(),
+            gridSize: 0,
+        } as ProjectSnapshotV2
+
+        const result = prepareProjectSnapshotForSave(invalidSnapshot, {
+            checksumJsonString,
+        })
+
+        expect(result.ok).toBe(false)
+        if (result.ok) return
+
+        expect(result.error.operation).toBe("save")
+        expect(result.error.code).toBe("temporarily-unavailable")
     })
 })

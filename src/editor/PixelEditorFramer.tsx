@@ -31,7 +31,10 @@ import {
     type ProjectSnapshotV2,
     type ValidatedSnapshotV2,
 } from "./projectSnapshotV2.ts"
-import { loadProjectSnapshotFromFile } from "./projectPersistence.ts"
+import {
+    loadProjectSnapshotFromFile,
+    prepareProjectSnapshotForSave,
+} from "./projectPersistence.ts"
 import {
     isLikelyRasterImageFile,
     routeOpenFile,
@@ -4071,29 +4074,41 @@ function PixelEditorFramer({
     const onSaveProject = React.useCallback(() => {
         try {
             const snapshot = buildProjectSnapshotV2()
-            const json = JSON.stringify(snapshot)
+            const prepared = prepareProjectSnapshotForSave(snapshot, {
+                checksumJsonString,
+                suggestedName: "project.pixtudio",
+                mime: "application/json",
+            })
+
+            if (!prepared.ok) {
+                coreLifecycleLog("save:rejected", {
+                    code: prepared.error.code,
+                })
+                showSaveLoadError(prepared.error)
+                return
+            }
 
             coreLifecycleLog("save:initiated", {
-                gridSize: snapshot.gridSize,
-                palette: snapshot.palette.swatches.length,
-                hasRef: !!snapshot.ref,
-                hasSmartObjectState: !!snapshot.smartObjectState,
+                gridSize: prepared.value.summary.gridSize,
+                palette: prepared.value.summary.paletteSize,
+                hasRef: prepared.value.summary.hasRef,
+                hasSmartObjectState: prepared.value.summary.hasSmartObjectState,
             })
 
             if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
                 console.log(
                     "[SAVE][CHK] len=",
-                    json.length,
+                    prepared.value.jsonText.length,
                     "fnv1a32=",
-                    checksumJsonString(json)
+                    prepared.value.canonicalChecksum
                 )
             }
 
             enqueueTxn("save", async () => {
                 const result = await saveProjectFileSafely({
-                    suggestedName: "project.pixtudio",
-                    mime: "application/json",
-                    jsonText: json,
+                    suggestedName: prepared.value.suggestedName,
+                    mime: prepared.value.mime,
+                    jsonText: prepared.value.jsonText,
                 })
                 if (!result.ok) {
                     coreLifecycleLog("save:rejected", {

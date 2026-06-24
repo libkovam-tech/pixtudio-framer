@@ -4,6 +4,7 @@ import {
     getFileIntakeUserMessage,
 } from "./fileIntakeSecurity.ts"
 import {
+    canonicalizeSnapshotV2,
     parseProjectSnapshotV2Json,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
@@ -12,6 +13,7 @@ import {
 import {
     saveLoadErr,
     saveLoadOk,
+    toTemporarySaveLoadError,
     type SaveLoadResult,
 } from "./saveLoadResult.ts"
 
@@ -36,6 +38,25 @@ export type LoadProjectSnapshotOptions = {
     checksumJsonString: (json: string) => string
 }
 
+export type PrepareProjectSaveOptions = {
+    checksumJsonString: (json: string) => string
+    suggestedName?: string
+    mime?: string
+}
+
+export type PreparedProjectSave = CurrentProjectSnapshot & {
+    suggestedName: string
+    mime: string
+    jsonText: string
+    canonicalChecksum: string
+    summary: {
+        gridSize: number
+        paletteSize: number
+        hasRef: boolean
+        hasSmartObjectState: boolean
+    }
+}
+
 export function migrateProjectSnapshotToCurrent(
     canonical: ProjectSnapshotV2
 ): SaveLoadResult<CurrentProjectSnapshot> {
@@ -52,6 +73,35 @@ export function migrateProjectSnapshotToCurrent(
         code: "damaged-project",
         message: FILE_INTAKE_MESSAGES.damagedProject,
     })
+}
+
+export function prepareProjectSnapshotForSave(
+    snapshot: ProjectSnapshotV2,
+    options: PrepareProjectSaveOptions
+): SaveLoadResult<PreparedProjectSave> {
+    try {
+        const canonical = canonicalizeSnapshotV2(snapshot)
+        const validated = validateProjectSnapshotV2OrThrow(canonical)
+        const jsonText = JSON.stringify(canonical)
+
+        return saveLoadOk({
+            snapshotVersion: 2,
+            canonical,
+            validated,
+            suggestedName: options.suggestedName ?? "project.pixtudio",
+            mime: options.mime ?? "application/json",
+            jsonText,
+            canonicalChecksum: options.checksumJsonString(jsonText),
+            summary: {
+                gridSize: validated.gridSize,
+                paletteSize: validated.palette.swatches.length,
+                hasRef: !!validated.ref,
+                hasSmartObjectState: !!validated.smartObjectState,
+            },
+        })
+    } catch (error) {
+        return saveLoadErr(toTemporarySaveLoadError("save", error))
+    }
 }
 
 export async function loadProjectSnapshotFromFile(
