@@ -42,6 +42,15 @@ import {
     decodeAndValidateRasterImageFile,
     getFileIntakeUserMessage,
 } from "./fileIntakeSecurity.ts"
+import {
+    getSaveLoadErrorMessage,
+    isSaveLoadCancelled,
+    saveLoadErr,
+    saveLoadOk,
+    toTemporarySaveLoadError,
+    type SaveLoadError,
+    type SaveLoadResult,
+} from "./saveLoadResult.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendFixedPaletteProfile,
@@ -3512,6 +3521,7 @@ function PixelEditorFramer({
     pendingProjectFile,
     onPendingProjectFileConsumed,
     onShowImportError,
+    onShowAppError,
     onOpenSmartReferenceTest,
     onEditorCommittedStateBridgeReady,
     onEditorCommittedStateSettled,
@@ -3590,6 +3600,7 @@ function PixelEditorFramer({
 
     // ✅ NEW: unified import-error bridge (optional)
     onShowImportError?: (message: string) => void
+    onShowAppError?: (payload: { title: string; message: string }) => void
 }) {
     const isMobileUI =
         typeof window !== "undefined" &&
@@ -3950,6 +3961,16 @@ function PixelEditorFramer({
     // PixelEditorFramer управляет своим importStatus, а ROOT — только показом модалки.
     // ---------------------
     const showImportError = onShowImportError ?? (() => undefined) // fail-safe NO-OP
+    const showSaveLoadError = React.useCallback(
+        (error: SaveLoadError) => {
+            if (isSaveLoadCancelled(error)) return
+            onShowAppError?.({
+                title: "TEMPORARILY UNAVAILABLE",
+                message: getSaveLoadErrorMessage(error),
+            })
+        },
+        [onShowAppError]
+    )
 
     const failImport = React.useCallback(
         (message: string) => {
@@ -4048,33 +4069,46 @@ function PixelEditorFramer({
     }, [initialImageData, initialImageRouteKind])
 
     const onSaveProject = React.useCallback(() => {
-        const snapshot = buildProjectSnapshotV2()
-        const json = JSON.stringify(snapshot)
+        try {
+            const snapshot = buildProjectSnapshotV2()
+            const json = JSON.stringify(snapshot)
 
-        coreLifecycleLog("save:initiated", {
-            gridSize: snapshot.gridSize,
-            palette: snapshot.palette.swatches.length,
-            hasRef: !!snapshot.ref,
-            hasSmartObjectState: !!snapshot.smartObjectState,
-        })
-
-        if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
-            console.log(
-                "[SAVE][CHK] len=",
-                json.length,
-                "fnv1a32=",
-                checksumJsonString(json)
-            )
-        }
-
-        enqueueTxn("save", async () => {
-            await saveProjectFile({
-                suggestedName: "project.pixtudio",
-                mime: "application/json",
-                jsonText: json,
+            coreLifecycleLog("save:initiated", {
+                gridSize: snapshot.gridSize,
+                palette: snapshot.palette.swatches.length,
+                hasRef: !!snapshot.ref,
+                hasSmartObjectState: !!snapshot.smartObjectState,
             })
-        })
-    }, [buildProjectSnapshotV2])
+
+            if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
+                console.log(
+                    "[SAVE][CHK] len=",
+                    json.length,
+                    "fnv1a32=",
+                    checksumJsonString(json)
+                )
+            }
+
+            enqueueTxn("save", async () => {
+                const result = await saveProjectFileSafely({
+                    suggestedName: "project.pixtudio",
+                    mime: "application/json",
+                    jsonText: json,
+                })
+                if (!result.ok) {
+                    coreLifecycleLog("save:rejected", {
+                        code: result.error.code,
+                    })
+                    showSaveLoadError(result.error)
+                }
+            })
+        } catch (error) {
+            coreLifecycleLog("save:rejected", {
+                code: "E_BUILD",
+            })
+            showSaveLoadError(toTemporarySaveLoadError("save", error))
+        }
+    }, [buildProjectSnapshotV2, showSaveLoadError])
 
     function onLoadProject(e: React.MouseEvent) {
         coreLifecycleLog("load:menu-opened")
@@ -4089,9 +4123,7 @@ function PixelEditorFramer({
         fileName?: string
     }
 
-    type LoadLetter =
-        | { ok: true; payload: LoadPayload }
-        | { ok: false; message?: string }
+    type LoadLetter = SaveLoadResult<LoadPayload>
 
     async function buildLoadLetterFromPixtudioFile(
         file: File
@@ -4112,10 +4144,11 @@ function PixelEditorFramer({
                     code: parsed.error.code,
                     message: parsed.error.message,
                 })
-                return {
-                    ok: false,
+                return saveLoadErr({
+                    operation: "load",
+                    code: "damaged-project",
                     message: FILE_INTAKE_MESSAGES.damagedProject,
-                }
+                })
             }
 
             // ==========================
@@ -4153,19 +4186,21 @@ function PixelEditorFramer({
                 checksum: canonicalChecksum,
             })
 
-            return { ok: true, payload }
+            return saveLoadOk(payload)
         } catch (error) {
             coreLifecycleLog("load:rejected", {
                 fileName: file.name,
                 code: "E_READ",
             })
-            return {
-                ok: false,
+            return saveLoadErr({
+                operation: "load",
+                code: "damaged-project",
                 message: getFileIntakeUserMessage(
                     error,
                     FILE_INTAKE_MESSAGES.damagedProject
                 ),
-            }
+                cause: error,
+            })
         }
     }
 
@@ -4178,9 +4213,7 @@ function PixelEditorFramer({
         if (!letter.ok) {
             coreLifecycleLog("load:apply-rejected")
             // ✅ ЕДИНАЯ модалка "Неправильный импорт" (как и для неверного изображения)
-            onShowImportError?.(
-                letter.message ?? FILE_INTAKE_MESSAGES.damagedProject
-            )
+            onShowImportError?.(getSaveLoadErrorMessage(letter.error))
 
             // (опционально) оставляем legacy-стейт, если он ещё где-то используется логикой
             //setImportStatus("error")
@@ -4189,9 +4222,9 @@ function PixelEditorFramer({
         }
 
         coreLifecycleLog("load:apply-accepted", {
-            checksum: letter.payload.canonicalChecksum,
+            checksum: letter.value.canonicalChecksum,
         })
-        restoreProjectFromLoadPayload(letter.payload)
+        restoreProjectFromLoadPayload(letter.value)
     }
 
     React.useEffect(() => {
@@ -4340,14 +4373,16 @@ function PixelEditorFramer({
         suggestedName: string
         mime: string
         jsonText: string
-    }) {
+    }): SaveLoadResult<void> {
         try {
             downloadTextFile({
                 filename: params.suggestedName,
                 mime: params.mime,
                 text: params.jsonText,
             })
-        } catch {
+            return saveLoadOk(undefined)
+        } catch (error) {
+            return saveLoadErr(toTemporarySaveLoadError("save", error))
             // тихо
         }
     }
@@ -4391,7 +4426,7 @@ function PixelEditorFramer({
         suggestedName: string
         mime: string
         jsonText: string
-    }) {
+    }): Promise<SaveLoadResult<void>> {
         // Step 2: "Save As" через File System Access API (Chrome/Edge на Win/Android)
         const w: any = typeof window !== "undefined" ? (window as any) : null
 
@@ -4414,21 +4449,34 @@ function PixelEditorFramer({
                     new Blob([params.jsonText], { type: params.mime })
                 )
                 await writable.close()
-                return
+                return saveLoadOk(undefined)
             } catch (e: any) {
                 // пользователь отменил / браузер запретил — тихо
                 if (e?.name === "AbortError" || e?.name === "NotAllowedError")
-                    return
+                    return saveLoadOk(undefined)
                 // любые прочие проблемы — тихо падаем в fallback
             }
         }
 
         // Step 4: iOS-friendly fallback — share sheet (Save to Files и др.)
         const shared = await saveProjectFileViaShare(params)
-        if (shared) return
+        if (shared) return saveLoadOk(undefined)
 
         // Fallback: обычная загрузка файла (как было)
-        saveProjectFileViaDownload(params)
+        return saveProjectFileViaDownload(params)
+    }
+
+    async function saveProjectFileSafely(params: {
+        suggestedName: string
+        mime: string
+        jsonText: string
+    }): Promise<SaveLoadResult<void>> {
+        try {
+            await saveProjectFile(params)
+            return saveLoadOk(undefined)
+        } catch (error) {
+            return saveLoadErr(toTemporarySaveLoadError("save", error))
+        }
     }
 
     function clampInt(n: number, min: number, max: number) {
@@ -15036,12 +15084,23 @@ export default function PIXTUDIO_Mobile_MVP() {
     // ======================
 
     const [importErrorModal, setImportErrorModal] = React.useState<{
+        title: string
         message: string
     } | null>(null)
 
-    const showImportErrorModal = React.useCallback((message: string) => {
-        setImportErrorModal({ message })
-    }, [])
+    const showAppErrorModal = React.useCallback(
+        (payload: { title: string; message: string }) => {
+            setImportErrorModal(payload)
+        },
+        []
+    )
+
+    const showImportErrorModal = React.useCallback(
+        (message: string) => {
+            showAppErrorModal({ title: "IMPORT ERROR", message })
+        },
+        [showAppErrorModal]
+    )
 
     const dismissImportErrorModal = React.useCallback(() => {
         setImportErrorModal(null)
@@ -15151,7 +15210,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                           color: PIXTUDIO_INK,
                                       }}
                                   >
-                                      IMPORT ERROR
+                                      {importErrorModal.title}
                                   </div>
 
                                   <div
@@ -16794,6 +16853,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                     onRequestOpenProject={openProjectPicker}
                     onRequestStartScreen={openEditorStartScreen}
                     onShowImportError={failImport}
+                    onShowAppError={showAppErrorModal}
                     onOpenSmartReferenceTest={
                         smartObjectHasBase
                             ? openSmartReferenceFromEditorTest
