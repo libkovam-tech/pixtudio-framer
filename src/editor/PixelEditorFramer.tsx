@@ -3958,7 +3958,7 @@ function PixelEditorFramer({
 
     // ---------------------
     // Unified import error (single modal, owned by ROOT)
-    // PixelEditorFramer управляет своим importStatus, а ROOT — только показом модалки.
+    // PixelEditorFramer owns importStatus; Root only owns modal display.
     // ---------------------
     const showImportError = onShowImportError ?? (() => undefined) // fail-safe NO-OP
     const showSaveLoadError = React.useCallback(
@@ -3981,7 +3981,7 @@ function PixelEditorFramer({
         [showImportError]
     )
 
-    // когда ошибка случилась внутри активного флоу (crop/import) — оставляем "ready"
+    // Keep the active crop/import flow ready when an error happens inside it.
     const failImportInFlow = React.useCallback(
         (message: string) => {
             showImportError(message)
@@ -3993,8 +3993,8 @@ function PixelEditorFramer({
     void failImportInFlow
 
     // --------------------- BLANK PROJECT (S3) ---------------------
-    // Одна точка правды: синхронный сброс проекта в "пустой".
-    // Никаких async/heavy — только setters/refs-reset.
+    // Single synchronous reset point for a blank project.
+    // No async/heavy work here; only setters and ref resets.
 
     const SAFE_DEFAULT_GRID_SIZE = 32
 
@@ -4009,27 +4009,27 @@ function PixelEditorFramer({
     function applyBlankProject(nextGridSize: number) {
         const gs = safeGridSizeOrDefault(nextGridSize)
 
-        // если вдруг gridSize был битый — фиксируем и state тоже
+        // If gridSize was corrupted, repair state as well.
         if (gs !== gridSize) setGridSize(gs)
 
-        // 1) Пиксели
+        // 1) Pixels
         setOverlayPixels(createEmptyPixels(gs))
         setImagePixels(createEmptyPixels(gs))
 
-        // 1.5) Новый импорт = новая палитровая сессия
+        // 1.5) New import means a new palette session.
         setUserSwatches([])
         setSelectedSwatch("auto-0")
         resetPalettePresetsForNewImport()
 
-        // 2) Import context — строго выключаем
+        // 2) Strictly disable import context.
         setOriginalImageData(null)
         setHasImportContext(false)
         setImportStatus("idle")
         setImportError(null)
 
-        // 3) Undo/Redo — чистый новый проект
-        // 4) NEW PROJECT = новая сессия:
-        // очищаем эталон слоя штрихов и ключи пайплайна, чтобы старое не “приехало” после repixelize.
+        // 3) Undo/Redo starts from a clean new project.
+        // 4) New project means a new session: clear stroke references and
+        // pipeline keys so old strokes cannot reappear after repixelize.
         clearPaintRefs()
         overlayDirtyRef.current = false
         paintSnapshotNonceRef.current = 0
@@ -4041,7 +4041,7 @@ function PixelEditorFramer({
     const lastInitialImageDataRef = React.useRef<ImageData | null>(null)
 
     React.useEffect(() => {
-        // Если пришёл null (Draw / очистка) — сбросим якорь
+        // Null means Draw/reset; clear the reference anchor.
         if (!initialImageData) {
             lastInitialImageDataRef.current = null
 
@@ -4055,11 +4055,11 @@ function PixelEditorFramer({
             return
         }
 
-        // Новый committed reference = новый объект ImageData
+        // New committed reference means a new ImageData object.
         if (lastInitialImageDataRef.current === initialImageData) return
         lastInitialImageDataRef.current = initialImageData
 
-        // Только настоящий import имеет право сбрасывать import-session state.
+        // Only a real import may reset import-session state.
         if (initialImageRouteKind === "import") {
             resetAutoOverridesForNewImport()
             resetPalettePresetsForNewImport()
@@ -4205,17 +4205,17 @@ function PixelEditorFramer({
     }
 
     // ==========================
-    // S3 — EDITOR APPLY POINT (single decision point)
+    // S3 - EDITOR APPLY POINT (single decision point)
     // ==========================
 
     function applyLoadLetterInEditor(letter: LoadLetter) {
-        // Editor — единственное место, где решаем: применить или показать ошибку
+        // Editor is the single decision point: apply the load or show an error.
         if (!letter.ok) {
             coreLifecycleLog("load:apply-rejected")
-            // ✅ ЕДИНАЯ модалка "Неправильный импорт" (как и для неверного изображения)
+            // Reuse the unified import-error modal for project-load failures.
             onShowImportError?.(getSaveLoadErrorMessage(letter.error))
 
-            // (опционально) оставляем legacy-стейт, если он ещё где-то используется логикой
+            // Legacy state can stay commented while old branches are retired.
             //setImportStatus("error")
             //setImportError("Import failed. Please try again.")
             return
@@ -4240,7 +4240,7 @@ function PixelEditorFramer({
 
                 applyLoadLetterInEditor(letter)
             } finally {
-                // “съедаем” pending в любом случае (успех/ошибка)
+                // Always consume pending input after success or failure.
                 if (!cancelled) onPendingProjectFileConsumed?.()
             }
         })()
@@ -4365,7 +4365,7 @@ function PixelEditorFramer({
         a.click()
         a.remove()
 
-        // освобождаем URL
+        // Release the object URL after the browser starts the download.
         setTimeout(() => URL.revokeObjectURL(url), 0)
     }
 
@@ -4383,7 +4383,7 @@ function PixelEditorFramer({
             return saveLoadOk(undefined)
         } catch (error) {
             return saveLoadErr(toTemporarySaveLoadError("save", error))
-            // тихо
+            // Convert download failures into a controlled save/load result.
         }
     }
 
@@ -4402,7 +4402,7 @@ function PixelEditorFramer({
                 type: params.mime,
             })
 
-            // Некоторые браузеры (особенно iOS) требуют canShare({files})
+            // Some browsers, especially iOS, require canShare({ files }).
             if (typeof nav.canShare === "function") {
                 const ok = nav.canShare({ files: [file] })
                 if (!ok) return false
@@ -4416,7 +4416,7 @@ function PixelEditorFramer({
 
             return true
         } catch (e: any) {
-            // пользователь отменил / система отказала — тихо
+            // User cancellation or system rejection falls back silently.
             if (e?.name === "AbortError") return true
             return false
         }
@@ -4427,7 +4427,7 @@ function PixelEditorFramer({
         mime: string
         jsonText: string
     }): Promise<SaveLoadResult<void>> {
-        // Step 2: "Save As" через File System Access API (Chrome/Edge на Win/Android)
+        // Step 2: Save As through the File System Access API.
         const w: any = typeof window !== "undefined" ? (window as any) : null
 
         if (w && typeof w.showSaveFilePicker === "function") {
@@ -4451,18 +4451,18 @@ function PixelEditorFramer({
                 await writable.close()
                 return saveLoadOk(undefined)
             } catch (e: any) {
-                // пользователь отменил / браузер запретил — тихо
+                // User cancellation or browser denial is not an app failure.
                 if (e?.name === "AbortError" || e?.name === "NotAllowedError")
                     return saveLoadOk(undefined)
-                // любые прочие проблемы — тихо падаем в fallback
+                // Other failures fall through to the fallback path.
             }
         }
 
-        // Step 4: iOS-friendly fallback — share sheet (Save to Files и др.)
+        // Step 4: iOS-friendly fallback through the share sheet.
         const shared = await saveProjectFileViaShare(params)
         if (shared) return saveLoadOk(undefined)
 
-        // Fallback: обычная загрузка файла (как было)
+        // Final fallback: regular browser download.
         return saveProjectFileViaDownload(params)
     }
 
@@ -15106,7 +15106,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         setImportErrorModal(null)
     }, [])
 
-    // ✅ ROOT: единая точка показа import-error (ТОЛЬКО модалка; без importStatus/importError)
+    // Root owns the single import-error display point.
     const onShowImportError = React.useCallback(
         (message: string) => {
             showImportErrorModal(message)
@@ -15114,7 +15114,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         [showImportErrorModal]
     )
 
-    // единый portal (ОДНА модалка на все ошибки импорта)
+    // Single portal for all import errors and save/load operation failures.
 
     // ======================
     // IMPORT ERROR MODAL: fixed geometry (NO autosize / NO measuring)
@@ -15123,13 +15123,11 @@ export default function PIXTUDIO_Mobile_MVP() {
     const IMPORT_ALERT_W = 300
     const IMPORT_ALERT_H = 100
 
-    // ВАЖНО:
-    // width = min(520px, 100vw-48px)
-    // height = пропорционально ширине, чтобы SvgAlertBacking не "плавал"
+    // Keep the backing proportional so SvgAlertBacking does not drift.
     const importAlertBoxW = `min(${IMPORT_ALERT_W}px, calc(100vw - 48px))`
     const importAlertBoxH = `calc(${importAlertBoxW} * ${IMPORT_ALERT_H} / ${IMPORT_ALERT_W})`
 
-    // фиксированные типографика/паддинги (без vw/clamp)
+    // Fixed typography and padding; avoid viewport-scaled text here.
     const importAlertTitleFontPx = 18
     const importAlertBodyFontPx = 12
     const importAlertPadV = 26
@@ -15144,7 +15142,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                       e.stopPropagation()
                   }}
               >
-                  {/* ✅ Внутренний контейнер-колонка (на случай если кто-то сломает ALERT_OVERLAY_STYLE) */}
+                  {/* Inner column guard in case ALERT_OVERLAY_STYLE changes. */}
                   <div
                       style={{
                           display: "flex",
@@ -15230,7 +15228,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                           </div>
                       </div>
 
-                      {/* OK button OUTSIDE the white backing (80×80) */}
+                      {/* OK button outside the white backing. */}
                       <button
                           type="button"
                           onClick={(e) => {
