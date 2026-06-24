@@ -27,11 +27,11 @@ import {
     parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides as pruneAutoOverridesForCurrentAuto,
     resolveProjectSnapshotV2QuantizationProfile,
-    validateProjectSnapshotV2OrThrow,
     type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
     type ValidatedSnapshotV2,
 } from "./projectSnapshotV2.ts"
+import { loadProjectSnapshotFromFile } from "./projectPersistence.ts"
 import {
     isLikelyRasterImageFile,
     routeOpenFile,
@@ -4130,36 +4130,21 @@ function PixelEditorFramer({
     ): Promise<LoadLetter> {
         coreLifecycleLog("load:initiated", { fileName: file.name })
 
+        const loaded = await loadProjectSnapshotFromFile(file, {
+            checksumJsonString,
+        })
+
+        if (!loaded.ok) {
+            coreLifecycleLog("load:rejected", {
+                fileName: file.name,
+                code: loaded.error.code,
+            })
+            return loaded
+        }
+
         try {
-            // ==========================
-            // LOAD CAPSULE: read + parse
-            // ==========================
-            assertProjectSaveFileSize(file)
-            const jsonText = await file.text()
-
-            const parsed = parseProjectSnapshotV2Json(jsonText)
-            if (!parsed.ok) {
-                coreLifecycleLog("load:rejected", {
-                    fileName: file.name,
-                    code: parsed.error.code,
-                    message: parsed.error.message,
-                })
-                return saveLoadErr({
-                    operation: "load",
-                    code: "damaged-project",
-                    message: FILE_INTAKE_MESSAGES.damagedProject,
-                })
-            }
-
-            // ==========================
-            // LOAD CAPSULE: validate + canonicalize + build payload (V2 only)
-            // ==========================
-            const validatedV2 = validateProjectSnapshotV2OrThrow(parsed.canonical)
-            const canonical = parsed.canonical
-            const canonicalChecksum = checksumJsonString(
-                JSON.stringify(canonical)
-            )
-
+            const loadedSnapshot = loaded.value
+            const validatedV2 = loadedSnapshot.validated
             const nextState = buildNextStateFromValidatedSnapshotV2(validatedV2)
 
             const loadedSmartAdjustments: SmartReferenceAdjustments =
@@ -4174,7 +4159,7 @@ function PixelEditorFramer({
                 snapshotVersion: 2,
                 nextState,
                 loadedSmartAdjustments,
-                canonicalChecksum,
+                canonicalChecksum: loadedSnapshot.canonicalChecksum,
                 fileName: file.name,
             }
 
@@ -4183,14 +4168,14 @@ function PixelEditorFramer({
                 gridSize: validatedV2.gridSize,
                 palette: validatedV2.palette.swatches.length,
                 hasRef: !!validatedV2.ref,
-                checksum: canonicalChecksum,
+                checksum: loadedSnapshot.canonicalChecksum,
             })
 
             return saveLoadOk(payload)
         } catch (error) {
             coreLifecycleLog("load:rejected", {
                 fileName: file.name,
-                code: "E_READ",
+                code: "E_PAYLOAD",
             })
             return saveLoadErr({
                 operation: "load",
@@ -4472,8 +4457,7 @@ function PixelEditorFramer({
         jsonText: string
     }): Promise<SaveLoadResult<void>> {
         try {
-            await saveProjectFile(params)
-            return saveLoadOk(undefined)
+            return await saveProjectFile(params)
         } catch (error) {
             return saveLoadErr(toTemporarySaveLoadError("save", error))
         }

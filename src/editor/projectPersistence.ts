@@ -1,0 +1,96 @@
+import {
+    FILE_INTAKE_MESSAGES,
+    assertProjectSaveFileSize,
+    getFileIntakeUserMessage,
+} from "./fileIntakeSecurity.ts"
+import {
+    parseProjectSnapshotV2Json,
+    validateProjectSnapshotV2OrThrow,
+    type ProjectSnapshotV2,
+    type ValidatedSnapshotV2,
+} from "./projectSnapshotV2.ts"
+import {
+    saveLoadErr,
+    saveLoadOk,
+    type SaveLoadResult,
+} from "./saveLoadResult.ts"
+
+export type ProjectFileLike = {
+    name: string
+    size: number
+    text: () => Promise<string>
+}
+
+export type CurrentProjectSnapshot = {
+    snapshotVersion: 2
+    canonical: ProjectSnapshotV2
+    validated: ValidatedSnapshotV2
+}
+
+export type LoadedProjectSnapshot = CurrentProjectSnapshot & {
+    canonicalChecksum: string
+    fileName: string
+}
+
+export type LoadProjectSnapshotOptions = {
+    checksumJsonString: (json: string) => string
+}
+
+export function migrateProjectSnapshotToCurrent(
+    canonical: ProjectSnapshotV2
+): SaveLoadResult<CurrentProjectSnapshot> {
+    if (canonical.version === 2) {
+        return saveLoadOk({
+            snapshotVersion: 2,
+            canonical,
+            validated: validateProjectSnapshotV2OrThrow(canonical),
+        })
+    }
+
+    return saveLoadErr({
+        operation: "load",
+        code: "damaged-project",
+        message: FILE_INTAKE_MESSAGES.damagedProject,
+    })
+}
+
+export async function loadProjectSnapshotFromFile(
+    file: ProjectFileLike,
+    options: LoadProjectSnapshotOptions
+): Promise<SaveLoadResult<LoadedProjectSnapshot>> {
+    try {
+        assertProjectSaveFileSize(file)
+        const jsonText = await file.text()
+        const parsed = parseProjectSnapshotV2Json(jsonText)
+
+        if (!parsed.ok) {
+            return saveLoadErr({
+                operation: "load",
+                code: "damaged-project",
+                message: FILE_INTAKE_MESSAGES.damagedProject,
+                cause: parsed.error,
+            })
+        }
+
+        const migrated = migrateProjectSnapshotToCurrent(parsed.canonical)
+        if (!migrated.ok) return migrated
+
+        return saveLoadOk({
+            ...migrated.value,
+            canonicalChecksum: options.checksumJsonString(
+                JSON.stringify(migrated.value.canonical)
+            ),
+            fileName: file.name,
+        })
+    } catch (error) {
+        return saveLoadErr({
+            operation: "load",
+            code: "damaged-project",
+            message: getFileIntakeUserMessage(
+                error,
+                FILE_INTAKE_MESSAGES.damagedProject
+            ),
+            cause: error,
+        })
+    }
+}
