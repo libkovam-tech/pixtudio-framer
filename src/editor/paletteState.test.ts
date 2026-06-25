@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { computePaletteCountFromSwatches } from "./paletteState.ts"
+import {
+    computePaletteCountFromSwatches,
+    resolveSelectedSwatchAfterAutoChange,
+} from "./paletteState.ts"
 
 describe("palette state", () => {
     it("counts auto and user swatches that paint visible colors", () => {
@@ -64,5 +67,71 @@ describe("palette state", () => {
                 { min: 2, max: 32 }
             )
         ).toBe(2)
+    })
+
+    it("keeps the transparent tool selected after auto swatches change", () => {
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [{ id: "auto-0" }],
+                userSwatches: [{ id: "user-0" }],
+                selectedSwatch: "transparent",
+            })
+        ).toBe("transparent")
+    })
+
+    it("keeps the selected user swatch when auto swatches are rebuilt", () => {
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [{ id: "auto-0" }],
+                userSwatches: [{ id: "user-0" }],
+                selectedSwatch: "user-0",
+            })
+        ).toBe("user-0")
+    })
+
+    it("uses a valid preferred swatch before the current selection", () => {
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+                userSwatches: [{ id: "user-0" }],
+                selectedSwatch: "auto-0",
+                preferredSwatch: "auto-1",
+            })
+        ).toBe("auto-1")
+
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [{ id: "auto-0" }],
+                userSwatches: [{ id: "user-0" }],
+                selectedSwatch: "auto-0",
+                preferredSwatch: "user-0",
+            })
+        ).toBe("user-0")
+    })
+
+    it("falls back to the first available swatch when the selected auto swatch disappears", () => {
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [{ id: "auto-0" }],
+                userSwatches: [{ id: "user-0" }],
+                selectedSwatch: "auto-9",
+            })
+        ).toBe("auto-0")
+
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [],
+                userSwatches: [{ id: "user-0" }],
+                selectedSwatch: "auto-9",
+            })
+        ).toBe("user-0")
+
+        expect(
+            resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: [],
+                userSwatches: [],
+                selectedSwatch: "auto-9",
+            })
+        ).toBe("transparent")
     })
 })

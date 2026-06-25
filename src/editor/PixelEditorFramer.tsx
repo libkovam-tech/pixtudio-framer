@@ -60,7 +60,10 @@ import {
     extendFixedPaletteProfile,
     removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
-import { computePaletteCountFromSwatches } from "./paletteState.ts"
+import {
+    computePaletteCountFromSwatches,
+    resolveSelectedSwatchAfterAutoChange,
+} from "./paletteState.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
     type SpaceHandState,
@@ -5662,33 +5665,6 @@ function PixelEditorFramer({
         }))
     }
 
-    function resolveSelectedSwatchForAutoSwatches(
-        nextAuto: Swatch[],
-        preferredSwatch?: SwatchId | "transparent" | null
-    ): SwatchId | "transparent" {
-        if (preferredSwatch === "transparent") return preferredSwatch
-        if (
-            preferredSwatch &&
-            userSwatches.some((swatch) => swatch.id === preferredSwatch)
-        ) {
-            return preferredSwatch
-        }
-        if (
-            preferredSwatch &&
-            nextAuto.some((swatch) => swatch.id === preferredSwatch)
-        ) {
-            return preferredSwatch
-        }
-        if (selectedSwatch === "transparent") return selectedSwatch
-        if (userSwatches.some((swatch) => swatch.id === selectedSwatch)) {
-            return selectedSwatch
-        }
-        if (nextAuto.some((swatch) => swatch.id === selectedSwatch)) {
-            return selectedSwatch
-        }
-        return nextAuto[0]?.id ?? userSwatches[0]?.id ?? "transparent"
-    }
-
     function makeProjectStateFromDerivedWorld(
         world: DerivedWorld<PixelValue>,
         activePaletteTab: PaletteTab,
@@ -5708,10 +5684,12 @@ function PixelEditorFramer({
             referenceSnapshot: originalImageData,
             autoSwatches: nextAuto,
             userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: resolveSelectedSwatchForAutoSwatches(
-                nextAuto,
-                preferredSwatch
-            ),
+            selectedSwatch: resolveSelectedSwatchAfterAutoChange({
+                nextAutoSwatches: nextAuto,
+                userSwatches,
+                selectedSwatch,
+                preferredSwatch,
+            }),
             quantizationProfile: cloneQuantizationProfileForHistory(
                 world.profile
             ),
@@ -5800,8 +5778,12 @@ function PixelEditorFramer({
         const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
         const nextImage = clonePixelsGrid(world.imagePixels)
         const nextOverlay = clonePixelsGrid(world.overlayPixels)
-        const nextSelectedSwatch =
-            resolveSelectedSwatchForAutoSwatches(nextAuto, preferredSwatch)
+        const nextSelectedSwatch = resolveSelectedSwatchAfterAutoChange({
+            nextAutoSwatches: nextAuto,
+            userSwatches,
+            selectedSwatch,
+            preferredSwatch,
+        })
         paletteUndoTrace("applyDerivedWorldSnapshot:before", {
             activeTab: paletteTabsState.activeTab,
             currentProfile: quantizationProfileTraceSummary(quantizationProfile),
@@ -6119,10 +6101,12 @@ function PixelEditorFramer({
         const nextAuto = makeAutoSwatchesFromFixedProfile(profile)
         if (nextAuto.length <= 0) return
 
-        const nextSelectedSwatch = resolveSelectedSwatchForAutoSwatches(
-            nextAuto,
-            preferredSwatch
-        )
+        const nextSelectedSwatch = resolveSelectedSwatchAfterAutoChange({
+            nextAutoSwatches: nextAuto,
+            userSwatches,
+            selectedSwatch,
+            preferredSwatch,
+        })
         const nextImagePixels = clonePixelsGrid(imagePixels)
         const nextOverlayPixels = clonePixelsGrid(overlayPixels)
         const nextCanvasPixels = overlayOverBaseGrid(
