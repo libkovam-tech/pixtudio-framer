@@ -5513,6 +5513,18 @@ function PixelEditorFramer({
     const [selectedSwatch, setSelectedSwatch] = React.useState<
         SwatchId | "transparent"
     >("auto-0")
+    // Tab-local selection is transient editor UI state, not project data.
+    const paletteTabSelectedSwatchRef = React.useRef<
+        Record<PaletteTab, SwatchId | "transparent" | null>
+    >({
+        size: "auto-0",
+        presets: null,
+    })
+
+    React.useEffect(() => {
+        paletteTabSelectedSwatchRef.current[paletteTabsState.activeTab] =
+            selectedSwatch
+    }, [paletteTabsState.activeTab, selectedSwatch])
 
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
     const offscreenRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -5939,6 +5951,10 @@ function PixelEditorFramer({
         const currentTab = paletteTabsState.activeTab
         if (currentTab === nextTab) return
 
+        paletteTabSelectedSwatchRef.current[currentTab] = selectedSwatch
+        const preferredSwatchForNextTab =
+            paletteTabSelectedSwatchRef.current[nextTab]
+
         const currentWorld = makeCurrentDerivedWorldSnapshot()
         const savedState: PaletteTabsState<PixelValue> =
             currentTab === "size"
@@ -5969,7 +5985,7 @@ function PixelEditorFramer({
                     ? targetWorld.profile.id
                     : null
             )
-            applyDerivedWorldSnapshot(targetWorld)
+            applyDerivedWorldSnapshot(targetWorld, preferredSwatchForNextTab)
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                 console.info("[PaletteTabs][CHECK] world restored", {
                     from: currentTab,
@@ -5994,7 +6010,7 @@ function PixelEditorFramer({
                     activeTab: "size",
                     sizeWorld: lazyWorld,
                 }))
-                applyDerivedWorldSnapshot(lazyWorld)
+                applyDerivedWorldSnapshot(lazyWorld, preferredSwatchForNextTab)
                 if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                     console.info("[PaletteTabs][CHECK] size rebuilt lazily", {
                         profile: lazyWorld.profile.kind,
@@ -6018,7 +6034,7 @@ function PixelEditorFramer({
                     activeTab: "presets",
                     presetsWorld: lazyWorld,
                 }))
-                applyDerivedWorldSnapshot(lazyWorld)
+                applyDerivedWorldSnapshot(lazyWorld, preferredSwatchForNextTab)
                 if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                     console.info("[PaletteTabs][CHECK] presets rebuilt lazily", {
                         profile: lazyWorld.profile.kind,
@@ -9264,14 +9280,17 @@ function PixelEditorFramer({
                     p: paletteCount,
                 })
 
-                const count = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
-                const colors = generatePalette(count)
-                const nextAutoRaw: Swatch[] = colors.map((c, i) => ({
-                    id: `auto-${i}`,
-                    color: c,
-                    isTransparent: false,
-                    isUser: false,
-                }))
+                const nextAutoRaw: Swatch[] =
+                    quantizationProfile.kind === "fixed"
+                        ? makeAutoSwatchesFromFixedProfile(quantizationProfile)
+                        : generatePalette(
+                              clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
+                          ).map((c, i) => ({
+                              id: `auto-${i}`,
+                              color: c,
+                              isTransparent: false,
+                              isUser: false,
+                          }))
 
                 const nextAutoEffective = applyAutoOverrides(
                     nextAutoRaw,
