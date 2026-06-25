@@ -21,16 +21,16 @@ import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 import {
     applyProjectSnapshotV2AutoOverrides as applyAutoOverrides,
     buildProjectSnapshotV2ForSave,
-    buildProjectSnapshotV2RuntimeLayers,
     canonicalizeSnapshotV2,
-    decodeProjectSnapshotRefBytes,
     parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides as pruneAutoOverridesForCurrentAuto,
-    resolveProjectSnapshotV2QuantizationProfile,
     type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
-    type ValidatedSnapshotV2,
 } from "./projectSnapshotV2.ts"
+import {
+    buildProjectLoadStateFromSnapshot,
+    type ProjectLoadNextState,
+} from "./projectLoadAdapter.ts"
 import {
     checksumProjectJsonString,
     loadProjectSnapshotFromFile,
@@ -4119,7 +4119,7 @@ function PixelEditorFramer({
 
     type LoadPayload = {
         snapshotVersion: 2
-        nextState: ReturnType<typeof buildNextStateFromValidatedSnapshotV2>
+        nextState: LoadNextState
         loadedSmartAdjustments: SmartReferenceAdjustments
         canonicalChecksum?: string
         fileName?: string
@@ -4145,7 +4145,19 @@ function PixelEditorFramer({
         try {
             const loadedSnapshot = loaded.value
             const validatedV2 = loadedSnapshot.validated
-            const nextState = buildNextStateFromValidatedSnapshotV2(validatedV2)
+            const nextState = buildProjectLoadStateFromSnapshot(validatedV2, {
+                transparentPixel: TRANSPARENT_PIXEL,
+                paletteMin: PALETTE_MIN,
+                paletteMax: PALETTE_MAX,
+                defaultBrushSize: DEFAULT_BRUSH_SIZE,
+                defaultQuantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
+                resolveBuiltinQuantizationProfile: (id) =>
+                    Object.values(QUANTIZATION_PROFILES).find(
+                        (profile) =>
+                            profile.kind === "fixed" && profile.id === id
+                    ),
+                cloneQuantizationProfile: cloneQuantizationProfileForHistory,
+            })
 
             const loadedSmartAdjustments: SmartReferenceAdjustments =
                 validatedV2.smartObjectState
@@ -4243,21 +4255,9 @@ function PixelEditorFramer({
     // Snapshot V2 validation/canonicalization lives in projectSnapshotV2.ts.
     // Load restore remains local because it crosses editor, palette, and Smart Object state.
 
-    type LoadNextState = {
-        // то, что будем коммитить в L2 через applyProjectState(...)
-        project: ProjectState
+    type LoadNextState = ProjectLoadNextState<typeof TRANSPARENT_PIXEL>
 
-        // Saved reference base belongs to Smart Object after restore.
-        smartObjectBaseForRestore: ImageData | null
-
-        //paletteOrder: Array<{ id: string; isUser: boolean }>
-
-        paletteOrderIds: string[]
-
-        quantizationProfile: QuantizationProfile
-    }
-
-    // сюда L1 складывает результат (без setState)
+    // L1 stores the loaded result here without touching React state directly.
     const loadedCanonicalChecksumRef = React.useRef<string | null>(null)
 
     const [postLoadCheckNonce, setPostLoadCheckNonce] = React.useState(0)
@@ -4266,7 +4266,7 @@ function PixelEditorFramer({
 
     const silentLoadHydrationRef = React.useRef(false)
 
-    // после того, как isRestoringFromSaveRef.current станет false.
+    // Renders the canonical post-load frame after isRestoringFromSaveRef becomes false.
     const [restoreVisualNonce, setRestoreVisualNonce] = React.useState(0)
 
     React.useEffect(() => {
@@ -4467,88 +4467,6 @@ function PixelEditorFramer({
         return Math.min(max, Math.max(min, n))
     }
 
-    function decodeRefToImageData(
-        ref: ProjectSnapshotV2["ref"]
-    ): ImageData | null {
-        const bytes = decodeProjectSnapshotRefBytes(ref)
-        if (!bytes) return null
-        // ImageData ждёт Uint8ClampedArray
-        return new ImageData(bytes, 512, 512)
-    }
-
-    function resolveLoadedQuantizationProfile(
-        validated: ValidatedSnapshotV2
-    ): QuantizationProfile {
-        return resolveProjectSnapshotV2QuantizationProfile(validated, {
-            fallback: EXTRACT_QUANTIZATION_PROFILE,
-            resolveBuiltin: (id) => {
-                const builtin = Object.values(QUANTIZATION_PROFILES).find(
-                    (profile) => profile.kind === "fixed" && profile.id === id
-                )
-                return builtin?.kind === "fixed" ? builtin : undefined
-            },
-        })
-    }
-
-    function buildNextStateFromValidatedSnapshotV2(
-        validated: ValidatedSnapshotV2
-    ): LoadNextState {
-        const runtimeLayers = buildProjectSnapshotV2RuntimeLayers(validated, {
-            transparentPixel: TRANSPARENT_PIXEL,
-            paletteMin: PALETTE_MIN,
-            paletteMax: PALETTE_MAX,
-        })
-
-        // 4) ref (формат тот же, что V1)
-        // decodeRefToImageData уже принимает ref с {w,h,ext,b64}; если тип узкий — см. патч T2-B ниже.
-        const original = decodeRefToImageData(validated.ref as any)
-
-        const hasOriginal = original != null
-
-        const loadedAutoOverrides: AutoSwatchOverridesMap =
-            runtimeLayers.autoOverrides
-
-        const nextAutoEffective = applyAutoOverrides(
-            runtimeLayers.autoSwatches,
-            loadedAutoOverrides
-        )
-        const resolvedQuantizationProfile =
-            resolveLoadedQuantizationProfile(validated)
-
-        const project: ProjectState = {
-            gridSize: runtimeLayers.gridSize,
-            paletteCount: runtimeLayers.paletteCount,
-            brushSize: DEFAULT_BRUSH_SIZE,
-            imagePixels: runtimeLayers.imagePixels,
-            overlayPixels: runtimeLayers.overlayPixels,
-            showImage: hasOriginal ? true : false,
-            hasOriginalImageData: hasOriginal,
-            autoSwatches: nextAutoEffective,
-            userSwatches: runtimeLayers.userSwatches,
-            selectedSwatch: runtimeLayers.selectedSwatch,
-            quantizationProfile:
-                cloneQuantizationProfileForHistory(resolvedQuantizationProfile),
-            importedPalettePresets:
-                resolvedQuantizationProfile.kind === "fixed" &&
-                resolvedQuantizationProfile.source === "imported"
-                    ? [
-                          {
-                              id: resolvedQuantizationProfile.id,
-                              name: resolvedQuantizationProfile.name,
-                              profile: resolvedQuantizationProfile,
-                          },
-                      ]
-                    : [],
-            autoOverrides: loadedAutoOverrides,
-        }
-
-        return {
-            project,
-            smartObjectBaseForRestore: original,
-            paletteOrderIds: runtimeLayers.paletteOrderIds,
-            quantizationProfile: resolvedQuantizationProfile,
-        }
-    }
 
     // =====================
     // P0 — Paint Snapshot (infra only, NO-OP)
