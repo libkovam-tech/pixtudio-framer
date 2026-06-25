@@ -8,6 +8,7 @@ import {
     type ProjectSnapshotV2,
 } from "./projectSnapshotV2.ts"
 import {
+    checksumProjectJsonString,
     loadProjectSnapshotFromFile,
     migrateProjectSnapshotToCurrent,
     prepareProjectSnapshotForSave,
@@ -153,5 +154,28 @@ describe("projectPersistence", () => {
 
         expect(result.error.operation).toBe("save")
         expect(result.error.code).toBe("temporarily-unavailable")
+    })
+
+    it("owns the default project checksum for save and load", async () => {
+        const snapshot = projectSnapshot()
+        const saveResult = prepareProjectSnapshotForSave(snapshot)
+
+        expect(saveResult.ok).toBe(true)
+        if (!saveResult.ok) return
+
+        expect(saveResult.value.canonicalChecksum).toBe(
+            checksumProjectJsonString(saveResult.value.jsonText)
+        )
+
+        const loadResult = await loadProjectSnapshotFromFile(
+            fileLike(saveResult.value.jsonText)
+        )
+
+        expect(loadResult.ok).toBe(true)
+        if (!loadResult.ok) return
+
+        expect(loadResult.value.canonicalChecksum).toBe(
+            saveResult.value.canonicalChecksum
+        )
     })
 })

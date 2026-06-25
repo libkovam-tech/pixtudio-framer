@@ -35,11 +35,11 @@ export type LoadedProjectSnapshot = CurrentProjectSnapshot & {
 }
 
 export type LoadProjectSnapshotOptions = {
-    checksumJsonString: (json: string) => string
+    checksumJsonString?: (json: string) => string
 }
 
 export type PrepareProjectSaveOptions = {
-    checksumJsonString: (json: string) => string
+    checksumJsonString?: (json: string) => string
     suggestedName?: string
     mime?: string
 }
@@ -55,6 +55,25 @@ export type PreparedProjectSave = CurrentProjectSnapshot & {
         hasRef: boolean
         hasSmartObjectState: boolean
     }
+}
+
+function fnv1a32(str: string): string {
+    let h = 0x811c9dc5
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i)
+        h = Math.imul(h, 0x01000193)
+    }
+    return (h >>> 0).toString(16).padStart(8, "0")
+}
+
+export function checksumProjectJsonString(json: string): string {
+    return fnv1a32(json)
+}
+
+function resolveChecksumJsonString(options?: {
+    checksumJsonString?: (json: string) => string
+}) {
+    return options?.checksumJsonString ?? checksumProjectJsonString
 }
 
 export function migrateProjectSnapshotToCurrent(
@@ -77,9 +96,10 @@ export function migrateProjectSnapshotToCurrent(
 
 export function prepareProjectSnapshotForSave(
     snapshot: ProjectSnapshotV2,
-    options: PrepareProjectSaveOptions
+    options: PrepareProjectSaveOptions = {}
 ): SaveLoadResult<PreparedProjectSave> {
     try {
+        const checksumJsonString = resolveChecksumJsonString(options)
         const canonical = canonicalizeSnapshotV2(snapshot)
         const validated = validateProjectSnapshotV2OrThrow(canonical)
         const jsonText = JSON.stringify(canonical)
@@ -91,7 +111,7 @@ export function prepareProjectSnapshotForSave(
             suggestedName: options.suggestedName ?? "project.pixtudio",
             mime: options.mime ?? "application/json",
             jsonText,
-            canonicalChecksum: options.checksumJsonString(jsonText),
+            canonicalChecksum: checksumJsonString(jsonText),
             summary: {
                 gridSize: validated.gridSize,
                 paletteSize: validated.palette.swatches.length,
@@ -106,9 +126,10 @@ export function prepareProjectSnapshotForSave(
 
 export async function loadProjectSnapshotFromFile(
     file: ProjectFileLike,
-    options: LoadProjectSnapshotOptions
+    options: LoadProjectSnapshotOptions = {}
 ): Promise<SaveLoadResult<LoadedProjectSnapshot>> {
     try {
+        const checksumJsonString = resolveChecksumJsonString(options)
         assertProjectSaveFileSize(file)
         const jsonText = await file.text()
         const parsed = parseProjectSnapshotV2Json(jsonText)
@@ -127,7 +148,7 @@ export async function loadProjectSnapshotFromFile(
 
         return saveLoadOk({
             ...migrated.value,
-            canonicalChecksum: options.checksumJsonString(
+            canonicalChecksum: checksumJsonString(
                 JSON.stringify(migrated.value.canonical)
             ),
             fileName: file.name,

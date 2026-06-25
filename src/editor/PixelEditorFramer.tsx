@@ -32,6 +32,7 @@ import {
     type ValidatedSnapshotV2,
 } from "./projectSnapshotV2.ts"
 import {
+    checksumProjectJsonString,
     loadProjectSnapshotFromFile,
     prepareProjectSnapshotForSave,
 } from "./projectPersistence.ts"
@@ -244,19 +245,6 @@ function get2dReadFrequentlyContext(
     return canvas.getContext("2d", {
         willReadFrequently: true,
     } as CanvasRenderingContext2DSettings)
-}
-
-function fnv1a32(str: string): string {
-    let h = 0x811c9dc5
-    for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i)
-        h = Math.imul(h, 0x01000193)
-    }
-    return (h >>> 0).toString(16).padStart(8, "0")
-}
-
-function checksumJsonString(json: string): string {
-    return fnv1a32(json)
 }
 
 function createTransparencyTile(tileSize: number): HTMLCanvasElement {
@@ -4075,7 +4063,6 @@ function PixelEditorFramer({
         try {
             const snapshot = buildProjectSnapshotV2()
             const prepared = prepareProjectSnapshotForSave(snapshot, {
-                checksumJsonString,
                 suggestedName: "project.pixtudio",
                 mime: "application/json",
             })
@@ -4145,9 +4132,7 @@ function PixelEditorFramer({
     ): Promise<LoadLetter> {
         coreLifecycleLog("load:initiated", { fileName: file.name })
 
-        const loaded = await loadProjectSnapshotFromFile(file, {
-            checksumJsonString,
-        })
+        const loaded = await loadProjectSnapshotFromFile(file)
 
         if (!loaded.ok) {
             coreLifecycleLog("load:rejected", {
@@ -7390,7 +7375,7 @@ function PixelEditorFramer({
 
         try {
             const snap = buildProjectSnapshotV2()
-            const got = checksumJsonString(
+            const got = checksumProjectJsonString(
                 JSON.stringify(canonicalizeSnapshotV2(snap))
             )
 
