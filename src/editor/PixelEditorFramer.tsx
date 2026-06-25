@@ -60,6 +60,7 @@ import {
     extendFixedPaletteProfile,
     removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
+import { computePaletteCountFromSwatches } from "./paletteState.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
     type SpaceHandState,
@@ -3830,19 +3831,6 @@ function PixelEditorFramer({
         return true
     }
 
-    function computePaletteCountFromSwatches(
-        auto: Swatch[],
-        user: Swatch[]
-    ): number {
-        const strip = (list: Swatch[]) =>
-            (list || []).filter(
-                (s) => s && !s.isTransparent && s.id !== "transparent"
-            )
-        const a = strip(auto).length
-        const u = strip(user).length
-        return clampInt(a + u, PALETTE_MIN, PALETTE_MAX)
-    }
-
     const DEFAULT_EDITOR_GRID_SIZE = 32
     const DEFAULT_EDITOR_PALETTE_COUNT = 16
 
@@ -5498,7 +5486,8 @@ function PixelEditorFramer({
 
     const paletteCountActual = computePaletteCountFromSwatches(
         autoSwatches,
-        userSwatches
+        userSwatches,
+        { min: PALETTE_MIN, max: PALETTE_MAX }
     )
 
     React.useEffect(() => {
