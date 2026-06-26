@@ -64,6 +64,11 @@ import {
     computePaletteCountFromSwatches,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
+import {
+    cloneImportedPalettePresetsForHistory,
+    cloneQuantizationProfileForHistory,
+    cloneSwatches,
+} from "./paletteHistoryState.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
     type SpaceHandState,
@@ -5650,31 +5655,6 @@ function PixelEditorFramer({
 
     function clonePixelsGrid(src: PixelValue[][]): PixelValue[][] {
         return src.map((row) => row.slice())
-    }
-
-    function cloneSwatches(src: Swatch[]): Swatch[] {
-        return src.map((s) => ({ ...s }))
-    }
-
-    function cloneQuantizationProfileForHistory(
-        profile: QuantizationProfile
-    ): QuantizationProfile {
-        if (profile.kind === "extract") return EXTRACT_QUANTIZATION_PROFILE
-        return {
-            ...profile,
-            colors: profile.colors.slice(),
-        }
-    }
-
-    function cloneImportedPalettePresetsForHistory(
-        presets: ImportedPalettePreset[]
-    ): ImportedPalettePreset[] {
-        return presets.map((preset) => ({
-            ...preset,
-            profile: cloneQuantizationProfileForHistory(
-                preset.profile
-            ) as FixedQuantizationProfile,
-        }))
     }
 
     function makeProjectStateFromDerivedWorld(
