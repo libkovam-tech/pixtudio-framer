@@ -11461,11 +11461,10 @@ function PixelEditorFramer({
     const renderSwatchButton = (sw: Swatch) => {
         const isActive = selectedSwatch === sw.id
         const isMobileActiveSwatch = isMobileUI && isActive
-        const isPipetteSwatchLifted =
-            toolMode === "pipette" && !isMobileUI && selectedSwatch === sw.id
+        const isDesktopActiveSwatch = !isMobileUI && isActive
         const swatchTransform = isMobileActiveSwatch
             ? "scale(1.3)"
-            : isPipetteSwatchLifted
+            : isDesktopActiveSwatch
               ? "scale(1.15)"
               : "scale(1)"
 
@@ -11523,7 +11522,7 @@ function PixelEditorFramer({
                         "transform 120ms ease, box-shadow 120ms ease",
                     position: "relative",
                     zIndex:
-                        isMobileActiveSwatch || isPipetteSwatchLifted ? 2 : 1,
+                        isMobileActiveSwatch || isDesktopActiveSwatch ? 2 : 1,
                 }}
             />
         )
@@ -11533,11 +11532,11 @@ function PixelEditorFramer({
         const isTransparentSelected = selectedSwatch === "transparent"
         const isMobileActiveTransparent =
             isMobileUI && isTransparentSelected
-        const isTransparentPipetteLifted =
-            toolMode === "pipette" && !isMobileUI && isTransparentSelected
+        const isDesktopActiveTransparent =
+            !isMobileUI && isTransparentSelected
         const transparentTransform = isMobileActiveTransparent
             ? "scale(1.3)"
-            : isTransparentPipetteLifted
+            : isDesktopActiveTransparent
               ? "scale(1.15)"
               : "scale(1)"
 
@@ -11570,7 +11569,7 @@ function PixelEditorFramer({
                     position: "relative",
                     zIndex:
                         isMobileActiveTransparent ||
-                        isTransparentPipetteLifted
+                        isDesktopActiveTransparent
                             ? 2
                             : 1,
                 }}
@@ -12873,14 +12872,12 @@ function PixelEditorFramer({
                                         selectedSwatch === "transparent"
                                     const isMobileActiveTransparent =
                                         isMobileUI && isTransparentSelected
-                                    const isTransparentPipetteLifted =
-                                        toolMode === "pipette" &&
-                                        !isMobileUI &&
-                                        isTransparentSelected
+                                    const isDesktopActiveTransparent =
+                                        !isMobileUI && isTransparentSelected
                                     const transparentTransform =
                                         isMobileActiveTransparent
                                             ? "scale(1.3)"
-                                            : isTransparentPipetteLifted
+                                            : isDesktopActiveTransparent
                                               ? "scale(1.15)"
                                               : "scale(1)"
 
@@ -12916,7 +12913,7 @@ function PixelEditorFramer({
                                                 position: "relative",
                                                 zIndex:
                                                     isMobileActiveTransparent ||
-                                                    isTransparentPipetteLifted
+                                                    isDesktopActiveTransparent
                                                         ? 2
                                                         : 1,
                                             }}

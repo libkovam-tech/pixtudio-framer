@@ -249,6 +249,27 @@ test("swatch edit repaint is visible on the canvas immediately", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("clicked palette swatch uses the active lifted selection style", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    const swatch = page.locator('button[title^="#"]').first()
+    await expect(swatch).toBeVisible()
+    await swatch.click()
+
+    await expect
+        .poll(async () => {
+            const box = await swatch.boundingBox()
+            return box?.width ?? 0
+        })
+        .toBeGreaterThan(28)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("editor route locks native viewport zoom", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
