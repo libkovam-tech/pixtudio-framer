@@ -5,10 +5,18 @@ type Rgb = { r: number; g: number; b: number }
 type Oklab = { l: number; a: number; b: number }
 type PalettePixel = string | null
 
-// Rollback switch: set legacy to true and objective to false to restore the old
-// weighted imported-palette path in one local place.
-export const USE_LEGACY_WEIGHTED_IMPORTED_PALETTE_PIPELINE = false
-export const USE_OBJECTIVE_UNIQUE_IMPORTED_PALETTE_PIPELINE = true
+export type ImportedPaletteExtractionInput = {
+    pixels: PalettePixel[][]
+    targetColors: number
+}
+
+export type ImportedPaletteExtractionResult = {
+    colors: string[]
+}
+
+// Current preset-palette extractor. Flip to false to route the same source and
+// receiver through the legacy weighted extractor without touching call sites.
+export const USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR = true
 
 const OBJECTIVE_CLUSTER_ITERATIONS = 8
 
@@ -269,23 +277,48 @@ function extractObjectiveImportedPalette(
     return objectivePaletteFromUniqueColors(collectUniqueColors(pixels), targetColors)
 }
 
+function runCurrentImportedPaletteExtractor(
+    input: ImportedPaletteExtractionInput
+): ImportedPaletteExtractionResult {
+    return {
+        colors: extractObjectiveImportedPalette(
+            input.pixels,
+            input.targetColors
+        ),
+    }
+}
+
+function runLegacyWeightedImportedPaletteExtractor(
+    input: ImportedPaletteExtractionInput
+): ImportedPaletteExtractionResult {
+    return {
+        colors: extractLegacyImportedPalette(input.pixels, input.targetColors),
+    }
+}
+
+export function runImportedPaletteExtractorGateway(
+    input: ImportedPaletteExtractionInput
+): ImportedPaletteExtractionResult {
+    if (USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR) {
+        return runCurrentImportedPaletteExtractor(input)
+    }
+    return runLegacyWeightedImportedPaletteExtractor(input)
+}
+
 export function extractImportedPaletteColors(
     pixels: PalettePixel[][],
     targetColors: number
 ): string[] {
-    if (USE_LEGACY_WEIGHTED_IMPORTED_PALETTE_PIPELINE) {
-        return extractLegacyImportedPalette(pixels, targetColors)
-    }
-    if (USE_OBJECTIVE_UNIQUE_IMPORTED_PALETTE_PIPELINE) {
-        return extractObjectiveImportedPalette(pixels, targetColors)
-    }
-    return extractLegacyImportedPalette(pixels, targetColors)
+    return runImportedPaletteExtractorGateway({
+        pixels,
+        targetColors,
+    }).colors
 }
 
 export function prepareImportedPaletteColorsForApplication(
     colors: string[]
 ): string[] {
-    if (!USE_OBJECTIVE_UNIQUE_IMPORTED_PALETTE_PIPELINE) {
+    if (!USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR) {
         return colors.map((color) => rgbToHex(parseColor(color)))
     }
     return sortImportedPaletteLikeAutoPalette(colors)
@@ -300,5 +333,5 @@ export function applyImportedPaletteToPixels(
 }
 
 export function shouldUseObjectiveImportedPaletteSampling(): boolean {
-    return USE_OBJECTIVE_UNIQUE_IMPORTED_PALETTE_PIPELINE
+    return USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR
 }

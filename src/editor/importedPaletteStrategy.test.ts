@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR,
     applyImportedPaletteToPixels,
     extractImportedPaletteColors,
     prepareImportedPaletteColorsForApplication,
+    runImportedPaletteExtractorGateway,
 } from "./importedPaletteStrategy.ts"
 
 describe("imported palette strategy", () => {
@@ -17,6 +19,18 @@ describe("imported palette strategy", () => {
         expect(extractImportedPaletteColors(compact, 4)).toEqual(
             extractImportedPaletteColors(weighted, 4)
         )
+    })
+
+    it("routes imported palette extraction through the current extractor gateway by default", () => {
+        const pixels = [["#FF0000", "#00FF00", "#0000FF", "#808080"]]
+
+        expect(USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR).toBe(true)
+        expect(
+            runImportedPaletteExtractorGateway({
+                pixels,
+                targetColors: 4,
+            }).colors
+        ).toEqual(extractImportedPaletteColors(pixels, 4))
     })
 
     it("uses the auto-palette color order for imported palettes", () => {

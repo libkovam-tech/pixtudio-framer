@@ -7,11 +7,13 @@ import {
     NEON_COLD_32,
     QUANTIZATION_PROFILES,
     SUNSET_10,
+    USE_CURRENT_AUTO_PALETTE_EXTRACTOR,
     buildDerivedWorld,
     extractPalette,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
     remapOverlay,
+    runAutoPaletteExtractorGateway,
 } from "./paletteQuantizationEngine.ts"
 import { extractPaletteOklabTournament } from "./quantizationMethods/autoPaletteOklabTournament.ts"
 import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
@@ -41,6 +43,21 @@ describe("palette quantization engine", () => {
         expect(extractPalette(source, 3)).toEqual(
             extractPaletteOklabTournament(source, 3)
         )
+    })
+
+    it("routes Auto Palette extraction through the current extractor gateway by default", () => {
+        const source = [
+            ["rgb(255, 0, 0)", "rgb(0, 255, 0)", "rgb(0, 0, 255)"],
+            ["rgb(255, 0, 0)", "rgb(30, 80, 160)", "rgb(230, 210, 180)"],
+        ]
+
+        expect(USE_CURRENT_AUTO_PALETTE_EXTRACTOR).toBe(true)
+        expect(
+            runAutoPaletteExtractorGateway({
+                pixels: source,
+                targetColors: 3,
+            })
+        ).toEqual(extractPaletteOklabTournament(source, 3))
     })
 
     it("keeps deleted auto-palette colors out of extracted palettes", () => {

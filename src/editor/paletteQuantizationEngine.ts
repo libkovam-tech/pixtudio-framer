@@ -2,6 +2,7 @@ import { extractPaletteOklabTournament } from "./quantizationMethods/autoPalette
 import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
 import {
     applyImportedPaletteToPixels,
+    extractImportedPaletteColors,
     prepareImportedPaletteColorsForApplication,
 } from "./importedPaletteStrategy.ts"
 
@@ -27,6 +28,21 @@ export type QuantizationSwatch = {
 }
 
 export type QuantizationPixel = string | null
+
+export type AutoPaletteExtractionInput = {
+    pixels: QuantizationPixel[][]
+    targetColors: number
+    excludedColors?: string[]
+}
+
+export type AutoPaletteExtractionResult = {
+    pixels: QuantizationPixel[][]
+    palette: string[]
+}
+
+// Current Auto Palette extractor. Flip to false to route the same source and
+// receiver through the preset/objective extractor without touching call sites.
+export const USE_CURRENT_AUTO_PALETTE_EXTRACTOR = true
 
 export type DerivedWorld<TPixel extends string | null = QuantizationPixel> = {
     profile: QuantizationProfile
@@ -333,12 +349,59 @@ export function getFixedProfilePaletteForApplication(
     return profile.colors
 }
 
+function normalizePaletteColorKey(color: string): string {
+    return rgbToCss(parseRgbColor(color))
+}
+
+function filterExcludedPaletteColors(
+    colors: string[],
+    excludedColors: string[] | undefined
+): string[] {
+    if (!excludedColors?.length) return colors
+    const excluded = new Set(excludedColors.map(normalizePaletteColorKey))
+    return colors.filter((color) => !excluded.has(normalizePaletteColorKey(color)))
+}
+
+function runCurrentAutoPaletteExtractor(
+    input: AutoPaletteExtractionInput
+): AutoPaletteExtractionResult {
+    return extractPaletteOklabTournament(input.pixels, input.targetColors, {
+        excludedColors: input.excludedColors,
+    })
+}
+
+function runPresetObjectiveAutoPaletteExtractor(
+    input: AutoPaletteExtractionInput
+): AutoPaletteExtractionResult {
+    const palette = filterExcludedPaletteColors(
+        extractImportedPaletteColors(input.pixels, input.targetColors),
+        input.excludedColors
+    )
+    return {
+        pixels: quantizeWithFixedPalette(input.pixels, palette),
+        palette,
+    }
+}
+
+export function runAutoPaletteExtractorGateway(
+    input: AutoPaletteExtractionInput
+): AutoPaletteExtractionResult {
+    if (USE_CURRENT_AUTO_PALETTE_EXTRACTOR) {
+        return runCurrentAutoPaletteExtractor(input)
+    }
+    return runPresetObjectiveAutoPaletteExtractor(input)
+}
+
 export function extractPalette(
     pixels: QuantizationPixel[][],
     targetColors: number,
     options: { excludedColors?: string[] } = {}
 ): { pixels: QuantizationPixel[][]; palette: string[] } {
-    return extractPaletteOklabTournament(pixels, targetColors, options)
+    return runAutoPaletteExtractorGateway({
+        pixels,
+        targetColors,
+        excludedColors: options.excludedColors,
+    })
     // RGB baseline rollback: return extractPaletteRgbBaseline(pixels, targetColors)
 }
 
