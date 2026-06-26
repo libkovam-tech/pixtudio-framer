@@ -40,9 +40,10 @@ export type AutoPaletteExtractionResult = {
     palette: string[]
 }
 
-// Current Auto Palette extractor. Flip to false to route the same source and
-// receiver through the preset/objective extractor without touching call sites.
-export const USE_CURRENT_AUTO_PALETTE_EXTRACTOR = false
+// Auto Palette samples the committed Smart Object reference. Imported palettes
+// sample external files directly. They share the objective extraction strategy,
+// not the source-preparation path.
+export const USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK = false
 
 export type DerivedWorld<TPixel extends string | null = QuantizationPixel> = {
     profile: QuantizationProfile
@@ -379,7 +380,7 @@ function remapQuantizedPixelsToPaletteColors(
     )
 }
 
-function runCurrentAutoPaletteExtractor(
+function runLegacyAutoPaletteExtractor(
     input: AutoPaletteExtractionInput
 ): AutoPaletteExtractionResult {
     return extractPaletteOklabTournament(input.pixels, input.targetColors, {
@@ -387,7 +388,7 @@ function runCurrentAutoPaletteExtractor(
     })
 }
 
-function runPresetObjectiveAutoPaletteExtractor(
+function runObjectiveAutoPaletteExtractor(
     input: AutoPaletteExtractionInput
 ): AutoPaletteExtractionResult {
     const targetColors = Math.max(
@@ -411,10 +412,10 @@ function runPresetObjectiveAutoPaletteExtractor(
 export function runAutoPaletteExtractorGateway(
     input: AutoPaletteExtractionInput
 ): AutoPaletteExtractionResult {
-    if (USE_CURRENT_AUTO_PALETTE_EXTRACTOR) {
-        return runCurrentAutoPaletteExtractor(input)
+    if (USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK) {
+        return runLegacyAutoPaletteExtractor(input)
     }
-    return runPresetObjectiveAutoPaletteExtractor(input)
+    return runObjectiveAutoPaletteExtractor(input)
 }
 
 export function extractPalette(

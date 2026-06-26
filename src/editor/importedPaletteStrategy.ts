@@ -14,8 +14,9 @@ export type ImportedPaletteExtractionResult = {
     colors: string[]
 }
 
-// Current preset-palette extractor. Flip to false to route the same source and
-// receiver through the legacy weighted extractor without touching call sites.
+// Imported palette extraction works on the external palette source directly.
+// It shares the objective extraction strategy with Auto Palette, but does not
+// pass through the Smart Object source-preparation path.
 export const USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR = true
 
 const OBJECTIVE_CLUSTER_ITERATIONS = 8

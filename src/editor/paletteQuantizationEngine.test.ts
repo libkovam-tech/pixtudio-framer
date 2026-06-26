@@ -11,7 +11,7 @@ import {
     NEON_COLD_32,
     QUANTIZATION_PROFILES,
     SUNSET_10,
-    USE_CURRENT_AUTO_PALETTE_EXTRACTOR,
+    USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK,
     buildDerivedWorld,
     extractPalette,
     quantizeWithFixedProfile,
@@ -22,7 +22,7 @@ import {
 import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
 
 describe("palette quantization engine", () => {
-    it("extracts a palette with the legacy k-means shape", () => {
+    it("extracts a palette and maps pixels to extracted colors", () => {
         const source = [
             ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
             ["rgb(0, 0, 0)", "rgb(255, 0, 0)"],
@@ -37,7 +37,7 @@ describe("palette quantization engine", () => {
         )
     })
 
-    it("routes Auto Palette extraction through the preset/objective extractor in test mode", () => {
+    it("routes Auto Palette extraction through the shared objective extractor", () => {
         const source = [
             ["rgb(255, 0, 0)", "rgb(0, 255, 0)", "rgb(0, 0, 255)"],
             ["rgb(255, 0, 0)", "rgb(30, 80, 160)", "rgb(230, 210, 180)"],
@@ -46,11 +46,11 @@ describe("palette quantization engine", () => {
             extractImportedPaletteColors(source, 3)
         )
 
-        expect(USE_CURRENT_AUTO_PALETTE_EXTRACTOR).toBe(false)
+        expect(USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK).toBe(false)
         expect(extractPalette(source, 3).palette).toEqual(expectedPalette)
     })
 
-    it("routes Auto Palette extraction through the preset/objective gateway", () => {
+    it("keeps the legacy Auto Palette extractor behind a rollback flag", () => {
         const source = [
             ["rgb(255, 0, 0)", "rgb(0, 255, 0)", "rgb(0, 0, 255)"],
             ["rgb(255, 0, 0)", "rgb(30, 80, 160)", "rgb(230, 210, 180)"],
@@ -59,7 +59,7 @@ describe("palette quantization engine", () => {
             extractImportedPaletteColors(source, 3)
         )
 
-        expect(USE_CURRENT_AUTO_PALETTE_EXTRACTOR).toBe(false)
+        expect(USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK).toBe(false)
         expect(
             runAutoPaletteExtractorGateway({
                 pixels: source,
