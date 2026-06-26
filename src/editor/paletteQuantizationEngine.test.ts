@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    extractImportedPaletteColors,
+    prepareImportedPaletteColorsForApplication,
+} from "./importedPaletteStrategy.ts"
+import {
     BLACK_WHITE_2,
     EXTRACT_QUANTIZATION_PROFILE,
     GRAYSCALE_32,
@@ -15,7 +19,6 @@ import {
     remapOverlay,
     runAutoPaletteExtractorGateway,
 } from "./paletteQuantizationEngine.ts"
-import { extractPaletteOklabTournament } from "./quantizationMethods/autoPaletteOklabTournament.ts"
 import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
 
 describe("palette quantization engine", () => {
@@ -34,30 +37,35 @@ describe("palette quantization engine", () => {
         )
     })
 
-    it("uses OKLAB extraction for the auto-palette world", () => {
+    it("routes Auto Palette extraction through the preset/objective extractor in test mode", () => {
         const source = [
             ["rgb(255, 0, 0)", "rgb(0, 255, 0)", "rgb(0, 0, 255)"],
             ["rgb(255, 0, 0)", "rgb(30, 80, 160)", "rgb(230, 210, 180)"],
         ]
-
-        expect(extractPalette(source, 3)).toEqual(
-            extractPaletteOklabTournament(source, 3)
+        const expectedPalette = prepareImportedPaletteColorsForApplication(
+            extractImportedPaletteColors(source, 3)
         )
+
+        expect(USE_CURRENT_AUTO_PALETTE_EXTRACTOR).toBe(false)
+        expect(extractPalette(source, 3).palette).toEqual(expectedPalette)
     })
 
-    it("routes Auto Palette extraction through the current extractor gateway by default", () => {
+    it("routes Auto Palette extraction through the preset/objective gateway", () => {
         const source = [
             ["rgb(255, 0, 0)", "rgb(0, 255, 0)", "rgb(0, 0, 255)"],
             ["rgb(255, 0, 0)", "rgb(30, 80, 160)", "rgb(230, 210, 180)"],
         ]
+        const expectedPalette = prepareImportedPaletteColorsForApplication(
+            extractImportedPaletteColors(source, 3)
+        )
 
-        expect(USE_CURRENT_AUTO_PALETTE_EXTRACTOR).toBe(true)
+        expect(USE_CURRENT_AUTO_PALETTE_EXTRACTOR).toBe(false)
         expect(
             runAutoPaletteExtractorGateway({
                 pixels: source,
                 targetColors: 3,
-            })
-        ).toEqual(extractPaletteOklabTournament(source, 3))
+            }).palette
+        ).toEqual(expectedPalette)
     })
 
     it("keeps deleted auto-palette colors out of extracted palettes", () => {

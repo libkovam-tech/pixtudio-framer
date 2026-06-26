@@ -42,7 +42,7 @@ export type AutoPaletteExtractionResult = {
 
 // Current Auto Palette extractor. Flip to false to route the same source and
 // receiver through the preset/objective extractor without touching call sites.
-export const USE_CURRENT_AUTO_PALETTE_EXTRACTOR = true
+export const USE_CURRENT_AUTO_PALETTE_EXTRACTOR = false
 
 export type DerivedWorld<TPixel extends string | null = QuantizationPixel> = {
     profile: QuantizationProfile
@@ -362,6 +362,23 @@ function filterExcludedPaletteColors(
     return colors.filter((color) => !excluded.has(normalizePaletteColorKey(color)))
 }
 
+function remapQuantizedPixelsToPaletteColors(
+    pixels: QuantizationPixel[][],
+    palette: string[]
+): QuantizationPixel[][] {
+    const colorByKey = new Map(
+        palette.map((color) => [normalizePaletteColorKey(color), color])
+    )
+
+    return pixels.map((row) =>
+        row.map((color) =>
+            color == null
+                ? null
+                : (colorByKey.get(normalizePaletteColorKey(color)) ?? color)
+        )
+    )
+}
+
 function runCurrentAutoPaletteExtractor(
     input: AutoPaletteExtractionInput
 ): AutoPaletteExtractionResult {
@@ -373,12 +390,20 @@ function runCurrentAutoPaletteExtractor(
 function runPresetObjectiveAutoPaletteExtractor(
     input: AutoPaletteExtractionInput
 ): AutoPaletteExtractionResult {
+    const targetColors = Math.max(
+        1,
+        input.targetColors + (input.excludedColors?.length ?? 0)
+    )
     const palette = filterExcludedPaletteColors(
-        extractImportedPaletteColors(input.pixels, input.targetColors),
+        extractImportedPaletteColors(input.pixels, targetColors),
         input.excludedColors
+    ).slice(0, input.targetColors)
+    const pixels = remapQuantizedPixelsToPaletteColors(
+        quantizeWithFixedPalette(input.pixels, palette),
+        palette
     )
     return {
-        pixels: quantizeWithFixedPalette(input.pixels, palette),
+        pixels,
         palette,
     }
 }
