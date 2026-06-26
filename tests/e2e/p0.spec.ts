@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 import {
   collectBrowserErrors,
   installStableVisualEnvironment,
@@ -72,6 +72,7 @@ for (const route of promoRoutes) {
     await expect(page.locator("body")).toBeVisible()
     await page.waitForLoadState("networkidle")
     await settle(page)
+    await waitForMobileHomeCarouselSnap(page, testInfo, route.name)
 
     await expect(page).toHaveScreenshot(
       snapshotName(testInfo, `promo-${route.name}`),
@@ -96,3 +97,25 @@ test("how-it-works modal keeps production backdrop blur", async ({ page }) => {
 
   expect(errors.flush()).toEqual([])
 })
+
+async function waitForMobileHomeCarouselSnap(
+  page: Page,
+  testInfo: { project: { name: string } },
+  routeName: string
+) {
+  if (routeName !== "home" || testInfo.project.name !== "mobile") return
+
+  const firstCard = page.locator(".hubMobileCards [data-carousel-item]").first()
+  await expect
+    .poll(
+      async () => {
+        const box = await firstCard.boundingBox()
+        return !!box && box.x > 50 && box.x < 90
+      },
+      {
+        message: "mobile home carousel should finish its initial snap",
+        timeout: 5000,
+      }
+    )
+    .toBe(true)
+}
