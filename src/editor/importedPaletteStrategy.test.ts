@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
-    USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR,
+    USE_LEGACY_IMPORTED_PALETTE_EXTRACTOR_ROLLBACK,
+    USE_UNWEIGHTED_UNIQUE_COLOR_EXTRACTOR_ROLLBACK,
     applyImportedPaletteToPixels,
     extractImportedPaletteColors,
     prepareImportedPaletteColorsForApplication,
@@ -9,28 +10,29 @@ import {
 } from "./importedPaletteStrategy.ts"
 
 describe("imported palette strategy", () => {
-    it("extracts the same objective palette from the same color set regardless of pixel weights", () => {
-        const compact = [["#FF0000", "#00FF00", "#0000FF", "#808080"]]
-        const weighted = [
-            ["#FF0000", "#FF0000", "#FF0000", "#00FF00"],
-            ["#FF0000", "#0000FF", "#808080", "#FF0000"],
-        ]
-
-        expect(extractImportedPaletteColors(compact, 4)).toEqual(
-            extractImportedPaletteColors(weighted, 4)
-        )
-    })
-
-    it("routes imported palette extraction through the current extractor gateway by default", () => {
+    it("routes imported palette extraction through the hybrid objective candidate", () => {
         const pixels = [["#FF0000", "#00FF00", "#0000FF", "#808080"]]
 
-        expect(USE_CURRENT_IMPORTED_PALETTE_EXTRACTOR).toBe(true)
+        expect(USE_LEGACY_IMPORTED_PALETTE_EXTRACTOR_ROLLBACK).toBe(false)
+        expect(USE_UNWEIGHTED_UNIQUE_COLOR_EXTRACTOR_ROLLBACK).toBe(false)
         expect(
             runImportedPaletteExtractorGateway({
                 pixels,
                 targetColors: 4,
             }).colors
         ).toEqual(extractImportedPaletteColors(pixels, 4))
+    })
+
+    it("lets pixel weight influence the hybrid objective palette", () => {
+        const compact = [["#FF0000", "#00FF00", "#0000FF", "#808080"]]
+        const weighted = [
+            ["#FF0000", "#FF0000", "#FF0000", "#00FF00"],
+            ["#FF0000", "#0000FF", "#808080", "#FF0000"],
+        ]
+
+        expect(extractImportedPaletteColors(compact, 2)).not.toEqual(
+            extractImportedPaletteColors(weighted, 2)
+        )
     })
 
     it("uses the auto-palette color order for imported palettes", () => {
