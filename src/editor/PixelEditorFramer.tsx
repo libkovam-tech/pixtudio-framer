@@ -3329,6 +3329,7 @@ type EditorCanvasCssSize = {
 function PixelEditorFramer({
     initialImageData,
     initialImageRouteKind,
+    blankImportNonce,
     startWithImageVisible,
     onCaptureSmartReferenceBaseForSave,
     onCaptureSmartObjectCommittedStateForSave,
@@ -3362,9 +3363,10 @@ function PixelEditorFramer({
         | "smart-object-apply"
         | "smart-object-history-restore"
         | null
+    blankImportNonce: number
     // save-side bridge:
-    // editor не владеет Smart Object base/committed adjustments,
-    // поэтому получает их из root только для сериализации save-файла.
+    // The editor does not own Smart Object base/committed adjustments,
+    // so it reads them from root only to serialize a save file.
     onCaptureSmartReferenceBaseForSave?: () => ImageData | null
     onCaptureSmartObjectCommittedStateForSave?: () => SmartObjectCommittedState | null
 
@@ -8744,6 +8746,7 @@ function PixelEditorFramer({
     }, [
         initialImageData,
         initialImageRouteKind,
+        blankImportNonce,
         resetEditorInteractionStateForNewImport,
     ])
 
@@ -14107,6 +14110,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             | "smart-object-history-restore"
             | null
         >(null)
+    const [blankImportNonce, setBlankImportNonce] = React.useState(0)
 
     const [smartObjectHasBase, setSmartObjectHasBase] = React.useState(false)
 
@@ -16369,16 +16373,18 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
 
     // ROOT GATEWAY ENTRY:
-    // Даже пустой вход в editor (blank canvas) проходит через тот же gateway-slot.
+    // Even a blank editor entry uses the same gateway slot.
 
     // S3 note:
-    // SmartReferenceEditor уже подключён в root как отдельный модуль,
-    // но в обычный пользовательский UI ещё не врезан.
+    // SmartReferenceEditor is already wired into root as a separate module,
+    // but it is not wired into the regular user-facing UI yet.
 
     function openDraw() {
-        // S1: даже blank/open-editor идёт через тот же gateway-slot.
+        // Blank canvas is a command, not only a derived "current image is null" state.
         smartObjectCommittedStateBridgeRef.current?.clearBase("import")
         setSmartObjectHasBase(false)
+        commitGatewaySnapshotToEditor(null, "import")
+        setBlankImportNonce((nonce) => nonce + 1)
         setScreen("editor")
     }
 
@@ -16496,6 +16502,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 <PixelEditorFramer
                     initialImageData={gatewayCommittedReference}
                     initialImageRouteKind={gatewayCommittedReferenceKind}
+                    blankImportNonce={blankImportNonce}
                     onCaptureSmartReferenceBaseForSave={
                         handleCaptureSmartReferenceBaseForSave
                     }

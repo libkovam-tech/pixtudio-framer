@@ -227,6 +227,34 @@ test("transparent auto swatch project saves reopen without damaged-file error", 
     expect(errors.flush()).toEqual([])
 })
 
+test("blank canvas command resets a drawn blank-session canvas", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    await page.getByRole("button", { name: "Draw" }).click()
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible()
+
+    await page.locator("canvas").first().click({ position: { x: 180, y: 180 } })
+    await settle(page)
+
+    const drawnSave = await downloadProjectSave(page)
+    const drawnSnapshot = JSON.parse(await readFile(drawnSave.path, "utf8"))
+    expect(drawnSnapshot.strokeLayer.cells.length).toBeGreaterThan(0)
+
+    await page.getByRole("button", { name: "Open" }).click()
+    await expect(page.getByRole("button", { name: "Blank canvas" })).toBeVisible()
+    await page.getByRole("button", { name: "Blank canvas" }).click()
+    await settle(page)
+
+    const blankSave = await downloadProjectSave(page)
+    const blankSnapshot = JSON.parse(await readFile(blankSave.path, "utf8"))
+    expect(blankSnapshot.strokeLayer.cells).toEqual([])
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("swatch edit repaint is visible on the canvas immediately", async ({
     page,
 }) => {
