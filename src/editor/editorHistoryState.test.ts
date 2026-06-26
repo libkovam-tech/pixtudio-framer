@@ -2,12 +2,28 @@ import { describe, expect, it } from "vitest"
 
 import { EXTRACT_QUANTIZATION_PROFILE } from "./paletteQuantizationEngine.ts"
 import {
+    clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
     cloneSwatches,
-} from "./paletteHistoryState.ts"
+    imageDataSampleSignature,
+} from "./editorHistoryState.ts"
 
-describe("palette history state", () => {
+describe("editor history state", () => {
+    it("clones pixel grids without sharing row references", () => {
+        const pixels = [
+            ["auto-0", null],
+            ["user-0", "transparent"],
+        ]
+
+        const cloned = clonePixelsGrid(pixels)
+
+        expect(cloned).toEqual(pixels)
+        expect(cloned).not.toBe(pixels)
+        expect(cloned[0]).not.toBe(pixels[0])
+        expect(cloned[1]).not.toBe(pixels[1])
+    })
+
     it("clones swatch objects without sharing swatch references", () => {
         const swatches = [
             {
@@ -72,5 +88,40 @@ describe("palette history state", () => {
         expect(cloned[0]).not.toBe(presets[0])
         expect(cloned[0]?.profile).not.toBe(presets[0]?.profile)
         expect(cloned[0]?.profile.colors).not.toBe(presets[0]?.profile.colors)
+    })
+
+    it("creates stable image data sample signatures", () => {
+        const image = {
+            width: 2,
+            height: 1,
+            data: new Uint8ClampedArray([
+                10, 20, 30, 255,
+                40, 50, 60, 255,
+            ]),
+        }
+        const sameImage = {
+            width: 2,
+            height: 1,
+            data: new Uint8ClampedArray([
+                10, 20, 30, 255,
+                40, 50, 60, 255,
+            ]),
+        }
+        const changedImage = {
+            width: 2,
+            height: 1,
+            data: new Uint8ClampedArray([
+                10, 20, 30, 255,
+                40, 50, 61, 255,
+            ]),
+        }
+
+        expect(imageDataSampleSignature(null)).toBe("null")
+        expect(imageDataSampleSignature(image)).toBe(
+            imageDataSampleSignature(sameImage)
+        )
+        expect(imageDataSampleSignature(image)).not.toBe(
+            imageDataSampleSignature(changedImage)
+        )
     })
 })

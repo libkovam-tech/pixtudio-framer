@@ -65,10 +65,12 @@ import {
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
+    clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
     cloneSwatches,
-} from "./paletteHistoryState.ts"
+    imageDataSampleSignature,
+} from "./editorHistoryState.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
     type SpaceHandState,
@@ -5653,10 +5655,6 @@ function PixelEditorFramer({
     const pendingBlankCheckReasonRef = React.useRef<string | null>(null)
     const isRestoringHistoryRef = React.useRef(false)
 
-    function clonePixelsGrid(src: PixelValue[][]): PixelValue[][] {
-        return src.map((row) => row.slice())
-    }
-
     function makeProjectStateFromDerivedWorld(
         world: DerivedWorld<PixelValue>,
         activePaletteTab: PaletteTab,
@@ -5694,24 +5692,6 @@ function PixelEditorFramer({
             deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
             autoOverrides: { ...autoOverrides },
         }
-    }
-
-    function imageDataSampleSignature(src: ImageData | null): string {
-        if (!src) return "null"
-        let hash = 2166136261
-        const data = src.data
-        const step = Math.max(4, Math.floor(data.length / 512 / 4) * 4)
-        for (let i = 0; i < data.length; i += step) {
-            hash ^= data[i] ?? 0
-            hash = Math.imul(hash, 16777619)
-            hash ^= data[i + 1] ?? 0
-            hash = Math.imul(hash, 16777619)
-            hash ^= data[i + 2] ?? 0
-            hash = Math.imul(hash, 16777619)
-            hash ^= data[i + 3] ?? 0
-            hash = Math.imul(hash, 16777619)
-        }
-        return `${src.width}x${src.height}:${(hash >>> 0).toString(16)}`
     }
 
     function makeCurrentDerivedWorldSnapshot(): DerivedWorld<PixelValue> {
