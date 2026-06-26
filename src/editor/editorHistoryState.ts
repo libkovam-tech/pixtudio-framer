@@ -9,13 +9,52 @@ export type FixedQuantizationProfileForHistory = Extract<
 >
 
 export type ImportedPalettePresetForHistory = {
+    id: string
+    name: string
     profile: FixedQuantizationProfileForHistory
+}
+
+export type EditorHistorySwatch = {
+    id: string
+    color: string
+    isTransparent: boolean
+    isUser: boolean
 }
 
 export type ImageDataSampleSource = {
     width: number
     height: number
     data: ArrayLike<number>
+}
+
+export type EditorCommittedState<
+    TPixel = string | null,
+    TSwatch extends EditorHistorySwatch = EditorHistorySwatch,
+    TImportedPreset extends ImportedPalettePresetForHistory = ImportedPalettePresetForHistory,
+> = {
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    autoSwatches: TSwatch[]
+    userSwatches: TSwatch[]
+    selectedSwatch: string | "transparent"
+    quantizationProfile?: QuantizationProfile
+    importedPalettePresets?: TImportedPreset[]
+    hiddenPresetIds?: string[]
+    activePaletteTab?: "size" | "presets"
+    deletedAutoPaletteColors?: string[]
+    autoOverrides: Record<
+        string,
+        {
+            hex?: string
+            isTransparent?: boolean
+        }
+    >
 }
 
 export function clonePixelsGrid<TPixel>(
@@ -49,6 +88,150 @@ export function cloneImportedPalettePresetsForHistory<
             preset.profile
         ) as FixedQuantizationProfileForHistory,
     }))
+}
+
+export function areCommittedQuantizationProfilesEqual(
+    a: QuantizationProfile | undefined,
+    b: QuantizationProfile | undefined
+): boolean {
+    const aa = a ?? EXTRACT_QUANTIZATION_PROFILE
+    const bb = b ?? EXTRACT_QUANTIZATION_PROFILE
+    if (aa.kind !== bb.kind) return false
+    if (aa.kind === "extract" || bb.kind === "extract") return true
+    if (
+        aa.id !== bb.id ||
+        aa.name !== bb.name ||
+        aa.source !== bb.source ||
+        aa.colors.length !== bb.colors.length
+    ) {
+        return false
+    }
+    for (let i = 0; i < aa.colors.length; i += 1) {
+        if (aa.colors[i] !== bb.colors[i]) return false
+    }
+    return true
+}
+
+export function areImportedPalettePresetsEqual<
+    TPreset extends ImportedPalettePresetForHistory,
+>(a: TPreset[] | undefined, b: TPreset[] | undefined): boolean {
+    const aa = a ?? []
+    const bb = b ?? []
+    if (aa.length !== bb.length) return false
+
+    for (let i = 0; i < aa.length; i += 1) {
+        const ap = aa[i]
+        const bp = bb[i]
+        if (!bp || ap.id !== bp.id || ap.name !== bp.name) return false
+        if (!areCommittedQuantizationProfilesEqual(ap.profile, bp.profile)) {
+            return false
+        }
+    }
+
+    return true
+}
+
+export function areEditorCommittedStatesEqual<
+    TPixel,
+    TSwatch extends EditorHistorySwatch,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(
+    a: EditorCommittedState<TPixel, TSwatch, TImportedPreset> | null,
+    b: EditorCommittedState<TPixel, TSwatch, TImportedPreset> | null
+): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    if (a.gridSize !== b.gridSize) return false
+    if (a.paletteCount !== b.paletteCount) return false
+    if (a.brushSize !== b.brushSize) return false
+    if (a.showImage !== b.showImage) return false
+    if (a.selectedSwatch !== b.selectedSwatch) return false
+    if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
+
+    const aDeleted = [...(a.deletedAutoPaletteColors ?? [])].sort()
+    const bDeleted = [...(b.deletedAutoPaletteColors ?? [])].sort()
+    if (aDeleted.length !== bDeleted.length) return false
+    for (let i = 0; i < aDeleted.length; i += 1) {
+        if (aDeleted[i] !== bDeleted[i]) return false
+    }
+
+    if (
+        !areCommittedQuantizationProfilesEqual(
+            a.quantizationProfile,
+            b.quantizationProfile
+        )
+    ) {
+        return false
+    }
+    if (
+        !areImportedPalettePresetsEqual(
+            a.importedPalettePresets,
+            b.importedPalettePresets
+        )
+    ) {
+        return false
+    }
+
+    const aHidden = [...(a.hiddenPresetIds ?? [])].sort()
+    const bHidden = [...(b.hiddenPresetIds ?? [])].sort()
+    if (aHidden.length !== bHidden.length) return false
+    for (let i = 0; i < aHidden.length; i += 1) {
+        if (aHidden[i] !== bHidden[i]) return false
+    }
+
+    const aOverrides = a.autoOverrides || {}
+    const bOverrides = b.autoOverrides || {}
+    const aOverrideKeys = Object.keys(aOverrides).sort()
+    const bOverrideKeys = Object.keys(bOverrides).sort()
+    if (aOverrideKeys.length !== bOverrideKeys.length) return false
+
+    for (let i = 0; i < aOverrideKeys.length; i += 1) {
+        if (aOverrideKeys[i] !== bOverrideKeys[i]) return false
+        const key = aOverrideKeys[i]
+        const aValue = aOverrides[key]
+        const bValue = bOverrides[key]
+        if ((aValue?.hex ?? null) !== (bValue?.hex ?? null)) return false
+        if (!!aValue?.isTransparent !== !!bValue?.isTransparent) return false
+    }
+
+    if (!areSwatchListsEqual(a.autoSwatches, b.autoSwatches)) return false
+    if (!areSwatchListsEqual(a.userSwatches, b.userSwatches)) return false
+    if (!arePixelGridsEqual(a.imagePixels, b.imagePixels)) return false
+    if (!arePixelGridsEqual(a.overlayPixels, b.overlayPixels)) return false
+
+    return true
+}
+
+function areSwatchListsEqual<TSwatch extends EditorHistorySwatch>(
+    a: TSwatch[],
+    b: TSwatch[]
+): boolean {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i += 1) {
+        const aSwatch = a[i]
+        const bSwatch = b[i]
+        if (!bSwatch) return false
+        if (aSwatch.id !== bSwatch.id) return false
+        if (aSwatch.color !== bSwatch.color) return false
+        if (aSwatch.isTransparent !== bSwatch.isTransparent) return false
+        if (aSwatch.isUser !== bSwatch.isUser) return false
+    }
+    return true
+}
+
+function arePixelGridsEqual<TPixel>(a: TPixel[][], b: TPixel[][]): boolean {
+    if (a.length !== b.length) return false
+    for (let row = 0; row < a.length; row += 1) {
+        const aRow = a[row] || []
+        const bRow = b[row] || []
+        if (aRow.length !== bRow.length) return false
+        for (let column = 0; column < aRow.length; column += 1) {
+            if ((aRow[column] ?? null) !== (bRow[column] ?? null)) {
+                return false
+            }
+        }
+    }
+    return true
 }
 
 export function imageDataSampleSignature(

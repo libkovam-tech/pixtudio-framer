@@ -65,11 +65,13 @@ import {
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
+    areEditorCommittedStatesEqual,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
     cloneSwatches,
     imageDataSampleSignature,
+    type EditorCommittedState,
 } from "./editorHistoryState.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
@@ -3203,53 +3205,12 @@ const START_LOGO_W = 260
 // module-scope history contracts
 // =====================
 
-// S1 FINAL HISTORY CONTRACT:
-//
-// Единственным источником истины для пользовательской истории
-// становится ROOT HISTORY ENGINE.
-//
-// Это означает:
-//
-// 1) Любой HistoryEntry описывает согласованное состояние двух доменов:
-//    - editor-domain
-//    - smart-domain
-//
-// 2) Undo / Redo пользователя обязаны идти через root history,
-//    а не через локальную editor-history.
-//
-//
-// 4) Обычные editor actions в финальной модели тоже должны стать
-//    root transactions.
-//
-// На текущем шаге (S1/S2) мы ещё не мигрируем все editor actions,
-// но уже фиксируем root history как user-facing source of truth.
+// Final history contract:
+// Root History Engine is the user-facing source of truth for undo/redo.
+// Every committed entry describes the coordinated state of the editor domain
+// and the Smart Object domain. Local editor history may still exist as a
+// compatibility layer, but user-facing undo/redo must go through root history.
 type HistoryEntryKind = RootHistoryEntryKind
-
-type EditorCommittedState = {
-    gridSize: number
-    paletteCount: number
-    brushSize: number
-    imagePixels: PixelValue[][]
-    overlayPixels: PixelValue[][]
-    showImage: boolean
-    hasOriginalImageData: boolean
-    referenceSnapshot?: ImageData | null
-    autoSwatches: Swatch[]
-    userSwatches: Swatch[]
-    selectedSwatch: SwatchId | "transparent"
-    quantizationProfile?: QuantizationProfile
-    importedPalettePresets?: ImportedPalettePreset[]
-    hiddenPresetIds?: string[]
-    activePaletteTab?: PaletteTab
-    deletedAutoPaletteColors?: string[]
-    autoOverrides: Record<
-        string,
-        {
-            hex?: string
-            isTransparent?: boolean
-        }
-    >
-}
 
 type EditorCommittedStateBridge = {
     captureCommittedState: () => EditorCommittedState
@@ -3290,149 +3251,6 @@ type BeginHistoryTransactionInput = {
     kind: HistoryEntryKind
     editorBefore: EditorCommittedState | null
     smartBefore: SmartObjectCommittedState | null
-}
-
-function areEditorCommittedStatesEqual(
-    a: EditorCommittedState | null,
-    b: EditorCommittedState | null
-): boolean {
-    if (a === b) return true
-    if (!a || !b) return false
-    if (a.gridSize !== b.gridSize) return false
-    if (a.paletteCount !== b.paletteCount) return false
-    if ((a as any).brushSize !== (b as any).brushSize) return false
-    if (a.showImage !== b.showImage) return false
-    if (a.selectedSwatch !== b.selectedSwatch) return false
-    if (a.hasOriginalImageData !== b.hasOriginalImageData) return false
-    const aDeleted = [...((a as any).deletedAutoPaletteColors || [])].sort()
-    const bDeleted = [...((b as any).deletedAutoPaletteColors || [])].sort()
-    if (aDeleted.length !== bDeleted.length) return false
-    for (let i = 0; i < aDeleted.length; i++) {
-        if (aDeleted[i] !== bDeleted[i]) return false
-    }
-    if (!areCommittedQuantizationProfilesEqual(
-        a.quantizationProfile,
-        b.quantizationProfile
-    )) {
-        return false
-    }
-    if (
-        !areImportedPalettePresetsEqual(
-            a.importedPalettePresets,
-            b.importedPalettePresets
-        )
-    ) {
-        return false
-    }
-    const aHidden = [...(a.hiddenPresetIds ?? [])].sort()
-    const bHidden = [...(b.hiddenPresetIds ?? [])].sort()
-    if (aHidden.length !== bHidden.length) return false
-    for (let i = 0; i < aHidden.length; i += 1) {
-        if (aHidden[i] !== bHidden[i]) return false
-    }
-
-    const aOv = a.autoOverrides || {}
-    const bOv = b.autoOverrides || {}
-
-    const aKeys = Object.keys(aOv).sort()
-    const bKeys = Object.keys(bOv).sort()
-    if (aKeys.length !== bKeys.length) return false
-
-    for (let i = 0; i < aKeys.length; i++) {
-        if (aKeys[i] !== bKeys[i]) return false
-        const k = aKeys[i]
-        const av = aOv[k]
-        const bv = bOv[k]
-        if (((av?.hex ?? null) || null) !== ((bv?.hex ?? null) || null))
-            return false
-        if (!!av?.isTransparent !== !!bv?.isTransparent) return false
-    }
-
-    if (a.autoSwatches.length !== b.autoSwatches.length) return false
-    for (let i = 0; i < a.autoSwatches.length; i++) {
-        const sa = a.autoSwatches[i]
-        const sb = b.autoSwatches[i]
-        if (!sb) return false
-        if (sa.id !== sb.id) return false
-        if (sa.color !== sb.color) return false
-        if (sa.isTransparent !== sb.isTransparent) return false
-        if (sa.isUser !== sb.isUser) return false
-    }
-
-    if (a.userSwatches.length !== b.userSwatches.length) return false
-    for (let i = 0; i < a.userSwatches.length; i++) {
-        const sa = a.userSwatches[i]
-        const sb = b.userSwatches[i]
-        if (!sb) return false
-        if (sa.id !== sb.id) return false
-        if (sa.color !== sb.color) return false
-        if (sa.isTransparent !== sb.isTransparent) return false
-        if (sa.isUser !== sb.isUser) return false
-    }
-
-    if (a.imagePixels.length !== b.imagePixels.length) return false
-    for (let r = 0; r < a.imagePixels.length; r++) {
-        const ra = a.imagePixels[r] || []
-        const rb = b.imagePixels[r] || []
-        if (ra.length !== rb.length) return false
-        for (let c = 0; c < ra.length; c++) {
-            if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
-        }
-    }
-
-    if (a.overlayPixels.length !== b.overlayPixels.length) return false
-    for (let r = 0; r < a.overlayPixels.length; r++) {
-        const ra = a.overlayPixels[r] || []
-        const rb = b.overlayPixels[r] || []
-        if (ra.length !== rb.length) return false
-        for (let c = 0; c < ra.length; c++) {
-            if ((ra[c] ?? null) !== (rb[c] ?? null)) return false
-        }
-    }
-
-    return true
-}
-
-function areCommittedQuantizationProfilesEqual(
-    a: QuantizationProfile | undefined,
-    b: QuantizationProfile | undefined
-): boolean {
-    const aa = a ?? EXTRACT_QUANTIZATION_PROFILE
-    const bb = b ?? EXTRACT_QUANTIZATION_PROFILE
-    if (aa.kind !== bb.kind) return false
-    if (aa.kind === "extract" || bb.kind === "extract") return true
-    if (
-        aa.id !== bb.id ||
-        aa.name !== bb.name ||
-        aa.source !== bb.source ||
-        aa.colors.length !== bb.colors.length
-    ) {
-        return false
-    }
-    for (let i = 0; i < aa.colors.length; i += 1) {
-        if (aa.colors[i] !== bb.colors[i]) return false
-    }
-    return true
-}
-
-function areImportedPalettePresetsEqual(
-    a: ImportedPalettePreset[] | undefined,
-    b: ImportedPalettePreset[] | undefined
-): boolean {
-    const aa = a ?? []
-    const bb = b ?? []
-    if (aa.length !== bb.length) return false
-
-    for (let i = 0; i < aa.length; i += 1) {
-        const ap = aa[i]
-        const bp = bb[i]
-        if (!bp || ap.id !== bp.id || ap.name !== bp.name) return false
-        if (!areCommittedQuantizationProfilesEqual(ap.profile, bp.profile)) {
-            return false
-        }
-    }
-
-    return true
 }
 
 function quantizationProfileTraceSummary(
@@ -5623,8 +5441,8 @@ function PixelEditorFramer({
     }, [onEditorCanvasCssSizeChange])
 
     // H3:
-    // локальный runtime-state editor теперь совпадает
-    // с module-scope контрактом EditorCommittedState.
+    // The local editor runtime state now matches the module-scope
+    // EditorCommittedState contract.
     type ProjectState = EditorCommittedState
 
     type PendingLoadProjectCommit = {
@@ -5644,14 +5462,10 @@ function PixelEditorFramer({
 
     type AutoSwatchOverridesMap = AutoSwatchOverridesMapV2
 
-    // S2 LEGACY:
-    // но больше не считаются канонической пользовательской историей.
-    //
-    // Их роль на текущем этапе:
-    // - технический fallback
-    // - совместимость со старым editor-path
-    //
-    // user-facing Undo/Redo должны опираться на root history engine.
+    // S2 legacy:
+    // Local editor history still exists as a technical fallback and
+    // compatibility layer for the old editor path. User-facing undo/redo
+    // must rely on the root history engine.
     const pendingBlankCheckReasonRef = React.useRef<string | null>(null)
     const isRestoringHistoryRef = React.useRef(false)
 
@@ -7355,29 +7169,28 @@ function PixelEditorFramer({
             currentProfile: quantizationProfileTraceSummary(quantizationProfile),
         })
 
-        // ✅ STEP 7: защита от пустых коммитов
+        // Step 7: prevent empty commits.
         if (isSameProjectState(before, now)) {
             abortEditorActionTransaction()
             return
         }
 
-        // S2 LEGACY:
-        // локальная editor-history пока ещё живёт внутри редактора
-        // как технический fallback.
-        // ✅ лимит истории
-        // ✅ любое новое действие убивает redo
+        // S2 legacy:
+        // Local editor history still lives inside the editor as a technical
+        // fallback. It keeps its history limit and clears redo on each new
+        // action.
         pendingBlankCheckReasonRef.current = "commit-allwhite"
 
         // Step 0:
-        // pushCommit больше не пишет root history напрямую.
-        // Он только закрывает локальный editor transaction,
-        // а root history получает commit через единый user-action protocol.
+        // pushCommit no longer writes root history directly. It only closes
+        // the local editor transaction; root history receives the commit
+        // through the unified user-action protocol.
         commitEditorActionTransaction(now)
     }
 
-    // S2 LEGACY:
-    // но не должны считаться главным пользовательским undo/redo path.
-    // Пользовательские кнопки уже должны ходить через root engine.
+    // S2 legacy:
+    // Local paths may still exist, but they must not be treated as the main
+    // user-facing undo/redo path. User buttons should go through root history.
 
     // ------------------- GRID SIZE COMMIT (UNIFIED) -------------------
 
