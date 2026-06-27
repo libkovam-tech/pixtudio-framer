@@ -63,6 +63,7 @@ import {
 import {
     computePaletteCountFromSwatches,
     preparePaletteTabSwitch,
+    prepareStrokePaintSwatch,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
@@ -88,6 +89,7 @@ import {
     getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
+    remapOverlay,
     type DerivedWorld,
     type PaletteTab,
     type PaletteTabsState,
@@ -5522,6 +5524,24 @@ function PixelEditorFramer({
         }
     }
 
+    function shareOverlayWithDerivedWorld(
+        world: DerivedWorld<PixelValue>,
+        sharedOverlay: PixelValue[][]
+    ): DerivedWorld<PixelValue> {
+        const nextOverlay = remapOverlay({
+            overlayPixels: sharedOverlay,
+            swatches: [...autoSwatches, ...userSwatches],
+            targetAutoSwatches: world.autoSwatches,
+        })
+        const nextImage = clonePixelsGrid(world.imagePixels)
+        return {
+            ...world,
+            imagePixels: nextImage,
+            overlayPixels: nextOverlay,
+            canvasPixels: overlayOverBaseGrid(nextImage, nextOverlay) ?? nextImage,
+        }
+    }
+
     function isPixelGridCompatibleWithCurrentGrid(
         pixels: PixelValue[][]
     ): boolean {
@@ -5742,27 +5762,45 @@ function PixelEditorFramer({
         })
         const { targetWorld, targetWorldIsCompatible } = switchState
 
-        setPaletteTabsState(switchState.nextState)
-
         if (targetWorld && targetWorldIsCompatible) {
+            const sharedTargetWorld = shareOverlayWithDerivedWorld(
+                targetWorld,
+                overlayPixels
+            )
+            setPaletteTabsState({
+                ...switchState.nextState,
+                ...(nextTab === "size"
+                    ? { sizeWorld: sharedTargetWorld }
+                    : { presetsWorld: sharedTargetWorld }),
+            })
             setActivePresetButton(
-                nextTab === "presets" && targetWorld.profile.kind === "fixed"
-                    ? targetWorld.profile.id
+                nextTab === "presets" &&
+                    sharedTargetWorld.profile.kind === "fixed"
+                    ? sharedTargetWorld.profile.id
                     : null
             )
-            applyDerivedWorldSnapshot(targetWorld, preferredSwatchForNextTab)
+            applyDerivedWorldSnapshot(
+                sharedTargetWorld,
+                preferredSwatchForNextTab
+            )
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                 console.info("[PaletteTabs][CHECK] world restored", {
                     from: currentTab,
                     to: nextTab,
-                    profile: targetWorld.profile.kind,
-                    autoSwatches: targetWorld.autoSwatches.length,
-                    imageNonNull: countNonNullCells(targetWorld.imagePixels),
-                    overlayNonNull: countNonNullCells(targetWorld.overlayPixels),
+                    profile: sharedTargetWorld.profile.kind,
+                    autoSwatches: sharedTargetWorld.autoSwatches.length,
+                    imageNonNull: countNonNullCells(
+                        sharedTargetWorld.imagePixels
+                    ),
+                    overlayNonNull: countNonNullCells(
+                        sharedTargetWorld.overlayPixels
+                    ),
                 })
             }
             return
         }
+
+        setPaletteTabsState(switchState.nextState)
 
         const lazyWorld = buildPaletteWorldForTab(nextTab, targetWorld)
         if (nextTab === "size") {
@@ -6576,11 +6614,19 @@ function PixelEditorFramer({
     ])
 
     function makeProjectStateWithOverlay(
-        overlayOverride: PixelValue[][] | null
+        overlayOverride: PixelValue[][] | null,
+        userSwatchesOverride?: Swatch[] | null,
+        selectedSwatchOverride?: SwatchId | "transparent" | null
     ): ProjectState {
         const base = makeProjectState()
         if (overlayOverride) {
             base.overlayPixels = clonePixelsGrid(overlayOverride)
+        }
+        if (userSwatchesOverride) {
+            base.userSwatches = cloneSwatches(userSwatchesOverride)
+        }
+        if (selectedSwatchOverride) {
+            base.selectedSwatch = selectedSwatchOverride
         }
         return base
     }
@@ -7434,6 +7480,8 @@ function PixelEditorFramer({
     const strokeDidMutateRef = React.useRef(false)
     const lastDrawPointRef = React.useRef<{ x: number; y: number } | null>(null)
     const strokeAfterOverlayRef = React.useRef<PixelValue[][] | null>(null)
+    const strokeAfterUserSwatchesRef = React.useRef<Swatch[] | null>(null)
+    const activeStrokePaintValueRef = React.useRef<PixelValue | null>(null)
 
     // --- ROUTE A: stroke debug guards (no spam) ---
     const strokeRouteIdRef = React.useRef(0)
@@ -7507,6 +7555,8 @@ function PixelEditorFramer({
         strokeBeforeRef.current = null
         strokeDidMutateRef.current = false
         strokeAfterOverlayRef.current = null
+        strokeAfterUserSwatchesRef.current = null
+        activeStrokePaintValueRef.current = null
         lastDrawPointRef.current = null
         setIsDrawing(false)
 
@@ -7591,6 +7641,41 @@ function PixelEditorFramer({
         return true
     }
 
+    function makeUserPaintSwatchId() {
+        return `user-${Date.now().toString(36)}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`
+    }
+
+    function preparePaintValueForStroke(): PixelValue {
+        const prepared = prepareStrokePaintSwatch<Swatch>({
+            activeTab: paletteTabsState.activeTab,
+            selectedSwatch,
+            autoSwatches,
+            userSwatches,
+            makeUserSwatch: (source) => ({
+                ...source,
+                id: makeUserPaintSwatchId(),
+                isUser: true,
+                isTransparent: false,
+            }),
+        })
+
+        strokeAfterUserSwatchesRef.current = prepared.userSwatches
+
+        if (prepared.createdUserSwatch) {
+            setUserSwatches(prepared.userSwatches)
+        }
+
+        if (prepared.paintSwatch !== selectedSwatch) {
+            setSelectedSwatch(prepared.paintSwatch)
+        }
+
+        return prepared.paintSwatch === "transparent"
+            ? TRANSPARENT_PIXEL
+            : (prepared.paintSwatch as SwatchId)
+    }
+
     function handlePointerDown(e: any) {
         if (overlayMode) return
 
@@ -7658,6 +7743,8 @@ function PixelEditorFramer({
         // ROUTE A1: stroke begin
         strokeRouteIdRef.current += 1
         strokeRouteLoggedWriteRef.current = false
+        const strokePaintValue = preparePaintValueForStroke()
+        activeStrokePaintValueRef.current = strokePaintValue
 
         const x0 = pointerRef.current.x
         const y0 = pointerRef.current.y
@@ -7673,7 +7760,7 @@ function PixelEditorFramer({
             y: y0,
             row,
             col,
-            paintValue: currentPaintValue,
+            paintValue: strokePaintValue,
         })
 
         // Step 1:
@@ -7698,9 +7785,9 @@ function PixelEditorFramer({
 
         const last = lastDrawPointRef.current
         if (last) {
-            paintInterpolatedStroke(last.x, last.y, x, y, currentPaintValue)
+            paintInterpolatedStroke(last.x, last.y, x, y, strokePaintValue)
         } else {
-            paintBrushAtXY(x, y, currentPaintValue)
+            paintBrushAtXY(x, y, strokePaintValue)
         }
 
         lastDrawPointRef.current = { x, y }
@@ -7806,15 +7893,17 @@ function PixelEditorFramer({
 
         if (!isDrawing) return
 
-        // рисуем кистью по клеткам
+        // Paint brush cells.
         const x = pointerRef.current.x
         const y = pointerRef.current.y
+        const strokePaintValue =
+            activeStrokePaintValueRef.current ?? currentPaintValue
 
         const last = lastDrawPointRef.current
         if (last) {
-            paintInterpolatedStroke(last.x, last.y, x, y, currentPaintValue)
+            paintInterpolatedStroke(last.x, last.y, x, y, strokePaintValue)
         } else {
-            paintBrushAtXY(x, y, currentPaintValue)
+            paintBrushAtXY(x, y, strokePaintValue)
         }
 
         lastDrawPointRef.current = { x, y }
@@ -9700,7 +9789,18 @@ function PixelEditorFramer({
                 const before = strokeBeforeRef.current
                 const afterOverlayRaw =
                     strokeAfterOverlayRef.current ?? overlayPixels
-                const afterState = makeProjectStateWithOverlay(afterOverlayRaw)
+                const afterUserSwatches =
+                    strokeAfterUserSwatchesRef.current ?? userSwatches
+                const afterSelectedSwatch =
+                    activeStrokePaintValueRef.current === TRANSPARENT_PIXEL
+                        ? "transparent"
+                        : ((activeStrokePaintValueRef.current ??
+                              selectedSwatch) as SwatchId | "transparent")
+                const afterState = makeProjectStateWithOverlay(
+                    afterOverlayRaw,
+                    afterUserSwatches,
+                    afterSelectedSwatch
+                )
                 paletteUndoTrace("stroke:stopDrawing:commit", {
                     reason,
                     before: editorCommittedStateTraceSummary(before),
@@ -9742,16 +9842,18 @@ function PixelEditorFramer({
         strokeBeforeRef.current = null
         strokeDidMutateRef.current = false
         strokeAfterOverlayRef.current = null
+        strokeAfterUserSwatchesRef.current = null
+        activeStrokePaintValueRef.current = null
 
-        // ✅ эталон обновляем на завершение жеста (неважно как он закончился)
+        // Refresh the stroke reference when the gesture ends, no matter how it ended.
         commitPaintRefIfDirty(reason, paintRefSnapshot)
 
-        // 🔒 S5 ARCH-INVARIANT:
-        // 1) pointerup/cancel завершает STREAM
-        // 2) ДО unlock мы ОБЯЗАНЫ зафиксировать эталон штрихов (paintRefImageData)
-        // 3) Любое overlay-requant после этого имеет право читать ТОЛЬКО эталон (не overlayPixels)
+        // S5 architecture invariant:
+        // 1. pointerup/cancel ends the stream.
+        // 2. Before unlock, the stroke reference must be captured.
+        // 3. Any later overlay requantization must read the reference, not live overlay pixels.
 
-        // S1: release STREAM-lock строго ПОСЛЕ обязательного снапшота
+        // S1: release the stream lock strictly after the required snapshot.
         if (busyKindRef.current === "stream") {
             busyKindRef.current = null
             drainAfterUnlock()
@@ -9884,9 +9986,10 @@ function PixelEditorFramer({
     }
 
     function swatchKey(s: Swatch): string {
+        const scope = s.isUser ? "user" : "auto"
         const col = (s.color || "").toUpperCase()
         const tr = s.isTransparent ? "1" : "0"
-        return `${col}|${tr}`
+        return `${scope}|${col}|${tr}`
     }
 
     function remapGridById(
@@ -9947,7 +10050,7 @@ function PixelEditorFramer({
     } {
         const all = [...input.nextAuto, ...input.nextUser]
 
-        // канон: первый встретившийся ключ — “победитель”
+        // Canon: the first matching key is the winner.
         const winnerByKey = new Map<string, SwatchId>()
         const remap: Record<string, string> = {}
 
@@ -9962,7 +10065,7 @@ function PixelEditorFramer({
             }
         }
 
-        // если реально ничего не схлопнулось — быстро выходим
+        // Fast path when nothing actually collapsed.
         let anyCollapse = false
         for (const k of Object.keys(remap)) {
             if (remap[k] !== k) {
@@ -9990,9 +10093,9 @@ function PixelEditorFramer({
         const nextAuto = input.nextAuto.filter((s) => keptId.has(String(s.id)))
         const nextUser = input.nextUser.filter((s) => keptId.has(String(s.id)))
 
-        // перенос/чистка overrides:
-        // - если auto-* схлопнули в другой auto-* и у победителя нет override — переносим
-        // - если схлопнули в user-* — override выкидываем (он не применим)
+        // Move or clean overrides:
+        // - if auto-* collapsed into another auto-* and the winner has no override, move it.
+        // - if it collapsed into user-*, drop the override because it no longer applies.
         const outOverrides: AutoSwatchOverridesMap = {
             ...(input.nextAutoOverrides || {}),
         }

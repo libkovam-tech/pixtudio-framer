@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
     preparePaletteTabSwitch,
+    prepareStrokePaintSwatch,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 
@@ -180,6 +182,110 @@ describe("palette state", () => {
             activeTab: "size",
             sizeWorld: null,
             presetsWorld: "current-preset",
+        })
+    })
+
+    it("keeps auto palette strokes bound to quantization swatches", () => {
+        const result = prepareStrokePaintSwatch({
+            activeTab: "size",
+            selectedSwatch: "auto-0",
+            autoSwatches: [{ id: "auto-0", color: "#112233" }],
+            userSwatches: [],
+            makeUserSwatch: (source) => ({
+                ...source,
+                id: "user-copy",
+                isUser: true,
+            }),
+        })
+
+        expect(result.paintSwatch).toBe("auto-0")
+        expect(result.userSwatches).toEqual([])
+        expect(result.createdUserSwatch).toBeNull()
+    })
+
+    it("promotes preset palette strokes into a separate user paint swatch", () => {
+        const result = prepareStrokePaintSwatch({
+            activeTab: "presets",
+            selectedSwatch: "auto-2",
+            autoSwatches: [{ id: "auto-2", color: "#AABBCC" }],
+            userSwatches: [],
+            makeUserSwatch: (source) => ({
+                ...source,
+                id: "user-copy",
+                isUser: true,
+            }),
+        })
+
+        expect(result.paintSwatch).toBe("user-copy")
+        expect(result.createdUserSwatch).toEqual({
+            id: "user-copy",
+            color: "#AABBCC",
+            isUser: true,
+        })
+        expect(result.userSwatches).toEqual([result.createdUserSwatch])
+    })
+
+    it("reuses an existing preset user paint swatch with the same color", () => {
+        const result = prepareStrokePaintSwatch({
+            activeTab: "presets",
+            selectedSwatch: "auto-2",
+            autoSwatches: [{ id: "auto-2", color: "#aabbcc" }],
+            userSwatches: [{ id: "user-existing", color: "#AABBCC" }],
+            makeUserSwatch: (source) => ({
+                ...source,
+                id: "user-copy",
+                isUser: true,
+            }),
+        })
+
+        expect(result.paintSwatch).toBe("user-existing")
+        expect(result.userSwatches).toEqual([
+            { id: "user-existing", color: "#AABBCC" },
+        ])
+        expect(result.createdUserSwatch).toBeNull()
+    })
+
+    it("does not promote the transparent tool into a user paint swatch", () => {
+        const result = prepareStrokePaintSwatch({
+            activeTab: "presets",
+            selectedSwatch: "transparent",
+            autoSwatches: [{ id: "auto-0", color: "#FFFFFF" }],
+            userSwatches: [],
+            makeUserSwatch: (source) => ({
+                ...source,
+                id: "user-copy",
+                isUser: true,
+            }),
+        })
+
+        expect(result.paintSwatch).toBe("transparent")
+        expect(result.userSwatches).toEqual([])
+        expect(result.createdUserSwatch).toBeNull()
+    })
+
+    it("collapses duplicate swatches only inside their own palette scope", () => {
+        const result = collapseDuplicateSwatchesByScope({
+            autoSwatches: [
+                { id: "auto-0", color: "#FF0000" },
+                { id: "auto-1", color: "#ff0000" },
+            ],
+            userSwatches: [
+                { id: "user-0", color: "#FF0000", isUser: true },
+                { id: "user-1", color: "#ff0000", isUser: true },
+            ],
+        })
+
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+        ])
+        expect(result.userSwatches.map((swatch) => swatch.id)).toEqual([
+            "user-0",
+        ])
+        expect(result.remap).toEqual({
+            "auto-0": "auto-0",
+            "auto-1": "auto-0",
+            "user-0": "user-0",
+            "user-1": "user-0",
         })
     })
 })

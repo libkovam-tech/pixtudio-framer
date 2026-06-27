@@ -3,6 +3,11 @@ export type PaletteSwatchLike = {
     isTransparent?: boolean | null
 }
 
+export type PalettePaintSwatchLike = PaletteSwatchLike & {
+    color?: string | null
+    isUser?: boolean | null
+}
+
 export type PaletteSelection = string | "transparent"
 export type PaletteTabKey = "size" | "presets"
 
@@ -47,6 +52,142 @@ function swatchListHasId(
     id: string
 ): boolean {
     return (swatches ?? []).some((swatch) => swatch?.id === id)
+}
+
+function normalizeSwatchColor(color: string | null | undefined): string {
+    return (color ?? "").trim().toUpperCase()
+}
+
+function paintSwatchKey(
+    swatch: PalettePaintSwatchLike | null | undefined
+): string {
+    return `${normalizeSwatchColor(swatch?.color)}|${
+        swatch?.isTransparent ? "1" : "0"
+    }`
+}
+
+export function prepareStrokePaintSwatch<TSwatch extends PalettePaintSwatchLike>(
+    input: {
+        activeTab: PaletteTabKey
+        selectedSwatch: PaletteSelection
+        autoSwatches: ReadonlyArray<TSwatch>
+        userSwatches: ReadonlyArray<TSwatch>
+        makeUserSwatch: (source: TSwatch) => TSwatch
+    }
+): {
+    paintSwatch: PaletteSelection
+    userSwatches: TSwatch[]
+    createdUserSwatch: TSwatch | null
+} {
+    const {
+        activeTab,
+        selectedSwatch,
+        autoSwatches,
+        userSwatches,
+        makeUserSwatch,
+    } = input
+
+    if (selectedSwatch === "transparent") {
+        return {
+            paintSwatch: selectedSwatch,
+            userSwatches: userSwatches.slice(),
+            createdUserSwatch: null,
+        }
+    }
+
+    if (activeTab !== "presets") {
+        return {
+            paintSwatch: selectedSwatch,
+            userSwatches: userSwatches.slice(),
+            createdUserSwatch: null,
+        }
+    }
+
+    if (swatchListHasId(userSwatches, selectedSwatch)) {
+        return {
+            paintSwatch: selectedSwatch,
+            userSwatches: userSwatches.slice(),
+            createdUserSwatch: null,
+        }
+    }
+
+    const source = autoSwatches.find((swatch) => swatch.id === selectedSwatch)
+    if (!source || source.isTransparent) {
+        return {
+            paintSwatch: selectedSwatch,
+            userSwatches: userSwatches.slice(),
+            createdUserSwatch: null,
+        }
+    }
+
+    const sourceKey = paintSwatchKey(source)
+    const existingUser = userSwatches.find(
+        (swatch) => paintSwatchKey(swatch) === sourceKey
+    )
+    if (existingUser?.id) {
+        return {
+            paintSwatch: existingUser.id,
+            userSwatches: userSwatches.slice(),
+            createdUserSwatch: null,
+        }
+    }
+
+    const createdUserSwatch = makeUserSwatch(source)
+    return {
+        paintSwatch: createdUserSwatch.id ?? selectedSwatch,
+        userSwatches: [...userSwatches, createdUserSwatch],
+        createdUserSwatch,
+    }
+}
+
+function buildScopedDuplicateRemap<TSwatch extends PalettePaintSwatchLike>(
+    swatches: ReadonlyArray<TSwatch>,
+    remap: Record<string, string>
+): TSwatch[] {
+    const winnerByKey = new Map<string, string>()
+    const keptIds = new Set<string>()
+
+    for (const swatch of swatches) {
+        if (!swatch.id) continue
+
+        const id = String(swatch.id)
+        const key = paintSwatchKey(swatch)
+        const winner = winnerByKey.get(key)
+
+        if (!winner) {
+            winnerByKey.set(key, id)
+            remap[id] = id
+            keptIds.add(id)
+        } else {
+            remap[id] = winner
+        }
+    }
+
+    return swatches.filter((swatch) => swatch.id && keptIds.has(swatch.id))
+}
+
+export function collapseDuplicateSwatchesByScope<
+    TSwatch extends PalettePaintSwatchLike,
+>(input: {
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+}): {
+    autoSwatches: TSwatch[]
+    userSwatches: TSwatch[]
+    remap: Record<string, string>
+    changed: boolean
+} {
+    const remap: Record<string, string> = {}
+    const autoSwatches = buildScopedDuplicateRemap(input.autoSwatches, remap)
+    const userSwatches = buildScopedDuplicateRemap(input.userSwatches, remap)
+    const changed = Object.keys(remap).some((id) => remap[id] !== id)
+
+    return {
+        autoSwatches,
+        userSwatches,
+        remap,
+        changed,
+    }
 }
 
 export function resolveSelectedSwatchAfterAutoChange(input: {
