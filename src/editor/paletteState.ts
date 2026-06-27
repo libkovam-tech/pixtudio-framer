@@ -120,18 +120,6 @@ export function prepareStrokePaintSwatch<TSwatch extends PalettePaintSwatchLike>
         }
     }
 
-    const sourceKey = paintSwatchKey(source)
-    const existingUser = userSwatches.find(
-        (swatch) => paintSwatchKey(swatch) === sourceKey
-    )
-    if (existingUser?.id) {
-        return {
-            paintSwatch: existingUser.id,
-            userSwatches: userSwatches.slice(),
-            createdUserSwatch: null,
-        }
-    }
-
     const createdUserSwatch = makeUserSwatch(source)
     return {
         paintSwatch: createdUserSwatch.id ?? selectedSwatch,
@@ -179,7 +167,10 @@ export function collapseDuplicateSwatchesByScope<
 } {
     const remap: Record<string, string> = {}
     const autoSwatches = buildScopedDuplicateRemap(input.autoSwatches, remap)
-    const userSwatches = buildScopedDuplicateRemap(input.userSwatches, remap)
+    const userSwatches = input.userSwatches.slice()
+    for (const swatch of userSwatches) {
+        if (swatch.id) remap[String(swatch.id)] = String(swatch.id)
+    }
     const changed = Object.keys(remap).some((id) => remap[id] !== id)
 
     return {

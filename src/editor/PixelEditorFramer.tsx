@@ -10048,13 +10048,13 @@ function PixelEditorFramer({
         autoOverrides: AutoSwatchOverridesMap
         selectedSwatch: SwatchId | "transparent"
     } {
-        const all = [...input.nextAuto, ...input.nextUser]
-
-        // Canon: the first matching key is the winner.
+        // Canon: duplicate quantization swatches can collapse, but user paint
+        // swatches are identity-bearing objects and must survive even when
+        // their visual color is identical.
         const winnerByKey = new Map<string, SwatchId>()
         const remap: Record<string, string> = {}
 
-        for (const s of all) {
+        for (const s of input.nextAuto) {
             const key = swatchKey(s)
             const win = winnerByKey.get(key)
             if (!win) {
@@ -10063,6 +10063,9 @@ function PixelEditorFramer({
             } else {
                 remap[String(s.id)] = String(win)
             }
+        }
+        for (const s of input.nextUser) {
+            remap[String(s.id)] = String(s.id)
         }
 
         // Fast path when nothing actually collapsed.
@@ -10091,11 +10094,10 @@ function PixelEditorFramer({
         for (const id of Object.values(remap)) keptId.add(String(id))
 
         const nextAuto = input.nextAuto.filter((s) => keptId.has(String(s.id)))
-        const nextUser = input.nextUser.filter((s) => keptId.has(String(s.id)))
+        const nextUser = input.nextUser
 
-        // Move or clean overrides:
-        // - if auto-* collapsed into another auto-* and the winner has no override, move it.
-        // - if it collapsed into user-*, drop the override because it no longer applies.
+        // Move overrides when auto-* collapses into another auto-* and the
+        // winner has no override yet.
         const outOverrides: AutoSwatchOverridesMap = {
             ...(input.nextAutoOverrides || {}),
         }
@@ -12899,50 +12901,45 @@ function PixelEditorFramer({
                                             {renderLoadPaletteButton()}
                                         </div>
 
-                                        {shouldShowPresetSwatches && (
-                                            <div
+                                        <div
+                                            style={{
+                                                width: "100%",
+                                                display: "grid",
+                                                gridTemplateColumns: `repeat(auto-fill, ${SWATCH_PX}px)`,
+                                                gap: SWATCH_GAP,
+                                                alignItems: "start",
+                                                justifyContent: "start",
+                                            }}
+                                        >
+                                            {shouldShowPresetSwatches &&
+                                                sortedAutoSwatchesForUI.map(
+                                                    renderSwatchButton
+                                                )}
+                                            {renderTransparentSwatchButton()}
+                                            <button
+                                                type="button"
+                                                onClick={handleAddSwatchClick}
+                                                className="pxUiAnim"
+                                                title="Add swatch"
                                                 style={{
-                                                    width: "100%",
-                                                    display: "grid",
-                                                    gridTemplateColumns: `repeat(auto-fill, ${SWATCH_PX}px)`,
-                                                    gap: SWATCH_GAP,
-                                                    alignItems: "start",
-                                                    justifyContent: "start",
+                                                    width: SWATCH_PX,
+                                                    height: SWATCH_PX,
+                                                    padding: 0,
+                                                    border: "none",
+                                                    background: "transparent",
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    userSelect: "none",
+                                                    cursor: "pointer",
                                                 }}
                                             >
-                                                {sortedAutoSwatchesForUI.map(
-                                                    renderSwatchButton
-                                                )}
-                                                {renderTransparentSwatchButton()}
-                                                <button
-                                                    type="button"
-                                                    onClick={handleAddSwatchClick}
-                                                    className="pxUiAnim"
-                                                    title="Add swatch"
-                                                    style={{
-                                                        width: SWATCH_PX,
-                                                        height: SWATCH_PX,
-                                                        padding: 0,
-                                                        border: "none",
-                                                        background:
-                                                            "transparent",
-                                                        display: "inline-flex",
-                                                        alignItems: "center",
-                                                        justifyContent:
-                                                            "center",
-                                                        userSelect: "none",
-                                                        cursor: "pointer",
-                                                    }}
-                                                >
-                                                    <AddNewSwatch
-                                                        size={SWATCH_PX}
-                                                    />
-                                                </button>
-                                                {sortedUserSwatchesForUI.map(
-                                                    renderSwatchButton
-                                                )}
-                                            </div>
-                                        )}
+                                                <AddNewSwatch size={SWATCH_PX} />
+                                            </button>
+                                            {sortedUserSwatchesForUI.map(
+                                                renderSwatchButton
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

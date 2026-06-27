@@ -225,7 +225,7 @@ describe("palette state", () => {
         expect(result.userSwatches).toEqual([result.createdUserSwatch])
     })
 
-    it("reuses an existing preset user paint swatch with the same color", () => {
+    it("creates a separate preset user paint swatch even when the color already exists", () => {
         const result = prepareStrokePaintSwatch({
             activeTab: "presets",
             selectedSwatch: "auto-2",
@@ -238,11 +238,16 @@ describe("palette state", () => {
             }),
         })
 
-        expect(result.paintSwatch).toBe("user-existing")
+        expect(result.paintSwatch).toBe("user-copy")
         expect(result.userSwatches).toEqual([
             { id: "user-existing", color: "#AABBCC" },
+            { id: "user-copy", color: "#aabbcc", isUser: true },
         ])
-        expect(result.createdUserSwatch).toBeNull()
+        expect(result.createdUserSwatch).toEqual({
+            id: "user-copy",
+            color: "#aabbcc",
+            isUser: true,
+        })
     })
 
     it("does not promote the transparent tool into a user paint swatch", () => {
@@ -263,7 +268,7 @@ describe("palette state", () => {
         expect(result.createdUserSwatch).toBeNull()
     })
 
-    it("collapses duplicate swatches only inside their own palette scope", () => {
+    it("preserves duplicate user swatches while collapsing duplicate auto swatches", () => {
         const result = collapseDuplicateSwatchesByScope({
             autoSwatches: [
                 { id: "auto-0", color: "#FF0000" },
@@ -280,12 +285,13 @@ describe("palette state", () => {
         ])
         expect(result.userSwatches.map((swatch) => swatch.id)).toEqual([
             "user-0",
+            "user-1",
         ])
         expect(result.remap).toEqual({
             "auto-0": "auto-0",
             "auto-1": "auto-0",
             "user-0": "user-0",
-            "user-1": "user-0",
+            "user-1": "user-1",
         })
     })
 })
