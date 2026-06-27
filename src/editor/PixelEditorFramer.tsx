@@ -58,6 +58,7 @@ import {
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendFixedPaletteProfile,
+    findPaletteColorIndexByHex,
     removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
 import {
@@ -10741,7 +10742,12 @@ function PixelEditorFramer({
             return
         }
 
-        const selectedPresetSwatch = `auto-${extension.colorIndex}` as SwatchId
+        const applicationColorIndex = findPaletteColorIndexByHex(
+            getFixedProfilePaletteForApplication(extension.profile),
+            colorUpper
+        )
+        const selectedPresetSwatch =
+            `auto-${applicationColorIndex ?? extension.colorIndex}` as SwatchId
 
         if (extension.added) {
             const nextImportedPalettePresets =

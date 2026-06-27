@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
     extendFixedPaletteProfile,
+    findPaletteColorIndexByHex,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
@@ -62,6 +63,19 @@ describe("palette preset extension", () => {
 
     it("rejects invalid colors", () => {
         expect(extendFixedPaletteProfile(profile, "white")).toBeNull()
+    })
+
+    it("finds a color in the application palette order", () => {
+        const displayedColors = prepareImportedPaletteColorsForApplication([
+            "#FFFFFF",
+            "#00FFFD",
+            "#001219",
+        ])
+
+        expect(findPaletteColorIndexByHex(displayedColors, "#00fffd")).toBe(
+            displayedColors.indexOf("#00FFFD")
+        )
+        expect(findPaletteColorIndexByHex(displayedColors, "cyan")).toBeNull()
     })
 
     it("removes a color from an imported palette profile", () => {

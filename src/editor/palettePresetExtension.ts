@@ -51,6 +51,20 @@ export function extendFixedPaletteProfile<
     }
 }
 
+export function findPaletteColorIndexByHex(
+    colors: readonly string[],
+    color: string
+): number | null {
+    const targetColor = normalizeImportedPaletteHex(color)
+    if (!targetColor) return null
+
+    const colorIndex = colors.findIndex(
+        (item) => normalizeImportedPaletteHex(item) === targetColor
+    )
+
+    return colorIndex >= 0 ? colorIndex : null
+}
+
 export function removeFixedPaletteProfileColor<
     T extends EditableFixedPaletteProfile,
 >(profile: T, colorIndex: number): { profile: T; removed: boolean } {

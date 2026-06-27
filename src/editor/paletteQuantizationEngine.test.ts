@@ -284,4 +284,29 @@ describe("palette quantization engine", () => {
         expect(world.overlayPixels[0][0]).toMatch(/^auto-/)
         expect(world.overlayPixels[0][1]).toBe("user-1")
     })
+
+    it("uses colors added to imported fixed profiles during world quantization", () => {
+        const profile = {
+            kind: "fixed" as const,
+            source: "imported" as const,
+            id: "custom-cyan",
+            name: "Custom Cyan",
+            colors: ["#001219", "#FFFFFF", "#00FFFD"],
+        }
+
+        const world = buildDerivedWorld({
+            profile,
+            sourcePixels: [["rgb(0, 255, 253)"]],
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: profile.colors.length,
+        })
+        const cyanSwatch = world.autoSwatches.find(
+            (swatch) => swatch.color === "#00FFFD"
+        )
+
+        expect(cyanSwatch).toBeTruthy()
+        expect(world.imagePixels).toEqual([[cyanSwatch?.id]])
+    })
 })
