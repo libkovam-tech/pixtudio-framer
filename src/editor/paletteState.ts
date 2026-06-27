@@ -4,6 +4,13 @@ export type PaletteSwatchLike = {
 }
 
 export type PaletteSelection = string | "transparent"
+export type PaletteTabKey = "size" | "presets"
+
+export type PaletteTabWorldState<TWorld> = {
+    activeTab: PaletteTabKey
+    sizeWorld: TWorld | null
+    presetsWorld: TWorld | null
+}
 
 function clampInt(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value))
@@ -84,4 +91,42 @@ export function resolveSelectedSwatchAfterAutoChange(input: {
         userSwatches?.find((swatch) => swatch?.id)?.id ??
         "transparent"
     )
+}
+
+export function preparePaletteTabSwitch<TWorld>(input: {
+    state: PaletteTabWorldState<TWorld>
+    currentWorld: TWorld
+    nextTab: PaletteTabKey
+    isTargetWorldCompatible: (world: TWorld) => boolean
+}): {
+    savedState: PaletteTabWorldState<TWorld>
+    nextState: PaletteTabWorldState<TWorld>
+    targetWorld: TWorld | null
+    targetWorldIsCompatible: boolean
+} {
+    const { state, currentWorld, nextTab, isTargetWorldCompatible } = input
+    const savedState =
+        state.activeTab === "size"
+            ? { ...state, sizeWorld: currentWorld }
+            : { ...state, presetsWorld: currentWorld }
+    const targetWorld =
+        nextTab === "size" ? savedState.sizeWorld : savedState.presetsWorld
+    const targetWorldIsCompatible =
+        !!targetWorld && isTargetWorldCompatible(targetWorld)
+
+    return {
+        savedState,
+        targetWorld,
+        targetWorldIsCompatible,
+        nextState: {
+            ...savedState,
+            activeTab: nextTab,
+            ...(nextTab === "size" && !targetWorldIsCompatible
+                ? { sizeWorld: null }
+                : {}),
+            ...(nextTab === "presets" && !targetWorldIsCompatible
+                ? { presetsWorld: null }
+                : {}),
+        },
+    }
 }

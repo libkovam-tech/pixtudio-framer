@@ -62,6 +62,7 @@ import {
 } from "./palettePresetExtension.ts"
 import {
     computePaletteCountFromSwatches,
+    preparePaletteTabSwitch,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
@@ -5731,29 +5732,17 @@ function PixelEditorFramer({
         const preferredSwatchForNextTab =
             paletteTabSelectedSwatchRef.current[nextTab]
 
-        const currentWorld = makeCurrentDerivedWorldSnapshot()
-        const savedState: PaletteTabsState<PixelValue> =
-            currentTab === "size"
-                ? { ...paletteTabsState, sizeWorld: currentWorld }
-                : { ...paletteTabsState, presetsWorld: currentWorld }
-        const targetWorld =
-            nextTab === "size"
-                ? savedState.sizeWorld
-                : savedState.presetsWorld
-        const targetWorldIsCompatible =
-            !!targetWorld &&
-            isDerivedWorldCompatibleWithCurrentGrid(targetWorld)
-
-        setPaletteTabsState({
-            ...savedState,
-            activeTab: nextTab,
-            ...(nextTab === "size" && !targetWorldIsCompatible
-                ? { sizeWorld: null }
-                : {}),
-            ...(nextTab === "presets" && !targetWorldIsCompatible
-                ? { presetsWorld: null }
-                : {}),
+        const switchState = preparePaletteTabSwitch<
+            DerivedWorld<PixelValue>
+        >({
+            state: paletteTabsState,
+            currentWorld: makeCurrentDerivedWorldSnapshot(),
+            nextTab,
+            isTargetWorldCompatible: isDerivedWorldCompatibleWithCurrentGrid,
         })
+        const { targetWorld, targetWorldIsCompatible } = switchState
+
+        setPaletteTabsState(switchState.nextState)
 
         if (targetWorld && targetWorldIsCompatible) {
             setActivePresetButton(

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
     computePaletteCountFromSwatches,
+    preparePaletteTabSwitch,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 
@@ -133,5 +134,52 @@ describe("palette state", () => {
                 selectedSwatch: "auto-9",
             })
         ).toBe("transparent")
+    })
+
+    it("stores the current world before switching palette tabs", () => {
+        const result = preparePaletteTabSwitch({
+            state: {
+                activeTab: "size",
+                sizeWorld: "old-size",
+                presetsWorld: "preset",
+            },
+            currentWorld: "current-size",
+            nextTab: "presets",
+            isTargetWorldCompatible: () => true,
+        })
+
+        expect(result.savedState).toEqual({
+            activeTab: "size",
+            sizeWorld: "current-size",
+            presetsWorld: "preset",
+        })
+        expect(result.nextState).toEqual({
+            activeTab: "presets",
+            sizeWorld: "current-size",
+            presetsWorld: "preset",
+        })
+        expect(result.targetWorld).toBe("preset")
+        expect(result.targetWorldIsCompatible).toBe(true)
+    })
+
+    it("clears an incompatible target world while keeping it available for lazy rebuild", () => {
+        const result = preparePaletteTabSwitch({
+            state: {
+                activeTab: "presets",
+                sizeWorld: "stale-size",
+                presetsWorld: "current-preset",
+            },
+            currentWorld: "current-preset",
+            nextTab: "size",
+            isTargetWorldCompatible: () => false,
+        })
+
+        expect(result.targetWorld).toBe("stale-size")
+        expect(result.targetWorldIsCompatible).toBe(false)
+        expect(result.nextState).toEqual({
+            activeTab: "size",
+            sizeWorld: null,
+            presetsWorld: "current-preset",
+        })
     })
 })
