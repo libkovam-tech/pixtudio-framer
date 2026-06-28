@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    collapseDuplicateSwatchesAndRemapPixels,
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
+    removePalettePixelValueFromGrid,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 
@@ -293,5 +295,65 @@ describe("palette state", () => {
             "user-0": "user-0",
             "user-1": "user-1",
         })
+    })
+
+    it("remaps pixels, selection, and auto overrides when duplicate auto swatches collapse", () => {
+        const result = collapseDuplicateSwatchesAndRemapPixels({
+            imagePixels: [
+                ["auto-1", "auto-2"],
+                ["user-0", null],
+            ],
+            overlayPixels: [["auto-1", "user-1"]],
+            nextAuto: [
+                { id: "auto-0", color: "#00FF00" },
+                { id: "auto-1", color: "#ff0000" },
+                { id: "auto-2", color: "#FF0000" },
+            ],
+            nextUser: [
+                { id: "user-0", color: "#FF0000", isUser: true },
+                { id: "user-1", color: "#ff0000", isUser: true },
+            ],
+            nextAutoOverrides: {
+                "auto-2": { hex: "#FF0000" },
+                "auto-9": { hex: "#999999" },
+            },
+            selectedSwatch: "auto-2",
+            pruneAutoOverrides: (autoSwatches, overrides) => {
+                const keep = new Set(autoSwatches.map((swatch) => swatch.id))
+                return Object.fromEntries(
+                    Object.entries(overrides).filter(([id]) => keep.has(id))
+                )
+            },
+        })
+
+        expect(result.imagePixels).toEqual([
+            ["auto-1", "auto-1"],
+            ["user-0", null],
+        ])
+        expect(result.overlayPixels).toEqual([["auto-1", "user-1"]])
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+            "auto-1",
+        ])
+        expect(result.userSwatches.map((swatch) => swatch.id)).toEqual([
+            "user-0",
+            "user-1",
+        ])
+        expect(result.autoOverrides).toEqual({
+            "auto-1": { hex: "#FF0000" },
+        })
+        expect(result.selectedSwatch).toBe("auto-1")
+    })
+
+    it("removes only pixels owned by a deleted paint swatch", () => {
+        const grid = [
+            ["user-0", "user-1"],
+            ["auto-0", null],
+        ]
+
+        expect(removePalettePixelValueFromGrid(grid, "user-0")).toEqual([
+            [null, "user-1"],
+            ["auto-0", null],
+        ])
     })
 })

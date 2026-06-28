@@ -62,9 +62,11 @@ import {
     removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
 import {
+    collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
+    removePalettePixelValueFromGrid,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
@@ -10128,52 +10130,11 @@ function PixelEditorFramer({
         }
     }
 
-    function swatchKey(s: Swatch): string {
-        const scope = s.isUser ? "user" : "auto"
-        const col = (s.color || "").toUpperCase()
-        const tr = s.isTransparent ? "1" : "0"
-        return `${scope}|${col}|${tr}`
-    }
-
-    function remapGridById(
-        grid: PixelValue[][],
-        idMap: Record<string, string>
-    ): PixelValue[][] {
-        if (!grid || grid.length === 0) return grid
-        let changed = false
-        const out = grid.map((row) => {
-            let rowChanged = false
-            const nextRow = row.map((v) => {
-                if (typeof v === "string" && idMap[v] && idMap[v] !== v) {
-                    rowChanged = true
-                    return idMap[v] as any
-                }
-                return v
-            })
-            if (rowChanged) changed = true
-            return rowChanged ? nextRow : row
-        })
-        return changed ? out : grid
-    }
-
     function removePixelValueFromGrid(
         grid: PixelValue[][],
         swatchId: SwatchId
     ): PixelValue[][] {
-        let changed = false
-        const out = grid.map((row) => {
-            let rowChanged = false
-            const nextRow = row.map((value) => {
-                if (value === swatchId) {
-                    rowChanged = true
-                    return null
-                }
-                return value
-            })
-            if (rowChanged) changed = true
-            return rowChanged ? nextRow : row
-        })
-        return changed ? out : grid
+        return removePalettePixelValueFromGrid(grid, swatchId)
     }
 
     function collapseDuplicateSwatchesAndRemap(input: {
@@ -10191,89 +10152,10 @@ function PixelEditorFramer({
         autoOverrides: AutoSwatchOverridesMap
         selectedSwatch: SwatchId | "transparent"
     } {
-        // Canon: duplicate quantization swatches can collapse, but user paint
-        // swatches are identity-bearing objects and must survive even when
-        // their visual color is identical.
-        const winnerByKey = new Map<string, SwatchId>()
-        const remap: Record<string, string> = {}
-
-        for (const s of input.nextAuto) {
-            const key = swatchKey(s)
-            const win = winnerByKey.get(key)
-            if (!win) {
-                winnerByKey.set(key, s.id)
-                remap[String(s.id)] = String(s.id)
-            } else {
-                remap[String(s.id)] = String(win)
-            }
-        }
-        for (const s of input.nextUser) {
-            remap[String(s.id)] = String(s.id)
-        }
-
-        // Fast path when nothing actually collapsed.
-        let anyCollapse = false
-        for (const k of Object.keys(remap)) {
-            if (remap[k] !== k) {
-                anyCollapse = true
-                break
-            }
-        }
-        if (!anyCollapse) {
-            return {
-                imagePixels: input.imagePixels,
-                overlayPixels: input.overlayPixels,
-                autoSwatches: input.nextAuto,
-                userSwatches: input.nextUser,
-                autoOverrides: input.nextAutoOverrides,
-                selectedSwatch: input.selectedSwatch,
-            }
-        }
-
-        const nextImage = remapGridById(input.imagePixels, remap)
-        const nextOverlay = remapGridById(input.overlayPixels, remap)
-
-        const keptId = new Set<string>()
-        for (const id of Object.values(remap)) keptId.add(String(id))
-
-        const nextAuto = input.nextAuto.filter((s) => keptId.has(String(s.id)))
-        const nextUser = input.nextUser
-
-        // Move overrides when auto-* collapses into another auto-* and the
-        // winner has no override yet.
-        const outOverrides: AutoSwatchOverridesMap = {
-            ...(input.nextAutoOverrides || {}),
-        }
-        for (const from of Object.keys(outOverrides)) {
-            if (!from.startsWith("auto-")) continue
-            const to = remap[from]
-            if (!to || to === from) continue
-
-            const entry = outOverrides[from]
-            delete outOverrides[from]
-
-            if (typeof to === "string" && to.startsWith("auto-")) {
-                if (!outOverrides[to]) outOverrides[to] = entry
-            }
-        }
-
-        const nextSelected =
-            input.selectedSwatch === "transparent"
-                ? "transparent"
-                : ((remap[String(input.selectedSwatch)] ||
-                      String(input.selectedSwatch)) as any)
-
-        return {
-            imagePixels: nextImage,
-            overlayPixels: nextOverlay,
-            autoSwatches: nextAuto,
-            userSwatches: nextUser,
-            autoOverrides: pruneAutoOverridesForCurrentAuto(
-                nextAuto,
-                outOverrides
-            ),
-            selectedSwatch: nextSelected,
-        }
+        return collapseDuplicateSwatchesAndRemapPixels({
+            ...input,
+            pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
+        })
     }
 
     function getAutoSwatchIndex(swatchId: SwatchId): number | null {

@@ -10,6 +10,10 @@ export type PalettePaintSwatchLike = PaletteSwatchLike & {
 
 export type PaletteSelection = string | "transparent"
 export type PaletteTabKey = "size" | "presets"
+export type PaletteAutoOverridesMap<TOverride = unknown> = Record<
+    string,
+    TOverride
+>
 
 export type PaletteTabWorldState<TWorld> = {
     activeTab: PaletteTabKey
@@ -178,6 +182,144 @@ export function collapseDuplicateSwatchesByScope<
         userSwatches,
         remap,
         changed,
+    }
+}
+
+export function remapPaletteGridById<TPixel extends string | null>(
+    grid: TPixel[][],
+    idMap: Record<string, string>
+): TPixel[][] {
+    if (!grid || grid.length === 0) return grid
+
+    let changed = false
+    const out = grid.map((row) => {
+        let rowChanged = false
+        const nextRow = row.map((value) => {
+            if (
+                typeof value === "string" &&
+                idMap[value] &&
+                idMap[value] !== value
+            ) {
+                rowChanged = true
+                return idMap[value] as TPixel
+            }
+            return value
+        })
+        if (rowChanged) changed = true
+        return rowChanged ? nextRow : row
+    })
+
+    return changed ? out : grid
+}
+
+export function removePalettePixelValueFromGrid<
+    TPixel extends string | null,
+>(grid: TPixel[][], swatchId: string): TPixel[][] {
+    let changed = false
+    const out = grid.map((row) => {
+        let rowChanged = false
+        const nextRow = row.map((value) => {
+            if (value === swatchId) {
+                rowChanged = true
+                return null as TPixel
+            }
+            return value
+        })
+        if (rowChanged) changed = true
+        return rowChanged ? nextRow : row
+    })
+
+    return changed ? out : grid
+}
+
+function moveCollapsedAutoOverrides<TOverride>(
+    overrides: PaletteAutoOverridesMap<TOverride>,
+    remap: Record<string, string>
+): PaletteAutoOverridesMap<TOverride> {
+    const outOverrides: PaletteAutoOverridesMap<TOverride> = {
+        ...(overrides || {}),
+    }
+
+    for (const from of Object.keys(outOverrides)) {
+        if (!from.startsWith("auto-")) continue
+        const to = remap[from]
+        if (!to || to === from) continue
+
+        const entry = outOverrides[from]
+        delete outOverrides[from]
+
+        if (to.startsWith("auto-") && !outOverrides[to]) {
+            outOverrides[to] = entry
+        }
+    }
+
+    return outOverrides
+}
+
+export function collapseDuplicateSwatchesAndRemapPixels<
+    TSwatch extends PalettePaintSwatchLike,
+    TPixel extends string | null,
+    TOverride,
+>(input: {
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    nextAuto: TSwatch[]
+    nextUser: TSwatch[]
+    nextAutoOverrides: PaletteAutoOverridesMap<TOverride>
+    selectedSwatch: PaletteSelection
+    pruneAutoOverrides?: (
+        currentAuto: TSwatch[],
+        overrides: PaletteAutoOverridesMap<TOverride>
+    ) => PaletteAutoOverridesMap<TOverride>
+}): {
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: TSwatch[]
+    userSwatches: TSwatch[]
+    autoOverrides: PaletteAutoOverridesMap<TOverride>
+    selectedSwatch: PaletteSelection
+} {
+    const collapsed = collapseDuplicateSwatchesByScope({
+        autoSwatches: input.nextAuto,
+        userSwatches: input.nextUser,
+    })
+
+    if (!collapsed.changed) {
+        return {
+            imagePixels: input.imagePixels,
+            overlayPixels: input.overlayPixels,
+            autoSwatches: collapsed.autoSwatches,
+            userSwatches: collapsed.userSwatches,
+            autoOverrides: input.nextAutoOverrides,
+            selectedSwatch: input.selectedSwatch,
+        }
+    }
+
+    const nextImage = remapPaletteGridById(input.imagePixels, collapsed.remap)
+    const nextOverlay = remapPaletteGridById(
+        input.overlayPixels,
+        collapsed.remap
+    )
+    const movedOverrides = moveCollapsedAutoOverrides(
+        input.nextAutoOverrides,
+        collapsed.remap
+    )
+    const nextOverrides = input.pruneAutoOverrides
+        ? input.pruneAutoOverrides(collapsed.autoSwatches, movedOverrides)
+        : movedOverrides
+    const nextSelected =
+        input.selectedSwatch === "transparent"
+            ? "transparent"
+            : (collapsed.remap[String(input.selectedSwatch)] ||
+                  String(input.selectedSwatch))
+
+    return {
+        imagePixels: nextImage,
+        overlayPixels: nextOverlay,
+        autoSwatches: collapsed.autoSwatches,
+        userSwatches: collapsed.userSwatches,
+        autoOverrides: nextOverrides,
+        selectedSwatch: nextSelected,
     }
 }
 
