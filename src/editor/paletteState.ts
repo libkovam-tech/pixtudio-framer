@@ -14,6 +14,10 @@ export type PaletteAutoOverridesMap<TOverride = unknown> = Record<
     string,
     TOverride
 >
+export type PaletteAutoOverrideLike = {
+    hex?: string
+    isTransparent?: boolean
+}
 
 export type PaletteTabWorldState<TWorld> = {
     activeTab: PaletteTabKey
@@ -68,6 +72,73 @@ function paintSwatchKey(
     return `${normalizeSwatchColor(swatch?.color)}|${
         swatch?.isTransparent ? "1" : "0"
     }`
+}
+
+export function prepareSwatchesForEdit<
+    TSwatch extends PalettePaintSwatchLike & { id: string },
+>(input: {
+    swatchId: string
+    newColorUpper: string
+    makeTransparent: boolean
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+}): { nextAuto: TSwatch[]; nextUser: TSwatch[] } {
+    const patch = (swatch: TSwatch): TSwatch =>
+        swatch.id === input.swatchId
+            ? ({
+                  ...swatch,
+                  color: input.newColorUpper,
+                  isTransparent: input.makeTransparent,
+              } as TSwatch)
+            : swatch
+
+    return {
+        nextAuto: input.autoSwatches.map(patch),
+        nextUser: input.userSwatches.map(patch),
+    }
+}
+
+export function prepareAutoOverridesForSwatchEdit(input: {
+    swatchId: string
+    newColorUpper: string
+    makeTransparent: boolean
+    autoSwatches: ReadonlyArray<PalettePaintSwatchLike>
+    currentOverrides?: PaletteAutoOverridesMap<PaletteAutoOverrideLike> | null
+}): PaletteAutoOverridesMap<PaletteAutoOverrideLike> {
+    const nextAutoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike> =
+        {
+            ...(input.currentOverrides || {}),
+        }
+
+    if (!input.swatchId.startsWith("auto-")) {
+        return nextAutoOverrides
+    }
+
+    const existingOverride = input.currentOverrides?.[input.swatchId]
+    const sourceAuto = input.autoSwatches.find(
+        (swatch) => swatch.id === input.swatchId
+    )
+    const hasHex = /^#[0-9A-F]{6}$/.test(input.newColorUpper)
+    const nextIsTransparent = !!input.makeTransparent
+    const nextHex = input.newColorUpper.toUpperCase()
+    const sourceHex = normalizeSwatchColor(sourceAuto?.color)
+
+    if (
+        !existingOverride &&
+        sourceAuto &&
+        !!sourceAuto.isTransparent === nextIsTransparent &&
+        (!hasHex || sourceHex === nextHex)
+    ) {
+        delete nextAutoOverrides[input.swatchId]
+        return nextAutoOverrides
+    }
+
+    const entry: PaletteAutoOverrideLike = {}
+    if (!nextIsTransparent && hasHex) entry.hex = nextHex
+    entry.isTransparent = nextIsTransparent
+    nextAutoOverrides[input.swatchId] = entry
+
+    return nextAutoOverrides
 }
 
 export function prepareStrokePaintSwatch<TSwatch extends PalettePaintSwatchLike>(

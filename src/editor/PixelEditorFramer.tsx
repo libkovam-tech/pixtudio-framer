@@ -64,8 +64,10 @@ import {
 import {
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
+    prepareAutoOverridesForSwatchEdit,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
+    prepareSwatchesForEdit,
     removePalettePixelValueFromGrid,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
@@ -10114,22 +10116,6 @@ function PixelEditorFramer({
         setIsColorModalOpen(true)
     }
 
-    function buildNextSwatchesForEdit(
-        swatchId: SwatchId,
-        newColorUpper: string,
-        makeTransparent: boolean
-    ): { nextAuto: Swatch[]; nextUser: Swatch[] } {
-        const patch = (s: Swatch) =>
-            s.id === swatchId
-                ? { ...s, color: newColorUpper, isTransparent: makeTransparent }
-                : s
-
-        return {
-            nextAuto: autoSwatches.map(patch),
-            nextUser: userSwatches.map(patch),
-        }
-    }
-
     function removePixelValueFromGrid(
         grid: PixelValue[][],
         swatchId: SwatchId
@@ -10450,43 +10436,24 @@ function PixelEditorFramer({
             }
         }
 
-        const { nextAuto, nextUser } = buildNextSwatchesForEdit(
-            editingSwatchId,
-            colorUpper,
-            pendingTransparent
-        )
+        const { nextAuto, nextUser } = prepareSwatchesForEdit({
+            swatchId: editingSwatchId,
+            newColorUpper: colorUpper,
+            makeTransparent: pendingTransparent,
+            autoSwatches,
+            userSwatches,
+        })
 
-        // 3) next overrides (тоже локально, синхронно)
-        const nextAutoOverrides: AutoSwatchOverridesMap = {
-            ...(autoOverrides || {}),
-        }
-        if (
-            typeof editingSwatchId === "string" &&
-            editingSwatchId.startsWith("auto-")
-        ) {
-            const existingOverride = autoOverrides?.[editingSwatchId]
-            const sourceAuto = autoSwatches.find((s) => s.id === editingSwatchId)
-            const hasHex = /^#[0-9A-F]{6}$/.test(colorUpper)
-            const nextIsTransparent = !!pendingTransparent
-            const nextHex = colorUpper.toUpperCase()
-            const sourceHex = (sourceAuto?.color || "").toUpperCase()
+        // 3) Prepare next auto overrides locally and synchronously.
+        const nextAutoOverrides = prepareAutoOverridesForSwatchEdit({
+            swatchId: editingSwatchId,
+            newColorUpper: colorUpper,
+            makeTransparent: pendingTransparent,
+            autoSwatches,
+            currentOverrides: autoOverrides,
+        })
 
-            if (
-                !existingOverride &&
-                sourceAuto &&
-                sourceAuto.isTransparent === nextIsTransparent &&
-                (!hasHex || sourceHex === nextHex)
-            ) {
-                delete nextAutoOverrides[editingSwatchId]
-            } else {
-                const entry: any = {}
-                if (!nextIsTransparent && hasHex) entry.hex = nextHex
-                entry.isTransparent = nextIsTransparent
-                nextAutoOverrides[editingSwatchId] = entry
-            }
-        }
-
-        // 4) схлопываем дубликаты и ремапим пиксели + selectedSwatch
+        // 4) Collapse duplicate auto swatches and remap pixels + selectedSwatch.
         const collapsed = collapseDuplicateSwatchesAndRemap({
             imagePixels,
             overlayPixels,
@@ -10496,7 +10463,7 @@ function PixelEditorFramer({
             selectedSwatch: selectedSwatch as any,
         })
 
-        // 5) применяем состояние
+        // 5) Apply the resulting state.
         const afterState: ProjectState = {
             ...(latestProjectStateRef.current ?? makeProjectState()),
             imagePixels: clonePixelsGrid(collapsed.imagePixels),

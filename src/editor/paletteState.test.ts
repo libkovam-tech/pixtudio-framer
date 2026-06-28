@@ -4,8 +4,10 @@ import {
     collapseDuplicateSwatchesAndRemapPixels,
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
+    prepareAutoOverridesForSwatchEdit,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
+    prepareSwatchesForEdit,
     removePalettePixelValueFromGrid,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
@@ -268,6 +270,108 @@ describe("palette state", () => {
         expect(result.paintSwatch).toBe("transparent")
         expect(result.userSwatches).toEqual([])
         expect(result.createdUserSwatch).toBeNull()
+    })
+
+    it("prepares edited swatches without mutating unrelated entries", () => {
+        const autoSwatch = { id: "auto-0", color: "#112233" }
+        const userSwatch = { id: "user-0", color: "#445566", isUser: true }
+
+        const result = prepareSwatchesForEdit({
+            swatchId: "user-0",
+            newColorUpper: "#AABBCC",
+            makeTransparent: true,
+            autoSwatches: [autoSwatch],
+            userSwatches: [userSwatch],
+        })
+
+        expect(result.nextAuto[0]).toBe(autoSwatch)
+        expect(result.nextUser).toEqual([
+            {
+                id: "user-0",
+                color: "#AABBCC",
+                isTransparent: true,
+                isUser: true,
+            },
+        ])
+        expect(userSwatch).toEqual({
+            id: "user-0",
+            color: "#445566",
+            isUser: true,
+        })
+    })
+
+    it("prepares auto swatch overrides for color edits", () => {
+        expect(
+            prepareAutoOverridesForSwatchEdit({
+                swatchId: "auto-0",
+                newColorUpper: "#AABBCC",
+                makeTransparent: false,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#112233",
+                        isTransparent: false,
+                    },
+                ],
+                currentOverrides: {},
+            })
+        ).toEqual({
+            "auto-0": { hex: "#AABBCC", isTransparent: false },
+        })
+    })
+
+    it("prepares auto swatch overrides for transparent edits", () => {
+        expect(
+            prepareAutoOverridesForSwatchEdit({
+                swatchId: "auto-0",
+                newColorUpper: "#AABBCC",
+                makeTransparent: true,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#112233",
+                        isTransparent: false,
+                    },
+                ],
+                currentOverrides: {},
+            })
+        ).toEqual({
+            "auto-0": { isTransparent: true },
+        })
+    })
+
+    it("leaves overrides untouched for user swatch edits", () => {
+        expect(
+            prepareAutoOverridesForSwatchEdit({
+                swatchId: "user-0",
+                newColorUpper: "#AABBCC",
+                makeTransparent: false,
+                autoSwatches: [{ id: "auto-0", color: "#112233" }],
+                currentOverrides: {
+                    "auto-0": { hex: "#445566", isTransparent: false },
+                },
+            })
+        ).toEqual({
+            "auto-0": { hex: "#445566", isTransparent: false },
+        })
+    })
+
+    it("clears a new auto override when the edit matches the source swatch", () => {
+        expect(
+            prepareAutoOverridesForSwatchEdit({
+                swatchId: "auto-0",
+                newColorUpper: "#112233",
+                makeTransparent: false,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#112233",
+                        isTransparent: false,
+                    },
+                ],
+                currentOverrides: {},
+            })
+        ).toEqual({})
     })
 
     it("preserves duplicate user swatches while collapsing duplicate auto swatches", () => {
