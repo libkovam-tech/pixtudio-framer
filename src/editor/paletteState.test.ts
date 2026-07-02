@@ -401,6 +401,42 @@ describe("palette state", () => {
         })
     })
 
+    it("collapses visually identical generated hsl and pasted hex auto swatches", () => {
+        const result = collapseDuplicateSwatchesByScope({
+            autoSwatches: [
+                { id: "auto-14", color: "hsl(315, 80%, 55%)" },
+                { id: "auto-15", color: "#E830BA" },
+            ],
+            userSwatches: [],
+        })
+
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-14",
+        ])
+        expect(result.remap).toEqual({
+            "auto-14": "auto-14",
+            "auto-15": "auto-14",
+        })
+    })
+
+    it("does not create an auto override when pasted hex matches the generated hsl source color", () => {
+        expect(
+            prepareAutoOverridesForSwatchEdit({
+                swatchId: "auto-15",
+                newColorUpper: "#E83074",
+                makeTransparent: false,
+                autoSwatches: [
+                    {
+                        id: "auto-15",
+                        color: "hsl(338, 80%, 55%)",
+                        isTransparent: false,
+                    },
+                ],
+                currentOverrides: {},
+            })
+        ).toEqual({})
+    })
+
     it("remaps pixels, selection, and auto overrides when duplicate auto swatches collapse", () => {
         const result = collapseDuplicateSwatchesAndRemapPixels({
             imagePixels: [

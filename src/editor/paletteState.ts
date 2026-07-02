@@ -62,8 +62,91 @@ function swatchListHasId(
     return (swatches ?? []).some((swatch) => swatch?.id === id)
 }
 
+function componentToHex(value: number): string {
+    const clamped = Math.max(0, Math.min(255, Math.round(value)))
+    return clamped.toString(16).padStart(2, "0").toUpperCase()
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+    return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`
+}
+
+function hslToRgb(h: number, s: number, l: number): {
+    r: number
+    g: number
+    b: number
+} {
+    const hue = ((h % 360) + 360) % 360
+    const sat = s / 100
+    const light = l / 100
+    const c = (1 - Math.abs(2 * light - 1)) * sat
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
+    const m = light - c / 2
+
+    let r1 = 0
+    let g1 = 0
+    let b1 = 0
+    if (hue < 60) {
+        r1 = c
+        g1 = x
+    } else if (hue < 120) {
+        r1 = x
+        g1 = c
+    } else if (hue < 180) {
+        g1 = c
+        b1 = x
+    } else if (hue < 240) {
+        g1 = x
+        b1 = c
+    } else if (hue < 300) {
+        r1 = x
+        b1 = c
+    } else {
+        r1 = c
+        b1 = x
+    }
+
+    return {
+        r: (r1 + m) * 255,
+        g: (g1 + m) * 255,
+        b: (b1 + m) * 255,
+    }
+}
+
 function normalizeSwatchColor(color: string | null | undefined): string {
-    return (color ?? "").trim().toUpperCase()
+    const rawColor = (color ?? "").trim()
+    const upperColor = rawColor.toUpperCase()
+
+    const hex6Match = /^#([0-9A-F]{6})$/i.exec(rawColor)
+    if (hex6Match) return `#${hex6Match[1].toUpperCase()}`
+
+    const hex3Match = /^#([0-9A-F])([0-9A-F])([0-9A-F])$/i.exec(rawColor)
+    if (hex3Match) {
+        return `#${hex3Match[1]}${hex3Match[1]}${hex3Match[2]}${hex3Match[2]}${hex3Match[3]}${hex3Match[3]}`.toUpperCase()
+    }
+
+    const rgbMatch =
+        /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(rawColor)
+    if (rgbMatch) {
+        return rgbToHex(
+            Number(rgbMatch[1]),
+            Number(rgbMatch[2]),
+            Number(rgbMatch[3])
+        )
+    }
+
+    const hslMatch =
+        /^hsl\(\s*(-?\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)$/i.exec(rawColor)
+    if (hslMatch) {
+        const rgb = hslToRgb(
+            Number(hslMatch[1]),
+            Number(hslMatch[2]),
+            Number(hslMatch[3])
+        )
+        return rgbToHex(rgb.r, rgb.g, rgb.b)
+    }
+
+    return upperColor
 }
 
 function paintSwatchKey(
