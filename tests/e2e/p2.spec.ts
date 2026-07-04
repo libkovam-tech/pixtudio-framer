@@ -298,6 +298,33 @@ test("clicked palette swatch uses the active lifted selection style", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("palette tabs keep independent selected swatches", async ({ page }) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    const autoSwatchTitle = await getVisibleSwatchTitle(page, 1)
+    await clickSwatchByTitle(page, autoSwatchTitle)
+    await expectSwatchActive(page, autoSwatchTitle)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.locator('button[title="SUNSET"]').click()
+    await settle(page)
+
+    const presetSwatchTitle = await getVisibleSwatchTitle(page, 0)
+    expect(presetSwatchTitle).not.toBe(autoSwatchTitle)
+    await clickSwatchByTitle(page, presetSwatchTitle)
+    await expectSwatchActive(page, presetSwatchTitle)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await expectSwatchActive(page, autoSwatchTitle)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await expectSwatchActive(page, presetSwatchTitle)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("editor route locks native viewport zoom", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
@@ -852,6 +879,31 @@ async function readEditorCanvasPixel(page: Page, x: number, y: number) {
         },
         { x, y }
     )
+}
+
+async function getVisibleSwatchTitle(page: Page, index: number) {
+    const swatch = page.locator('button[title^="#"]').nth(index)
+    await expect(swatch).toBeVisible()
+    const title = await swatch.getAttribute("title")
+    expect(title).toMatch(/^#[0-9A-F]{6}$/i)
+    return title ?? ""
+}
+
+async function clickSwatchByTitle(page: Page, title: string) {
+    const swatch = page.locator(`button[title="${title}"]`).first()
+    await expect(swatch).toBeVisible()
+    await swatch.click()
+}
+
+async function expectSwatchActive(page: Page, title: string) {
+    const swatch = page.locator(`button[title="${title}"]`).first()
+    await expect(swatch).toBeVisible()
+    await expect
+        .poll(async () => {
+            const box = await swatch.boundingBox()
+            return box?.width ?? 0
+        })
+        .toBeGreaterThan(28)
 }
 
 function readZipStoreEntryNames(bytes: Uint8Array) {
