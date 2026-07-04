@@ -19,6 +19,9 @@ export type PaletteAutoOverrideLike = {
     isTransparent?: boolean
 }
 
+type RgbColor = { r: number; g: number; b: number }
+type OklabColor = { l: number; a: number; b: number }
+
 export type PaletteTabWorldState<TWorld> = {
     activeTab: PaletteTabKey
     sizeWorld: TWorld | null
@@ -147,6 +150,131 @@ function normalizeSwatchColor(color: string | null | undefined): string {
     }
 
     return upperColor
+}
+
+function colorToDeletedAutoHex(color: string | null | undefined): string {
+    const normalized = normalizeSwatchColor(color)
+    return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : "#FF0000"
+}
+
+function parseDeletedAutoColorToRgb(color: string): RgbColor | null {
+    const str = (color || "").trim()
+    const rgbMatch =
+        /rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)/i.exec(
+            str
+        )
+    if (rgbMatch) {
+        return {
+            r: Math.max(0, Math.min(255, Math.round(Number(rgbMatch[1])))),
+            g: Math.max(0, Math.min(255, Math.round(Number(rgbMatch[2])))),
+            b: Math.max(0, Math.min(255, Math.round(Number(rgbMatch[3])))),
+        }
+    }
+
+    const hex = str.replace(/^#/, "")
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+        return {
+            r: parseInt(hex.slice(0, 2), 16),
+            g: parseInt(hex.slice(2, 4), 16),
+            b: parseInt(hex.slice(4, 6), 16),
+        }
+    }
+
+    return null
+}
+
+const AUTO_SWATCH_DELETE_OKLAB_RADIUS = 0.05
+const AUTO_SWATCH_DELETE_MAX_LIGHTNESS_DELTA = 0.08
+
+function srgbChannelToLinear01ForOklab(value: number): number {
+    const n = Math.max(0, Math.min(255, Math.round(value))) / 255
+    return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
+}
+
+function rgbToOklabColor(rgb: RgbColor): OklabColor {
+    const r = srgbChannelToLinear01ForOklab(rgb.r)
+    const g = srgbChannelToLinear01ForOklab(rgb.g)
+    const b = srgbChannelToLinear01ForOklab(rgb.b)
+    const l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+    const m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+    const s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+    const l3 = Math.cbrt(l)
+    const m3 = Math.cbrt(m)
+    const s3 = Math.cbrt(s)
+
+    return {
+        l: 0.2104542553 * l3 + 0.793617785 * m3 - 0.0040720468 * s3,
+        a: 1.9779984951 * l3 - 2.428592205 * m3 + 0.4505937099 * s3,
+        b: 0.0259040371 * l3 + 0.7827717662 * m3 - 0.808675766 * s3,
+    }
+}
+
+function oklabDistance(a: OklabColor, b: OklabColor): number {
+    const dl = a.l - b.l
+    const da = a.a - b.a
+    const db = a.b - b.b
+    return Math.sqrt(dl * dl + da * da + db * db)
+}
+
+function expandDeletedAutoPaletteColorsByOklab(input: {
+    sourcePixels: (string | null)[][]
+    deletedColor: string
+    currentDeletedColors: string[]
+}): string[] {
+    const baseHex = colorToDeletedAutoHex(input.deletedColor)
+    const deletedRgb = parseDeletedAutoColorToRgb(baseHex)
+    if (!deletedRgb) {
+        return input.currentDeletedColors.includes(baseHex)
+            ? input.currentDeletedColors.slice()
+            : [...input.currentDeletedColors, baseHex]
+    }
+
+    const deletedLab = rgbToOklabColor(deletedRgb)
+    const out = new Set(
+        input.currentDeletedColors.map((color) => color.toUpperCase())
+    )
+    out.add(baseHex)
+
+    for (const row of input.sourcePixels) {
+        for (const color of row) {
+            if (color == null) continue
+
+            const rgb = parseDeletedAutoColorToRgb(color)
+            if (!rgb) continue
+
+            const lab = rgbToOklabColor(rgb)
+            if (
+                Math.abs(lab.l - deletedLab.l) <=
+                    AUTO_SWATCH_DELETE_MAX_LIGHTNESS_DELTA &&
+                oklabDistance(lab, deletedLab) <=
+                    AUTO_SWATCH_DELETE_OKLAB_RADIUS
+            ) {
+                out.add(colorToDeletedAutoHex(color))
+            }
+        }
+    }
+
+    return Array.from(out)
+}
+
+export function appendDeletedAutoPaletteColor(input: {
+    color: string
+    currentDeletedColors: string[]
+    sourcePixels?: (string | null)[][]
+}): string[] {
+    if (input.sourcePixels) {
+        return expandDeletedAutoPaletteColorsByOklab({
+            sourcePixels: input.sourcePixels,
+            deletedColor: input.color,
+            currentDeletedColors: input.currentDeletedColors,
+        })
+    }
+
+    const nextColor = colorToDeletedAutoHex(input.color)
+    if (input.currentDeletedColors.includes(nextColor)) {
+        return input.currentDeletedColors.slice()
+    }
+    return [...input.currentDeletedColors, nextColor]
 }
 
 function paintSwatchKey(

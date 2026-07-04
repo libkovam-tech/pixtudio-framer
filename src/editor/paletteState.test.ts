@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
@@ -15,6 +16,37 @@ import {
 } from "./paletteState.ts"
 
 describe("palette state", () => {
+    it("appends deleted auto palette colors without source pixels", () => {
+        expect(
+            appendDeletedAutoPaletteColor({
+                color: "rgb(18, 52, 86)",
+                currentDeletedColors: ["#000000"],
+            })
+        ).toEqual(["#000000", "#123456"])
+    })
+
+    it("keeps deleted auto palette colors unique without source pixels", () => {
+        expect(
+            appendDeletedAutoPaletteColor({
+                color: "#123456",
+                currentDeletedColors: ["#123456"],
+            })
+        ).toEqual(["#123456"])
+    })
+
+    it("expands deleted auto palette colors to nearby source colors", () => {
+        expect(
+            appendDeletedAutoPaletteColor({
+                color: "#FF0000",
+                currentDeletedColors: ["#000000"],
+                sourcePixels: [
+                    ["#FF0000", "#FE0000", "#00FF00"],
+                    [null, "rgb(255, 1, 1)", "#0000FF"],
+                ],
+            })
+        ).toEqual(["#000000", "#FF0000", "#FE0000", "#FF0101"])
+    })
+
     it("counts auto and user swatches that paint visible colors", () => {
         const autoSwatches = [
             { id: "auto-0" },
