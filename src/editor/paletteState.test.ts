@@ -8,6 +8,7 @@ import {
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
+    prepareSwatchDelete,
     removePalettePixelValueFromGrid,
     resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
@@ -524,5 +525,83 @@ describe("palette state", () => {
             [null, "user-1"],
             ["auto-0", null],
         ])
+    })
+
+    it("prepares active user swatch deletion without remapping its pixels", () => {
+        const result = prepareSwatchDelete({
+            swatchId: "user-0",
+            imagePixels: [["auto-0", "user-0"]],
+            overlayPixels: [["user-0", "user-1"]],
+            autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+            userSwatches: [{ id: "user-0" }, { id: "user-1" }],
+            selectedSwatch: "user-0",
+            autoOverrides: {},
+        })
+
+        expect(result.removed).toBe(true)
+        expect(result.imagePixels).toEqual([["auto-0", null]])
+        expect(result.overlayPixels).toEqual([[null, "user-1"]])
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+            "auto-1",
+        ])
+        expect(result.userSwatches.map((swatch) => swatch.id)).toEqual([
+            "user-1",
+        ])
+        expect(result.selectedSwatch).toBe("auto-0")
+    })
+
+    it("prepares auto swatch deletion and prunes its override", () => {
+        const result = prepareSwatchDelete({
+            swatchId: "auto-1",
+            imagePixels: [["auto-1", "auto-0"]],
+            overlayPixels: [["auto-1", null]],
+            autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+            userSwatches: [{ id: "user-0" }],
+            selectedSwatch: "auto-1",
+            autoOverrides: {
+                "auto-0": { hex: "#000000" },
+                "auto-1": { hex: "#FFFFFF" },
+            },
+            pruneAutoOverrides: (autoSwatches, overrides) => {
+                const keep = new Set(autoSwatches.map((swatch) => swatch.id))
+                return Object.fromEntries(
+                    Object.entries(overrides).filter(([id]) => keep.has(id))
+                )
+            },
+        })
+
+        expect(result.removed).toBe(true)
+        expect(result.imagePixels).toEqual([[null, "auto-0"]])
+        expect(result.overlayPixels).toEqual([[null, null]])
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+        ])
+        expect(result.selectedSwatch).toBe("auto-0")
+        expect(result.autoOverrides).toEqual({
+            "auto-0": { hex: "#000000" },
+        })
+    })
+
+    it("keeps delete preparation unchanged when swatch id is absent", () => {
+        const imagePixels = [["auto-0"]]
+        const overlayPixels = [["user-0"]]
+        const autoOverrides = { "auto-0": { hex: "#000000" } }
+
+        const result = prepareSwatchDelete({
+            swatchId: "missing",
+            imagePixels,
+            overlayPixels,
+            autoSwatches: [{ id: "auto-0" }],
+            userSwatches: [{ id: "user-0" }],
+            selectedSwatch: "user-0",
+            autoOverrides,
+        })
+
+        expect(result.removed).toBe(false)
+        expect(result.imagePixels).toBe(imagePixels)
+        expect(result.overlayPixels).toBe(overlayPixels)
+        expect(result.selectedSwatch).toBe("user-0")
+        expect(result.autoOverrides).toBe(autoOverrides)
     })
 })

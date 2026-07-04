@@ -68,7 +68,7 @@ import {
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
-    removePalettePixelValueFromGrid,
+    prepareSwatchDelete,
     resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
@@ -10132,13 +10132,6 @@ function PixelEditorFramer({
         setIsColorModalOpen(true)
     }
 
-    function removePixelValueFromGrid(
-        grid: PixelValue[][],
-        swatchId: SwatchId
-    ): PixelValue[][] {
-        return removePalettePixelValueFromGrid(grid, swatchId)
-    }
-
     function collapseDuplicateSwatchesAndRemap(input: {
         imagePixels: PixelValue[][]
         overlayPixels: PixelValue[][]
@@ -10299,25 +10292,26 @@ function PixelEditorFramer({
             return
         }
 
-        const nextAuto = autoSwatches.filter(
-            (item) => item.id !== editingSwatchId
-        )
-        const nextUser = userSwatches.filter(
-            (item) => item.id !== editingSwatchId
-        )
-        if (
-            nextAuto.length === autoSwatches.length &&
-            nextUser.length === userSwatches.length
-        ) {
+        const preparedDelete = prepareSwatchDelete({
+            swatchId: editingSwatchId,
+            imagePixels,
+            overlayPixels,
+            autoSwatches,
+            userSwatches,
+            selectedSwatch,
+            autoOverrides,
+            pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
+        })
+        if (!preparedDelete.removed) {
             handleModalCancel()
             return
         }
 
-        const nextImage = removePixelValueFromGrid(imagePixels, editingSwatchId)
-        const nextOverlay = removePixelValueFromGrid(
-            overlayPixels,
-            editingSwatchId
-        )
+        const nextAuto = preparedDelete.autoSwatches
+        const nextUser = preparedDelete.userSwatches
+        const nextImage = preparedDelete.imagePixels
+        const nextOverlay = preparedDelete.overlayPixels
+        const nextSelected = preparedDelete.selectedSwatch
         const nextDeletedColors = editingSwatchId.startsWith("auto-")
             ? appendDeletedAutoPaletteColor(
                   swatch.color,
@@ -10326,12 +10320,6 @@ function PixelEditorFramer({
                       : undefined
               )
             : deletedAutoPaletteColors.slice()
-        const nextSelected =
-            selectedSwatch === editingSwatchId
-                ? nextAuto[0]?.id ?? nextUser[0]?.id ?? "transparent"
-                : selectedSwatch
-        const nextAutoOverrides = { ...(autoOverrides || {}) }
-        delete nextAutoOverrides[editingSwatchId]
         const afterState: ProjectState = {
             ...(latestProjectStateRef.current ?? makeProjectState()),
             imagePixels: clonePixelsGrid(nextImage),
@@ -10340,10 +10328,7 @@ function PixelEditorFramer({
             userSwatches: cloneSwatches(nextUser),
             selectedSwatch: nextSelected,
             deletedAutoPaletteColors: nextDeletedColors,
-            autoOverrides: pruneAutoOverridesForCurrentAuto(
-                nextAuto,
-                nextAutoOverrides
-            ),
+            autoOverrides: preparedDelete.autoOverrides,
         }
 
         beginEditorActionTransaction("editor-action", before)
