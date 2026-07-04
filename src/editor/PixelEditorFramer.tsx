@@ -59,7 +59,10 @@ import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
+    makeImportedPalettePreset,
+    makeImportedPalettePresetName,
     prepareFixedPaletteSwatchDelete,
+    upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
 import {
     appendDeletedAutoPaletteColor,
@@ -6134,13 +6137,6 @@ function PixelEditorFramer({
         }
     }
 
-    function makeImportedPalettePresetName(fileName: string): string {
-        return (
-            fileName.replace(/\.(pixtudio|json|png|jpe?g|webp|gif|bmp|avif)$/i, "").trim() ||
-            "Imported palette"
-        )
-    }
-
     function makeImportedPalettePresetId() {
         const rand =
             typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -6170,23 +6166,6 @@ function PixelEditorFramer({
                 cssColorToHex(color).toUpperCase()
             ),
         }
-    }
-
-    function upsertImportedPalettePresetRegistry(
-        profile: FixedQuantizationProfile & { source: "imported" },
-        registry: ImportedPalettePreset[] = importedPalettePresets
-    ): ImportedPalettePreset[] {
-        const preset: ImportedPalettePreset = {
-            id: profile.id,
-            name: profile.name,
-            profile,
-        }
-        const exists = registry.some((item) => item.id === profile.id)
-        return exists
-            ? registry.map((item) =>
-                  item.id === profile.id ? { ...item, ...preset } : item
-              )
-            : [...registry, preset]
     }
 
     function replaceEditablePresetProfileColorByHex(
@@ -6253,11 +6232,8 @@ function PixelEditorFramer({
                 name,
                 colors,
             }
-            const preset: ImportedPalettePreset = {
-                id: profile.id,
-                name,
-                profile,
-            }
+            const preset: ImportedPalettePreset =
+                makeImportedPalettePreset(profile)
 
             setImportedPalettePresets((prev) => [...prev, preset])
             applyFixedPalettePreset(profile)
@@ -6298,11 +6274,8 @@ function PixelEditorFramer({
                 name,
                 colors,
             }
-            const preset: ImportedPalettePreset = {
-                id: profile.id,
-                name,
-                profile,
-            }
+            const preset: ImportedPalettePreset =
+                makeImportedPalettePreset(profile)
 
             setImportedPalettePresets((prev) => [...prev, preset])
             applyFixedPalettePreset(profile)
@@ -10114,11 +10087,11 @@ function PixelEditorFramer({
                         ? { ...preset, profile: preparedDelete.profile }
                         : preset
             )
-            const nextPresetRegistry = upsertImportedPalettePresetRegistry(
+            const nextPresetRegistry = upsertImportedPalettePreset(
+                nextImportedPalettePresets,
                 preparedDelete.profile as FixedQuantizationProfile & {
                     source: "imported"
-                },
-                nextImportedPalettePresets
+                }
             )
             setImportedPalettePresets(nextPresetRegistry)
             applyFixedPalettePreset(
@@ -10316,7 +10289,10 @@ function PixelEditorFramer({
                     colorUpper
                 )
                 const nextImportedPalettePresets =
-                    upsertImportedPalettePresetRegistry(nextProfile)
+                    upsertImportedPalettePreset(
+                        importedPalettePresets,
+                        nextProfile
+                    )
                 setImportedPalettePresets(nextImportedPalettePresets)
                 applyFixedPalettePreset(
                     nextProfile,
@@ -10495,7 +10471,8 @@ function PixelEditorFramer({
 
         if (extension.added) {
             const nextImportedPalettePresets =
-                upsertImportedPalettePresetRegistry(
+                upsertImportedPalettePreset(
+                    importedPalettePresets,
                     extension.profile as FixedQuantizationProfile & {
                         source: "imported"
                     }

@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
+    makeImportedPalettePreset,
+    makeImportedPalettePresetName,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
+    upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
 import { prepareImportedPaletteColorsForApplication } from "./importedPaletteStrategy.ts"
 
@@ -17,6 +20,55 @@ describe("palette preset extension", () => {
         name: "Demo",
         colors: ["#001219", "#E9D8A6"],
     }
+
+    it("derives imported palette preset names from supported file names", () => {
+        expect(makeImportedPalettePresetName("summer.palette.pixtudio")).toBe(
+            "summer.palette"
+        )
+        expect(makeImportedPalettePresetName("  portrait.PNG  ")).toBe(
+            "portrait"
+        )
+        expect(makeImportedPalettePresetName(".png")).toBe("Imported palette")
+    })
+
+    it("creates imported palette preset records from fixed profiles", () => {
+        expect(makeImportedPalettePreset(profile)).toEqual({
+            id: profile.id,
+            name: profile.name,
+            profile,
+        })
+    })
+
+    it("appends imported palette preset records to a registry", () => {
+        expect(upsertImportedPalettePreset([], profile)).toEqual([
+            {
+                id: profile.id,
+                name: profile.name,
+                profile,
+            },
+        ])
+    })
+
+    it("updates existing imported palette preset records in a registry", () => {
+        const updatedProfile = {
+            ...profile,
+            name: "Updated",
+            colors: ["#FFFFFF"],
+        }
+
+        expect(
+            upsertImportedPalettePreset(
+                [{ id: profile.id, name: profile.name, profile }],
+                updatedProfile
+            )
+        ).toEqual([
+            {
+                id: profile.id,
+                name: "Updated",
+                profile: updatedProfile,
+            },
+        ])
+    })
 
     it("adds a valid color to an imported palette profile", () => {
         const result = extendFixedPaletteProfile(profile, "#ffffff")

@@ -23,10 +23,52 @@ export type FixedPaletteSwatchDeleteResult<
     removed: boolean
 }
 
+export type ImportedPalettePresetRecord<
+    T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
+> = {
+    id: string
+    name: string
+    profile: T
+}
+
 function normalizeImportedPaletteHex(color: string): string | null {
     const nextColor = color.trim().toUpperCase()
     if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
     return nextColor
+}
+
+export function makeImportedPalettePresetName(fileName: string): string {
+    const trimmedName = fileName.trim()
+    return (
+        trimmedName
+            .replace(/\.(pixtudio|json|png|jpe?g|webp|gif|bmp|avif)$/i, "")
+            .trim() || "Imported palette"
+    )
+}
+
+export function makeImportedPalettePreset<
+    T extends EditableFixedPaletteProfile,
+>(profile: T): ImportedPalettePresetRecord<T> {
+    return {
+        id: profile.id,
+        name: profile.name,
+        profile,
+    }
+}
+
+export function upsertImportedPalettePreset<
+    TPreset extends ImportedPalettePresetRecord,
+>(
+    registry: ReadonlyArray<TPreset>,
+    profile: EditableFixedPaletteProfile
+): TPreset[] {
+    const preset = makeImportedPalettePreset(profile) as TPreset
+    const exists = registry.some((item) => item.id === profile.id)
+    return exists
+        ? registry.map((item) =>
+              item.id === profile.id ? { ...item, ...preset } : item
+          )
+        : [...registry, preset]
 }
 
 export function extendFixedPaletteProfile<
