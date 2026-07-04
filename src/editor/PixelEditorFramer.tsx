@@ -59,7 +59,7 @@ import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
-    removeFixedPaletteProfileColorByHex,
+    prepareFixedPaletteSwatchDelete,
 } from "./palettePresetExtension.ts"
 import {
     appendDeletedAutoPaletteColor,
@@ -10093,42 +10093,37 @@ function PixelEditorFramer({
             editingSwatchId.startsWith("auto-")
         ) {
             const colorIndex = getAutoSwatchIndex(editingSwatchId)
-            if (colorIndex == null) {
-                handleModalCancel()
-                return
-            }
             const editableProfile = makeEditableFixedPresetProfile(
                 quantizationProfile
             )
-            const result = removeFixedPaletteProfileColorByHex(
-                editableProfile,
-                swatch.color
-            )
-            if (!result.removed) {
+            const preparedDelete = prepareFixedPaletteSwatchDelete({
+                profile: editableProfile,
+                swatchColor: swatch.color,
+                swatchId: editingSwatchId,
+                swatchIndex: colorIndex,
+                selectedSwatch,
+            })
+            if (!preparedDelete.removed) {
                 handleModalCancel()
                 return
             }
 
-            const preferred =
-                selectedSwatch === editingSwatchId
-                    ? (`auto-${Math.max(0, colorIndex - 1)}` as SwatchId)
-                    : selectedSwatch
             const nextImportedPalettePresets = importedPalettePresets.map(
                 (preset) =>
-                    preset.id === result.profile.id
-                        ? { ...preset, profile: result.profile }
+                    preset.id === preparedDelete.profile.id
+                        ? { ...preset, profile: preparedDelete.profile }
                         : preset
             )
             const nextPresetRegistry = upsertImportedPalettePresetRegistry(
-                result.profile as FixedQuantizationProfile & {
+                preparedDelete.profile as FixedQuantizationProfile & {
                     source: "imported"
                 },
                 nextImportedPalettePresets
             )
             setImportedPalettePresets(nextPresetRegistry)
             applyFixedPalettePreset(
-                result.profile,
-                preferred,
+                preparedDelete.profile,
+                preparedDelete.selectedSwatch,
                 nextPresetRegistry
             )
             closeColorModalAfterCreate()

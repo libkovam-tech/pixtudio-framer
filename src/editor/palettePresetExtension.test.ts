@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
+    prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
 } from "./palettePresetExtension.ts"
@@ -142,5 +143,59 @@ describe("palette preset extension", () => {
                 removed: false,
             }
         )
+    })
+
+    it("prepares fixed palette swatch deletion with an active fallback selection", () => {
+        const result = prepareFixedPaletteSwatchDelete({
+            profile,
+            swatchColor: "#E9D8A6",
+            swatchId: "auto-1",
+            swatchIndex: 1,
+            selectedSwatch: "auto-1",
+        })
+
+        expect(result).toEqual({
+            profile: {
+                ...profile,
+                colors: ["#001219"],
+            },
+            selectedSwatch: "auto-0",
+            removed: true,
+        })
+    })
+
+    it("keeps fixed palette selection when deleting an inactive swatch", () => {
+        const result = prepareFixedPaletteSwatchDelete({
+            profile,
+            swatchColor: "#E9D8A6",
+            swatchId: "auto-1",
+            swatchIndex: 1,
+            selectedSwatch: "auto-0",
+        })
+
+        expect(result).toEqual({
+            profile: {
+                ...profile,
+                colors: ["#001219"],
+            },
+            selectedSwatch: "auto-0",
+            removed: true,
+        })
+    })
+
+    it("keeps fixed palette delete preparation unchanged for invalid swatch indexes", () => {
+        const result = prepareFixedPaletteSwatchDelete({
+            profile,
+            swatchColor: "#E9D8A6",
+            swatchId: "auto-1",
+            swatchIndex: null,
+            selectedSwatch: "auto-1",
+        })
+
+        expect(result).toEqual({
+            profile,
+            selectedSwatch: "auto-1",
+            removed: false,
+        })
     })
 })

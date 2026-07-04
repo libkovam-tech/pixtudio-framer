@@ -14,6 +14,15 @@ export type FixedPaletteExtensionResult<
     added: boolean
 }
 
+export type FixedPaletteSwatchDeleteResult<
+    T extends EditableFixedPaletteProfile,
+    TSelection extends string,
+> = {
+    profile: T
+    selectedSwatch: TSelection
+    removed: boolean
+}
+
 function normalizeImportedPaletteHex(color: string): string | null {
     const nextColor = color.trim().toUpperCase()
     if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
@@ -100,4 +109,44 @@ export function removeFixedPaletteProfileColorByHex<
     )
 
     return removeFixedPaletteProfileColor(profile, colorIndex)
+}
+
+export function prepareFixedPaletteSwatchDelete<
+    T extends EditableFixedPaletteProfile,
+    TSelection extends string,
+>(input: {
+    profile: T
+    swatchColor: string
+    swatchId: TSelection
+    swatchIndex: number | null
+    selectedSwatch: TSelection
+}): FixedPaletteSwatchDeleteResult<T, TSelection> {
+    if (input.swatchIndex == null) {
+        return {
+            profile: input.profile,
+            selectedSwatch: input.selectedSwatch,
+            removed: false,
+        }
+    }
+
+    const result = removeFixedPaletteProfileColorByHex(
+        input.profile,
+        input.swatchColor
+    )
+    if (!result.removed) {
+        return {
+            profile: input.profile,
+            selectedSwatch: input.selectedSwatch,
+            removed: false,
+        }
+    }
+
+    return {
+        profile: result.profile,
+        selectedSwatch:
+            input.selectedSwatch === input.swatchId
+                ? (`auto-${Math.max(0, input.swatchIndex - 1)}` as TSelection)
+                : input.selectedSwatch,
+        removed: true,
+    }
 }
