@@ -69,6 +69,7 @@ import {
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
     removePalettePixelValueFromGrid,
+    resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
@@ -5896,6 +5897,11 @@ function PixelEditorFramer({
                 targetWorld,
                 overlayPixels
             )
+            const targetSelectedSwatch = resolvePaletteWorldSelection({
+                autoSwatches: sharedTargetWorld.autoSwatches as Swatch[],
+                userSwatches,
+                preferredSwatch: preferredSwatchForNextTab,
+            })
             setPaletteTabsState({
                 ...switchState.nextState,
                 ...(nextTab === "size"
@@ -5910,7 +5916,7 @@ function PixelEditorFramer({
             )
             applyDerivedWorldSnapshot(
                 sharedTargetWorld,
-                preferredSwatchForNextTab
+                targetSelectedSwatch
             )
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                 console.info("[PaletteTabs][CHECK] world restored", {
@@ -5937,12 +5943,17 @@ function PixelEditorFramer({
             setActivePresetButton(null)
 
             if (lazyWorld) {
+                const targetSelectedSwatch = resolvePaletteWorldSelection({
+                    autoSwatches: lazyWorld.autoSwatches as Swatch[],
+                    userSwatches,
+                    preferredSwatch: preferredSwatchForNextTab,
+                })
                 setPaletteTabsState((prev) => ({
                     ...prev,
                     activeTab: "size",
                     sizeWorld: lazyWorld,
                 }))
-                applyDerivedWorldSnapshot(lazyWorld, preferredSwatchForNextTab)
+                applyDerivedWorldSnapshot(lazyWorld, targetSelectedSwatch)
                 if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                     console.info("[PaletteTabs][CHECK] size rebuilt lazily", {
                         profile: lazyWorld.profile.kind,
@@ -5956,6 +5967,11 @@ function PixelEditorFramer({
             }
         } else {
             if (lazyWorld) {
+                const targetSelectedSwatch = resolvePaletteWorldSelection({
+                    autoSwatches: lazyWorld.autoSwatches as Swatch[],
+                    userSwatches,
+                    preferredSwatch: preferredSwatchForNextTab,
+                })
                 setActivePresetButton(
                     lazyWorld.profile.kind === "fixed"
                         ? lazyWorld.profile.id
@@ -5966,7 +5982,7 @@ function PixelEditorFramer({
                     activeTab: "presets",
                     presetsWorld: lazyWorld,
                 }))
-                applyDerivedWorldSnapshot(lazyWorld, preferredSwatchForNextTab)
+                applyDerivedWorldSnapshot(lazyWorld, targetSelectedSwatch)
                 if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                     console.info("[PaletteTabs][CHECK] presets rebuilt lazily", {
                         profile: lazyWorld.profile.kind,

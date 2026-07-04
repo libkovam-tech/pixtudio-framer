@@ -9,6 +9,7 @@ import {
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
     removePalettePixelValueFromGrid,
+    resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 
@@ -140,6 +141,34 @@ describe("palette state", () => {
                 selectedSwatch: "auto-9",
             })
         ).toBe("transparent")
+    })
+
+    it("restores a valid palette-world selection from a tab-local preference", () => {
+        expect(
+            resolvePaletteWorldSelection({
+                autoSwatches: [{ id: "auto-0" }, { id: "auto-2" }],
+                userSwatches: [{ id: "user-0" }],
+                preferredSwatch: "auto-2",
+            })
+        ).toBe("auto-2")
+
+        expect(
+            resolvePaletteWorldSelection({
+                autoSwatches: [{ id: "auto-0" }],
+                userSwatches: [{ id: "user-0" }],
+                preferredSwatch: "user-0",
+            })
+        ).toBe("user-0")
+    })
+
+    it("falls back inside the target palette world without using another tab selection", () => {
+        expect(
+            resolvePaletteWorldSelection({
+                autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+                userSwatches: [],
+                preferredSwatch: "auto-9",
+            })
+        ).toBe("auto-0")
     })
 
     it("stores the current world before switching palette tabs", () => {

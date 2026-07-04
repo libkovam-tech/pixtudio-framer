@@ -521,6 +521,34 @@ export function resolveSelectedSwatchAfterAutoChange(input: {
     )
 }
 
+export function resolvePaletteWorldSelection(input: {
+    autoSwatches:
+        | ReadonlyArray<PaletteSwatchLike | null | undefined>
+        | null
+        | undefined
+    userSwatches:
+        | ReadonlyArray<PaletteSwatchLike | null | undefined>
+        | null
+        | undefined
+    preferredSwatch?: PaletteSelection | null
+}): PaletteSelection {
+    const { autoSwatches, userSwatches, preferredSwatch } = input
+
+    if (preferredSwatch === "transparent") return preferredSwatch
+    if (preferredSwatch && swatchListHasId(userSwatches, preferredSwatch)) {
+        return preferredSwatch
+    }
+    if (preferredSwatch && swatchListHasId(autoSwatches, preferredSwatch)) {
+        return preferredSwatch
+    }
+
+    return (
+        autoSwatches?.find((swatch) => swatch?.id)?.id ??
+        userSwatches?.find((swatch) => swatch?.id)?.id ??
+        "transparent"
+    )
+}
+
 export function preparePaletteTabSwitch<TWorld>(input: {
     state: PaletteTabWorldState<TWorld>
     currentWorld: TWorld
