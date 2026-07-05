@@ -23,6 +23,21 @@ export type FixedPaletteSwatchDeleteResult<
     removed: boolean
 }
 
+export type FixedPaletteEditSwatchLike = {
+    id: string
+    color: string
+    isTransparent?: boolean
+}
+
+export type FixedPaletteSwatchEditResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+> = {
+    profile: TProfile
+    autoSwatches: TSwatch[]
+    edited: boolean
+}
+
 export type ImportedPalettePresetRecord<
     T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
 > = {
@@ -151,6 +166,62 @@ export function removeFixedPaletteProfileColorByHex<
     )
 
     return removeFixedPaletteProfileColor(profile, colorIndex)
+}
+
+export function prepareFixedPaletteSwatchEdit<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    profile: TProfile
+    swatchId: string
+    displayedColor: string
+    nextColor: string
+    autoSwatches: ReadonlyArray<TSwatch>
+}): FixedPaletteSwatchEditResult<TProfile, TSwatch> {
+    const targetColor = normalizeImportedPaletteHex(input.displayedColor)
+    const nextColor = normalizeImportedPaletteHex(input.nextColor)
+    if (!targetColor || !nextColor) {
+        return {
+            profile: input.profile,
+            autoSwatches: input.autoSwatches.slice(),
+            edited: false,
+        }
+    }
+
+    let replaced = false
+    const nextColors = input.profile.colors.map((color) => {
+        const colorHex = normalizeImportedPaletteHex(color)
+        if (!replaced && colorHex === targetColor) {
+            replaced = true
+            return nextColor
+        }
+        return colorHex ?? color
+    })
+
+    if (!replaced) {
+        return {
+            profile: input.profile,
+            autoSwatches: input.autoSwatches.slice(),
+            edited: false,
+        }
+    }
+
+    return {
+        profile: {
+            ...input.profile,
+            colors: nextColors,
+        },
+        autoSwatches: input.autoSwatches.map((swatch) =>
+            swatch.id === input.swatchId
+                ? ({
+                      ...swatch,
+                      color: nextColor,
+                      isTransparent: false,
+                  } as TSwatch)
+                : swatch
+        ),
+        edited: true,
+    }
 }
 
 export function prepareFixedPaletteSwatchDelete<

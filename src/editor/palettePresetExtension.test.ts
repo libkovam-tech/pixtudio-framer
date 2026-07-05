@@ -5,6 +5,7 @@ import {
     findPaletteColorIndexByHex,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
@@ -195,6 +196,63 @@ describe("palette preset extension", () => {
                 removed: false,
             }
         )
+    })
+
+    it("prepares fixed palette swatch edits without changing swatch identity", () => {
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#001219",
+                isTransparent: false,
+            },
+            {
+                id: "auto-1",
+                color: "#E9D8A6",
+                isTransparent: false,
+            },
+        ]
+
+        const result = prepareFixedPaletteSwatchEdit({
+            profile,
+            swatchId: "auto-1",
+            displayedColor: "#E9D8A6",
+            nextColor: "#FF0000",
+            autoSwatches,
+        })
+
+        expect(result).toEqual({
+            profile: {
+                ...profile,
+                colors: ["#001219", "#FF0000"],
+            },
+            autoSwatches: [
+                autoSwatches[0],
+                {
+                    id: "auto-1",
+                    color: "#FF0000",
+                    isTransparent: false,
+                },
+            ],
+            edited: true,
+        })
+    })
+
+    it("keeps fixed palette swatch edit unchanged for invalid colors", () => {
+        const autoSwatches = [{ id: "auto-1", color: "#E9D8A6" }]
+
+        expect(
+            prepareFixedPaletteSwatchEdit({
+                profile,
+                swatchId: "auto-1",
+                displayedColor: "#E9D8A6",
+                nextColor: "red",
+                autoSwatches,
+            })
+        ).toEqual({
+            profile,
+            autoSwatches,
+            edited: false,
+        })
     })
 
     it("prepares fixed palette swatch deletion with an active fallback selection", () => {

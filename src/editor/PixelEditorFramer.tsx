@@ -61,6 +61,7 @@ import {
     findPaletteColorIndexByHex,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchDelete,
     upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
@@ -6170,30 +6171,6 @@ function PixelEditorFramer({
         }
     }
 
-    function replaceEditablePresetProfileColorByHex(
-        profile: FixedQuantizationProfile,
-        displayedColor: string,
-        nextColor: string
-    ): FixedQuantizationProfile & { source: "imported" } {
-        const editableProfile = makeEditableFixedPresetProfile(profile)
-        const targetHex = cssColorToHex(displayedColor).toUpperCase()
-        const nextHex = cssColorToHex(nextColor).toUpperCase()
-        let replaced = false
-        const nextColors = editableProfile.colors.map((color) => {
-            const colorHex = cssColorToHex(color).toUpperCase()
-            if (!replaced && colorHex === targetHex) {
-                replaced = true
-                return nextHex
-            }
-            return colorHex
-        })
-
-        return {
-            ...editableProfile,
-            colors: replaced ? nextColors : editableProfile.colors,
-        }
-    }
-
     function openPalettePresetFileDialog() {
         const el = palettePresetFileInputRef.current
         if (!el) return
@@ -10285,32 +10262,33 @@ function PixelEditorFramer({
                 editingSwatchId.startsWith("auto-") &&
                 !pendingTransparent
             ) {
-                const nextProfile = replaceEditablePresetProfileColorByHex(
-                    quantizationProfile,
-                    currentSwatch.color,
-                    colorUpper
-                )
+                const preparedEdit = prepareFixedPaletteSwatchEdit({
+                    profile: makeEditableFixedPresetProfile(quantizationProfile),
+                    swatchId: editingSwatchId,
+                    displayedColor: currentSwatch.color,
+                    nextColor: colorUpper,
+                    autoSwatches,
+                })
+                if (!preparedEdit.edited) {
+                    setIsColorModalOpen(false)
+                    setEditingSwatchId(null)
+                    setColorModalMode("edit")
+                    setPendingDelete(false)
+                    return
+                }
+
                 const nextImportedPalettePresets =
                     upsertImportedPalettePreset(
                         importedPalettePresets,
-                        nextProfile
+                        preparedEdit.profile
                     )
-                const nextAuto = autoSwatches.map((swatch) =>
-                    swatch.id === editingSwatchId
-                        ? {
-                              ...swatch,
-                              color: colorUpper,
-                              isTransparent: false,
-                          }
-                        : swatch
-                )
                 setImportedPalettePresets(nextImportedPalettePresets)
                 applyFixedPaletteAsDrawingPalette(
-                    nextProfile,
+                    preparedEdit.profile,
                     before,
                     editingSwatchId,
                     nextImportedPalettePresets,
-                    nextAuto
+                    preparedEdit.autoSwatches
                 )
                 setIsColorModalOpen(false)
                 setEditingSwatchId(null)
