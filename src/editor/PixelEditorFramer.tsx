@@ -65,6 +65,7 @@ import {
     prepareFixedPaletteSwatchDelete,
     upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
+import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
 import {
     appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
@@ -1298,106 +1299,6 @@ function rgbToHsv(r: number, g: number, b: number) {
     const s = max === 0 ? 0 : d / max
     const v = max
     return { h, s, v }
-}
-
-type SwatchColorGroup = "red" | "green" | "blue" | "gray"
-
-type SwatchColorClass = {
-    group: SwatchColorGroup
-    keyInsideGroup: number
-    h: number
-    s: number
-    v: number
-    isTransparent: boolean
-}
-
-/**
- * Чистая классификация свотча для будущей сортировки палитры:
- * - group: red | green | blue | gray
- * - keyInsideGroup: число для сортировки внутри группы
- *
- * Прозрачные (sw.isTransparent) помечаем отдельно; куда ставить — решим в UX шаге сортировки.
- */
-function classifySwatchColor(sw: Swatch): SwatchColorClass {
-    const isTransparent = !!(sw as any)?.isTransparent
-
-    // Если прозрачный — считаем его "gray" по группе,
-    // а keyInsideGroup даём очень большим, чтобы при желании уезжал в самый конец серых.
-    if (isTransparent) {
-        return {
-            group: "gray",
-            keyInsideGroup: Number.POSITIVE_INFINITY,
-            h: 0,
-            s: 0,
-            v: 0,
-            isTransparent: true,
-        }
-    }
-
-    if (!sw?.color) {
-        return {
-            group: "gray",
-            keyInsideGroup: Number.POSITIVE_INFINITY,
-            h: 0,
-            s: 0,
-            v: 0,
-            isTransparent: false,
-        }
-    }
-
-    const hex = cssColorToHex(sw.color)
-    const rgb = hexToRgb(hex)
-
-    if (!rgb) {
-        return {
-            group: "gray",
-            keyInsideGroup: Number.POSITIVE_INFINITY,
-            h: 0,
-            s: 0,
-            v: 0,
-            isTransparent: false,
-        }
-    }
-
-    const { h, s, v } = rgbToHsv(rgb.r, rgb.g, rgb.b)
-
-    // Gray: низкая насыщенность (градации от чёрного до белого)
-    const isGray = s < 0.08
-    if (isGray) {
-        // keyInsideGroup: яркость (чёрный -> белый)
-        return {
-            group: "gray",
-            keyInsideGroup: v,
-            h,
-            s,
-            v,
-            isTransparent: false,
-        }
-    }
-
-    // Группы: Red -> Green -> Blue
-    // Red: hue < 60 или hue >= 300
-    // Green: 60..180
-    // Blue: 180..300
-    let group: SwatchColorGroup = "blue"
-    if (h < 60 || h >= 300) group = "red"
-    else if (h < 180) group = "green"
-    else group = "blue"
-
-    // Для красных “оборачиваем” 300..360 в отрицательную зону,
-    // чтобы "красный" шёл непрерывно слева направо.
-    const hueAdjusted = group === "red" && h >= 300 ? h - 360 : h
-
-    // keyInsideGroup: базово по hue внутри группы (это “скелет” будущей сортировки).
-    // (В следующих шагах мы можем усложнить: учитывать s/v вторыми критериями.)
-    return {
-        group,
-        keyInsideGroup: hueAdjusted,
-        h: hueAdjusted,
-        s,
-        v,
-        isTransparent: false,
-    }
 }
 
 function hsvToRgb(h: number, s: number, v: number) {
@@ -8576,56 +8477,14 @@ function PixelEditorFramer({
         ? TRANSPARENT_PIXEL
         : (selectedSwatch as SwatchId)
 
-    // Унифицированная сортировка “по группам” (red → green → blue → gray) + внутри группы
-    function sortSwatchesForUI(source: Swatch[]) {
-        const groupOrder: Record<SwatchColorGroup, number> = {
-            red: 0,
-            green: 1,
-            blue: 2,
-            gray: 3,
-        }
-
-        // Важно: сортируем копию, source не мутируем
-        const arr = [...source]
-
-        const clsById = new Map<SwatchId, SwatchColorClass>()
-        for (const sw of arr) clsById.set(sw.id, classifySwatchColor(sw))
-
-        const stableId = (id: any) => String(id ?? "")
-
-        arr.sort((a, b) => {
-            const ca = clsById.get(a.id) ?? classifySwatchColor(a)
-            const cb = clsById.get(b.id) ?? classifySwatchColor(b)
-
-            const ga = groupOrder[ca.group]
-            const gb = groupOrder[cb.group]
-            if (ga !== gb) return ga - gb
-
-            // внутри групп: сортировка по keyInsideGroup (у тебя это яркость/светлота), затем стабилизация по id
-            if (ca.keyInsideGroup !== cb.keyInsideGroup)
-                return ca.keyInsideGroup - cb.keyInsideGroup
-
-            // доп. стабилизация (если есть)
-            if (ca.s !== cb.s) return ca.s - cb.s
-
-            const ida = stableId(a.id)
-            const idb = stableId(b.id)
-            if (ida < idb) return -1
-            if (ida > idb) return 1
-            return 0
-        })
-
-        return arr
-    }
-
-    // ✅ 1) “основная” палитра — только autoSwatches (БЕЗ transparent)
+    // Main palette: auto swatches only, without transparent.
     const sortedAutoSwatchesForUI = React.useMemo(() => {
         return sortSwatchesForUI(autoSwatches).filter(
             (s) => !s.isTransparent && s.id !== "transparent"
         )
     }, [autoSwatches])
 
-    // ✅ 2) пользовательские — отдельным блоком после “+”
+    // User paint swatches live in a separate block after the add button.
     const sortedUserSwatchesForUI = React.useMemo(() => {
         return sortSwatchesForUI(userSwatches)
     }, [userSwatches])
