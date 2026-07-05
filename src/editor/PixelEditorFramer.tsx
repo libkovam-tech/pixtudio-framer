@@ -68,6 +68,7 @@ import {
     appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
+    ensurePaletteSwatchVisibleInGrid,
     prepareAutoOverridesForSwatchEdit,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
@@ -5945,7 +5946,8 @@ function PixelEditorFramer({
     }, [originalImageData])
 
     function buildFixedPresetWorldFromReference(
-        profile: FixedQuantizationProfile
+        profile: FixedQuantizationProfile,
+        ensureVisibleSwatch?: { id: SwatchId; color: string } | null
     ): DerivedWorld<PixelValue> | null {
         if (!originalImageData) return null
 
@@ -5963,8 +5965,22 @@ function PixelEditorFramer({
             userSwatches,
             paletteCountTarget: getFixedProfilePaletteForApplication(profile).length,
         })
+        const nextImagePixels = ensureVisibleSwatch
+            ? ensurePaletteSwatchVisibleInGrid({
+                  imagePixels: world.imagePixels,
+                  sourcePixels,
+                  swatchId: ensureVisibleSwatch.id,
+                  swatchColor: ensureVisibleSwatch.color,
+              })
+            : world.imagePixels
+        const nextCanvasPixels =
+            nextImagePixels === world.imagePixels
+                ? world.canvasPixels
+                : overlayOverBaseGrid(nextImagePixels, world.overlayPixels)
         return {
             ...world,
+            imagePixels: nextImagePixels,
+            canvasPixels: nextCanvasPixels,
             referenceSignature: imageDataSampleSignature(originalImageData),
         }
     }
@@ -5984,9 +6000,11 @@ function PixelEditorFramer({
         profile: FixedQuantizationProfile,
         before: ProjectState,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets
+        importedPresetRegistry = importedPalettePresets,
+        autoSwatchesOverride?: Swatch[] | null
     ) {
-        const nextAuto = makeAutoSwatchesFromFixedProfile(profile)
+        const nextAuto =
+            autoSwatchesOverride ?? makeAutoSwatchesFromFixedProfile(profile)
         if (nextAuto.length <= 0) return
 
         const nextSelectedSwatch = resolveSelectedSwatchAfterAutoChange({
@@ -6058,7 +6076,10 @@ function PixelEditorFramer({
     function applyFixedPalettePreset(
         profile: FixedQuantizationProfile,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets
+        importedPresetRegistry = importedPalettePresets,
+        options: {
+            ensureVisibleSwatch?: { id: SwatchId; color: string } | null
+        } = {}
     ) {
         const before = latestProjectStateRef.current ?? makeProjectState()
         paletteUndoTrace("applyFixedPalettePreset:start", {
@@ -6071,7 +6092,10 @@ function PixelEditorFramer({
         })
         const beforeReferenceSignature =
             imageDataSampleSignature(originalImageData)
-        const world = buildFixedPresetWorldFromReference(profile)
+        const world = buildFixedPresetWorldFromReference(
+            profile,
+            options.ensureVisibleSwatch
+        )
         const afterReferenceSignature = imageDataSampleSignature(originalImageData)
 
         if (!world) {
@@ -10293,11 +10317,22 @@ function PixelEditorFramer({
                         importedPalettePresets,
                         nextProfile
                     )
+                const nextAuto = autoSwatches.map((swatch) =>
+                    swatch.id === editingSwatchId
+                        ? {
+                              ...swatch,
+                              color: colorUpper,
+                              isTransparent: false,
+                          }
+                        : swatch
+                )
                 setImportedPalettePresets(nextImportedPalettePresets)
-                applyFixedPalettePreset(
+                applyFixedPaletteAsDrawingPalette(
                     nextProfile,
+                    before,
                     editingSwatchId,
-                    nextImportedPalettePresets
+                    nextImportedPalettePresets,
+                    nextAuto
                 )
                 setIsColorModalOpen(false)
                 setEditingSwatchId(null)
@@ -10481,7 +10516,13 @@ function PixelEditorFramer({
             applyFixedPalettePreset(
                 extension.profile,
                 selectedPresetSwatch,
-                nextImportedPalettePresets
+                nextImportedPalettePresets,
+                {
+                    ensureVisibleSwatch: {
+                        id: selectedPresetSwatch,
+                        color: colorUpper,
+                    },
+                }
             )
         } else {
             setSelectedSwatch(selectedPresetSwatch)
