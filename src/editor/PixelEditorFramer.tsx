@@ -59,6 +59,8 @@ import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
+    makeAutoSwatchesFromFixedProfile,
+    makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
@@ -5871,17 +5873,6 @@ function PixelEditorFramer({
         }
     }
 
-    function makeAutoSwatchesFromFixedProfile(
-        profile: FixedQuantizationProfile
-    ): Swatch[] {
-        return getFixedProfilePaletteForApplication(profile).map((color, i) => ({
-            id: `auto-${i}`,
-            color,
-            isTransparent: false,
-            isUser: false,
-        }))
-    }
-
     function applyFixedPaletteAsDrawingPalette(
         profile: FixedQuantizationProfile,
         before: ProjectState,
@@ -6047,29 +6038,6 @@ function PixelEditorFramer({
                 ? crypto.randomUUID()
                 : `${Date.now()}-${Math.random().toString(36).slice(2)}`
         return `imported-${rand}`
-    }
-
-    function makeEditableFixedPresetProfile(
-        profile: FixedQuantizationProfile
-    ): FixedQuantizationProfile & { source: "imported" } {
-        if (profile.source === "imported") {
-            return {
-                ...profile,
-                colors: profile.colors.map((color) =>
-                    cssColorToHex(color).toUpperCase()
-                ),
-            } as FixedQuantizationProfile & { source: "imported" }
-        }
-
-        return {
-            kind: "fixed",
-            source: "imported",
-            id: makeImportedPalettePresetId(),
-            name: `${profile.name} Custom`,
-            colors: getFixedProfilePaletteForApplication(profile).map((color) =>
-                cssColorToHex(color).toUpperCase()
-            ),
-        }
     }
 
     function openPalettePresetFileDialog() {
@@ -9905,7 +9873,8 @@ function PixelEditorFramer({
         ) {
             const colorIndex = getAutoSwatchIndex(editingSwatchId)
             const editableProfile = makeEditableFixedPresetProfile(
-                quantizationProfile
+                quantizationProfile,
+                makeImportedPalettePresetId
             )
             const preparedDelete = prepareFixedPaletteSwatchDelete({
                 profile: editableProfile,
@@ -10122,7 +10091,10 @@ function PixelEditorFramer({
                 !pendingTransparent
             ) {
                 const preparedEdit = prepareFixedPaletteSwatchEdit({
-                    profile: makeEditableFixedPresetProfile(quantizationProfile),
+                    profile: makeEditableFixedPresetProfile(
+                        quantizationProfile,
+                        makeImportedPalettePresetId
+                    ),
                     swatchId: editingSwatchId,
                     displayedColor: currentSwatch.color,
                     nextColor: colorUpper,
@@ -10302,7 +10274,10 @@ function PixelEditorFramer({
         }
 
         const editableProfile =
-            makeEditableFixedPresetProfile(quantizationProfile)
+            makeEditableFixedPresetProfile(
+                quantizationProfile,
+                makeImportedPalettePresetId
+            )
         const extension = extendFixedPaletteProfile(
             editableProfile,
             colorUpper

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
+    makeAutoSwatchesFromFixedProfile,
+    makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
@@ -37,6 +39,72 @@ describe("palette preset extension", () => {
             id: profile.id,
             name: profile.name,
             profile,
+        })
+    })
+
+    it("makes fixed profile auto swatches from application palette order", () => {
+        const unsortedProfile = {
+            ...profile,
+            colors: ["#FFFFFF", "#FF0000", "#00FF00"],
+        }
+
+        expect(makeAutoSwatchesFromFixedProfile(unsortedProfile)).toEqual([
+            {
+                id: "auto-0",
+                color: "#FF0000",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-1",
+                color: "#00FF00",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-2",
+                color: "#FFFFFF",
+                isTransparent: false,
+                isUser: false,
+            },
+        ])
+    })
+
+    it("makes editable imported copies of built-in fixed profiles", () => {
+        const builtinProfile = {
+            kind: "fixed" as const,
+            source: "builtin" as const,
+            id: "sunset-10",
+            name: "SUNSET",
+            colors: ["rgb(0, 0, 0)", "#0F0"],
+        }
+
+        expect(
+            makeEditableFixedPresetProfile(
+                builtinProfile,
+                () => "imported-demo"
+            )
+        ).toEqual({
+            kind: "fixed",
+            source: "imported",
+            id: "imported-demo",
+            name: "SUNSET Custom",
+            colors: ["#000000", "#00FF00"],
+        })
+    })
+
+    it("keeps imported fixed profile identity when making it editable", () => {
+        expect(
+            makeEditableFixedPresetProfile(
+                {
+                    ...profile,
+                    colors: ["hsl(0, 100%, 50%)"],
+                },
+                () => "unused-id"
+            )
+        ).toEqual({
+            ...profile,
+            colors: ["#FF0000"],
         })
     })
 

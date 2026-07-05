@@ -1,3 +1,5 @@
+import { getFixedProfilePaletteForApplication } from "./paletteQuantizationEngine.ts"
+
 export type EditableFixedPaletteProfile = {
     kind: "fixed"
     source: "builtin" | "imported"
@@ -46,10 +48,148 @@ export type ImportedPalettePresetRecord<
     profile: T
 }
 
+export type FixedPaletteAutoSwatch = {
+    id: string
+    color: string
+    isTransparent: boolean
+    isUser: boolean
+}
+
 function normalizeImportedPaletteHex(color: string): string | null {
     const nextColor = color.trim().toUpperCase()
     if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
     return nextColor
+}
+
+function componentToHex(c: number) {
+    const hex = c.toString(16)
+    return hex.length === 1 ? "0" + hex : hex
+}
+
+function parseRGB(color: string) {
+    const m = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/.exec(color)
+    if (!m) return { r: 0, g: 0, b: 0 }
+    return {
+        r: parseInt(m[1], 10),
+        g: parseInt(m[2], 10),
+        b: parseInt(m[3], 10),
+    }
+}
+
+function parseHSL(color: string) {
+    const m = /hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/.exec(color)
+    if (!m) return { h: 0, s: 0, l: 0 }
+    return {
+        h: parseInt(m[1], 10),
+        s: parseInt(m[2], 10),
+        l: parseInt(m[3], 10),
+    }
+}
+
+function hslToRgb(h: number, s: number, l: number) {
+    h = ((h % 360) + 360) % 360
+    s /= 100
+    l /= 100
+
+    const c = (1 - Math.abs(2 * l - 1)) * s
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+    const m = l - c / 2
+
+    let r1 = 0
+    let g1 = 0
+    let b1 = 0
+    if (h < 60) {
+        r1 = c
+        g1 = x
+    } else if (h < 120) {
+        r1 = x
+        g1 = c
+    } else if (h < 180) {
+        g1 = c
+        b1 = x
+    } else if (h < 240) {
+        g1 = x
+        b1 = c
+    } else if (h < 300) {
+        r1 = x
+        b1 = c
+    } else {
+        r1 = c
+        b1 = x
+    }
+
+    return {
+        r: Math.round((r1 + m) * 255),
+        g: Math.round((g1 + m) * 255),
+        b: Math.round((b1 + m) * 255),
+    }
+}
+
+function cssColorToHex(color: string | null) {
+    if (!color) return "#ff0000"
+
+    if (color.startsWith("#")) {
+        if (color.length === 7) return color
+        if (color.length === 4) {
+            const r = color[1]
+            const g = color[2]
+            const b = color[3]
+            return "#" + r + r + g + g + b + b
+        }
+        return "#ff0000"
+    }
+
+    if (color.startsWith("rgb")) {
+        const { r, g, b } = parseRGB(color)
+        return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b)
+    }
+
+    if (color.startsWith("hsl")) {
+        const { h, s, l } = parseHSL(color)
+        const { r, g, b } = hslToRgb(h, s, l)
+        return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b)
+    }
+
+    return "#ff0000"
+}
+
+function normalizeEditablePaletteColor(color: string): string {
+    return cssColorToHex(color).toUpperCase()
+}
+
+export function makeAutoSwatchesFromFixedProfile(
+    profile: EditableFixedPaletteProfile
+): FixedPaletteAutoSwatch[] {
+    return getFixedProfilePaletteForApplication(profile).map((color, index) => ({
+        id: `auto-${index}`,
+        color,
+        isTransparent: false,
+        isUser: false,
+    }))
+}
+
+export function makeEditableFixedPresetProfile<
+    T extends EditableFixedPaletteProfile,
+>(
+    profile: T,
+    makeImportedId: () => string
+): EditableFixedPaletteProfile & { source: "imported" } {
+    if (profile.source === "imported") {
+        return {
+            ...profile,
+            colors: profile.colors.map(normalizeEditablePaletteColor),
+        } as EditableFixedPaletteProfile & { source: "imported" }
+    }
+
+    return {
+        kind: "fixed",
+        source: "imported",
+        id: makeImportedId(),
+        name: `${profile.name} Custom`,
+        colors: getFixedProfilePaletteForApplication(profile).map(
+            normalizeEditablePaletteColor
+        ),
+    }
 }
 
 export function makeImportedPalettePresetName(fileName: string): string {
