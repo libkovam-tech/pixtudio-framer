@@ -68,7 +68,6 @@ import {
     appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
-    ensurePaletteSwatchVisibleInGrid,
     prepareAutoOverridesForSwatchEdit,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
@@ -5946,8 +5945,7 @@ function PixelEditorFramer({
     }, [originalImageData])
 
     function buildFixedPresetWorldFromReference(
-        profile: FixedQuantizationProfile,
-        ensureVisibleSwatch?: { id: SwatchId; color: string } | null
+        profile: FixedQuantizationProfile
     ): DerivedWorld<PixelValue> | null {
         if (!originalImageData) return null
 
@@ -5965,22 +5963,8 @@ function PixelEditorFramer({
             userSwatches,
             paletteCountTarget: getFixedProfilePaletteForApplication(profile).length,
         })
-        const nextImagePixels = ensureVisibleSwatch
-            ? ensurePaletteSwatchVisibleInGrid({
-                  imagePixels: world.imagePixels,
-                  sourcePixels,
-                  swatchId: ensureVisibleSwatch.id,
-                  swatchColor: ensureVisibleSwatch.color,
-              })
-            : world.imagePixels
-        const nextCanvasPixels =
-            nextImagePixels === world.imagePixels
-                ? world.canvasPixels
-                : overlayOverBaseGrid(nextImagePixels, world.overlayPixels)
         return {
             ...world,
-            imagePixels: nextImagePixels,
-            canvasPixels: nextCanvasPixels,
             referenceSignature: imageDataSampleSignature(originalImageData),
         }
     }
@@ -6076,10 +6060,7 @@ function PixelEditorFramer({
     function applyFixedPalettePreset(
         profile: FixedQuantizationProfile,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets,
-        options: {
-            ensureVisibleSwatch?: { id: SwatchId; color: string } | null
-        } = {}
+        importedPresetRegistry = importedPalettePresets
     ) {
         const before = latestProjectStateRef.current ?? makeProjectState()
         paletteUndoTrace("applyFixedPalettePreset:start", {
@@ -6092,10 +6073,7 @@ function PixelEditorFramer({
         })
         const beforeReferenceSignature =
             imageDataSampleSignature(originalImageData)
-        const world = buildFixedPresetWorldFromReference(
-            profile,
-            options.ensureVisibleSwatch
-        )
+        const world = buildFixedPresetWorldFromReference(profile)
         const afterReferenceSignature = imageDataSampleSignature(originalImageData)
 
         if (!world) {
@@ -10516,13 +10494,7 @@ function PixelEditorFramer({
             applyFixedPalettePreset(
                 extension.profile,
                 selectedPresetSwatch,
-                nextImportedPalettePresets,
-                {
-                    ensureVisibleSwatch: {
-                        id: selectedPresetSwatch,
-                        color: colorUpper,
-                    },
-                }
+                nextImportedPalettePresets
             )
         } else {
             setSelectedSwatch(selectedPresetSwatch)

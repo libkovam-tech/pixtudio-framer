@@ -5,7 +5,6 @@ import {
     collapseDuplicateSwatchesAndRemapPixels,
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
-    ensurePaletteSwatchVisibleInGrid,
     prepareAutoOverridesForSwatchEdit,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
@@ -46,41 +45,6 @@ describe("palette state", () => {
                 ],
             })
         ).toEqual(["#000000", "#FF0000", "#FE0000", "#FF0101"])
-    })
-
-    it("keeps palette swatch visibility unchanged when the swatch is already used", () => {
-        const imagePixels = [["auto-0", "auto-1"]]
-
-        expect(
-            ensurePaletteSwatchVisibleInGrid({
-                imagePixels,
-                sourcePixels: [["#000000", "#00FF00"]],
-                swatchId: "auto-1",
-                swatchColor: "#00FF00",
-            })
-        ).toBe(imagePixels)
-    })
-
-    it("assigns nearest source cells when a palette swatch is unused", () => {
-        expect(
-            ensurePaletteSwatchVisibleInGrid({
-                imagePixels: [
-                    ["auto-0", "auto-0"],
-                    ["auto-0", "auto-0"],
-                ],
-                sourcePixels: [
-                    ["#000000", "#00FE00"],
-                    ["#00F000", "#FFFFFF"],
-                ],
-                swatchId: "auto-1",
-                swatchColor: "#00FF00",
-                minCells: 2,
-                maxCells: 2,
-            })
-        ).toEqual([
-            ["auto-0", "auto-1"],
-            ["auto-1", "auto-0"],
-        ])
     })
 
     it("counts auto and user swatches that paint visible colors", () => {
