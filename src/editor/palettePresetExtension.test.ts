@@ -418,7 +418,7 @@ describe("palette preset extension", () => {
     it("lets the newly added fixed swatch claim matching reference cells", () => {
         const autoSwatches = [
             { id: "auto-0", color: "#000000" },
-            { id: "auto-3", color: "#FF0000" },
+            { id: "auto-3", color: "#E9D8A6" },
             { id: "auto-4", color: "#FFFFFF" },
         ]
         const imagePixels = [
@@ -429,7 +429,7 @@ describe("palette preset extension", () => {
         const result = prepareFixedPaletteVocabularyExtensionWorld({
             profile: {
                 ...profile,
-                colors: ["#000000", "#FF0000", "#FFFFFF"],
+                colors: ["#000000", "#E9D8A6", "#FFFFFF"],
             },
             autoSwatches,
             imagePixels,
@@ -438,7 +438,7 @@ describe("palette preset extension", () => {
                 [null, null],
             ],
             sourcePixels: [
-                ["rgb(255, 255, 255)", "rgb(0, 0, 0)"],
+                ["#EFDFB0", "rgb(0, 0, 0)"],
                 ["rgb(245, 245, 245)", "rgb(255, 0, 0)"],
             ],
             selectedSwatch: "auto-4",

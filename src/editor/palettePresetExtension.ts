@@ -100,6 +100,26 @@ function cloneSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>): TSwatch[] {
     )
 }
 
+type Rgb = { r: number; g: number; b: number }
+
+const NEW_VOCABULARY_SWATCH_DISTANCE_BIAS = 9000
+
+function parsePaletteRgb(color: string): Rgb {
+    const hex = normalizeEditablePaletteColor(color).slice(1)
+    return {
+        r: parseInt(hex.slice(0, 2), 16),
+        g: parseInt(hex.slice(2, 4), 16),
+        b: parseInt(hex.slice(4, 6), 16),
+    }
+}
+
+function colorDistanceSq(a: Rgb, b: Rgb): number {
+    const dr = a.r - b.r
+    const dg = a.g - b.g
+    const db = a.b - b.b
+    return dr * dr + dg * dg + db * db
+}
+
 function assignNewVocabularySwatchCells<
     TSwatch extends FixedPaletteEditSwatchLike,
     TPixel extends string | null,
@@ -116,6 +136,10 @@ function assignNewVocabularySwatchCells<
     )
     if (!selectedSwatch) return input.imagePixels
 
+    const selectedRgb = parsePaletteRgb(selectedSwatch.color)
+    const swatchById = new Map(
+        input.autoSwatches.map((swatch) => [swatch.id, swatch])
+    )
     const swatchIdByColor = new Map(
         input.autoSwatches.map((swatch) => [
             normalizeEditablePaletteColor(swatch.color),
@@ -129,13 +153,32 @@ function assignNewVocabularySwatchCells<
 
     return input.imagePixels.map((row, rowIndex) =>
         row.map((pixel, columnIndex) => {
+            const sourceColor = input.sourcePixels?.[rowIndex]?.[columnIndex]
+            if (sourceColor == null) return pixel
+
             const quantizedColor = quantizedPixels[rowIndex]?.[columnIndex]
             if (quantizedColor == null) return pixel
 
             const quantizedSwatchId = swatchIdByColor.get(
                 normalizeEditablePaletteColor(quantizedColor)
             )
-            return quantizedSwatchId === selectedSwatch.id
+            if (quantizedSwatchId === selectedSwatch.id) {
+                return selectedSwatch.id as TPixel
+            }
+
+            const currentSwatch =
+                typeof pixel === "string" ? swatchById.get(pixel) : null
+            if (!currentSwatch) return pixel
+
+            const sourceRgb = parsePaletteRgb(sourceColor)
+            const selectedDistance = colorDistanceSq(sourceRgb, selectedRgb)
+            const currentDistance = colorDistanceSq(
+                sourceRgb,
+                parsePaletteRgb(currentSwatch.color)
+            )
+
+            return selectedDistance <=
+                currentDistance + NEW_VOCABULARY_SWATCH_DISTANCE_BIAS
                 ? (selectedSwatch.id as TPixel)
                 : pixel
         })
