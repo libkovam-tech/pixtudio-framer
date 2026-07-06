@@ -5955,6 +5955,9 @@ function PixelEditorFramer({
             autoSwatches: nextAuto,
             imagePixels,
             overlayPixels,
+            sourcePixels: originalImageData
+                ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
+                : null,
             selectedSwatch: selectedPresetSwatch,
         })
         const nextWorld: DerivedWorld<PixelValue> = preparedWorld.world

@@ -415,6 +415,41 @@ describe("palette preset extension", () => {
         expect(result.world.autoSwatches).not.toBe(autoSwatches)
     })
 
+    it("lets the newly added fixed swatch claim matching reference cells", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#000000" },
+            { id: "auto-3", color: "#FF0000" },
+            { id: "auto-4", color: "#FFFFFF" },
+        ]
+        const imagePixels = [
+            ["auto-3", "auto-0"],
+            ["auto-3", "auto-0"],
+        ]
+
+        const result = prepareFixedPaletteVocabularyExtensionWorld({
+            profile: {
+                ...profile,
+                colors: ["#000000", "#FF0000", "#FFFFFF"],
+            },
+            autoSwatches,
+            imagePixels,
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            sourcePixels: [
+                ["rgb(255, 255, 255)", "rgb(0, 0, 0)"],
+                ["rgb(245, 245, 245)", "rgb(255, 0, 0)"],
+            ],
+            selectedSwatch: "auto-4",
+        })
+
+        expect(result.world.imagePixels).toEqual([
+            ["auto-4", "auto-0"],
+            ["auto-4", "auto-0"],
+        ])
+    })
+
     it("prepares fixed palette swatch deletion with an active fallback selection", () => {
         const result = prepareFixedPaletteSwatchDelete({
             profile,
