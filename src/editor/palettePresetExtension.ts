@@ -47,6 +47,28 @@ export type FixedPaletteSwatchExtensionResult<
     selectedSwatch: string
 }
 
+export type FixedPaletteVocabularyExtensionWorld<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+> = {
+    profile: TProfile
+    referenceSignature?: string | null
+    autoSwatches: TSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+}
+
+export type FixedPaletteVocabularyExtensionWorldResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+> = {
+    world: FixedPaletteVocabularyExtensionWorld<TProfile, TSwatch, TPixel>
+    selectedSwatch: string
+}
+
 export type ImportedPalettePresetRecord<
     T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
 > = {
@@ -66,6 +88,34 @@ function normalizeImportedPaletteHex(color: string): string | null {
     const nextColor = color.trim().toUpperCase()
     if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
     return nextColor
+}
+
+function cloneGrid<T>(grid: T[][]): T[][] {
+    return grid.map((row) => row.slice())
+}
+
+function overlayOverBase<TPixel extends string | null>(
+    base: TPixel[][],
+    overlay: TPixel[][]
+): TPixel[][] {
+    const size = base.length
+    return Array.from({ length: size }, (_, rowIndex) => {
+        const baseRow = base[rowIndex] || []
+        const overlayRow = overlay[rowIndex] || []
+        const width = Math.max(baseRow.length, overlayRow.length)
+        return Array.from({ length: width }, (_, columnIndex) => {
+            const overlayPixel = (overlayRow[columnIndex] ?? null) as TPixel
+            return overlayPixel !== null
+                ? overlayPixel
+                : ((baseRow[columnIndex] ?? null) as TPixel)
+        })
+    })
+}
+
+function cloneSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>): TSwatch[] {
+    return swatches.map((swatch) =>
+        swatch && typeof swatch === "object" ? { ...swatch } : swatch
+    )
 }
 
 function componentToHex(c: number) {
@@ -408,6 +458,34 @@ export function prepareFixedPaletteSwatchExtension<
     return {
         autoSwatches: [...input.autoSwatches, swatch],
         selectedSwatch: id,
+    }
+}
+
+export function prepareFixedPaletteVocabularyExtensionWorld<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+>(input: {
+    profile: TProfile
+    referenceSignature?: string | null
+    autoSwatches: ReadonlyArray<TSwatch>
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    selectedSwatch: string
+}): FixedPaletteVocabularyExtensionWorldResult<TProfile, TSwatch, TPixel> {
+    const imagePixels = cloneGrid(input.imagePixels)
+    const overlayPixels = cloneGrid(input.overlayPixels)
+
+    return {
+        world: {
+            profile: input.profile,
+            referenceSignature: input.referenceSignature,
+            autoSwatches: cloneSwatches(input.autoSwatches),
+            imagePixels,
+            overlayPixels,
+            canvasPixels: overlayOverBase(imagePixels, overlayPixels),
+        },
+        selectedSwatch: input.selectedSwatch,
     }
 }
 

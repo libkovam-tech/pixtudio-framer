@@ -9,6 +9,7 @@ import {
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
+    prepareFixedPaletteVocabularyExtensionWorld,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
@@ -370,6 +371,48 @@ describe("palette preset extension", () => {
             autoSwatches,
             selectedSwatch: "auto-1",
         })
+    })
+
+    it("prepares vocabulary extension worlds without rebuilding pixel assignments", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219" },
+            { id: "auto-1", color: "#FF0000" },
+        ]
+        const imagePixels = [
+            ["auto-1", "auto-0"],
+            [null, "auto-0"],
+        ]
+        const overlayPixels = [
+            [null, "user-0"],
+            [null, null],
+        ]
+
+        const result = prepareFixedPaletteVocabularyExtensionWorld({
+            profile,
+            referenceSignature: "ref-1",
+            autoSwatches,
+            imagePixels,
+            overlayPixels,
+            selectedSwatch: "auto-2",
+        })
+
+        expect(result).toEqual({
+            world: {
+                profile,
+                referenceSignature: "ref-1",
+                autoSwatches,
+                imagePixels,
+                overlayPixels,
+                canvasPixels: [
+                    ["auto-1", "user-0"],
+                    [null, "auto-0"],
+                ],
+            },
+            selectedSwatch: "auto-2",
+        })
+        expect(result.world.imagePixels).not.toBe(imagePixels)
+        expect(result.world.overlayPixels).not.toBe(overlayPixels)
+        expect(result.world.autoSwatches).not.toBe(autoSwatches)
     })
 
     it("prepares fixed palette swatch deletion with an active fallback selection", () => {
