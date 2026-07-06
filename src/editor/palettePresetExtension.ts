@@ -1,4 +1,7 @@
-import { getFixedProfilePaletteForApplication } from "./paletteQuantizationEngine.ts"
+import {
+    buildDrawingPaletteWorld,
+    getFixedProfilePaletteForApplication,
+} from "./paletteQuantizationEngine.ts"
 
 export type EditableFixedPaletteProfile = {
     kind: "fixed"
@@ -88,28 +91,6 @@ function normalizeImportedPaletteHex(color: string): string | null {
     const nextColor = color.trim().toUpperCase()
     if (!/^#[0-9A-F]{6}$/.test(nextColor)) return null
     return nextColor
-}
-
-function cloneGrid<T>(grid: T[][]): T[][] {
-    return grid.map((row) => row.slice())
-}
-
-function overlayOverBase<TPixel extends string | null>(
-    base: TPixel[][],
-    overlay: TPixel[][]
-): TPixel[][] {
-    const size = base.length
-    return Array.from({ length: size }, (_, rowIndex) => {
-        const baseRow = base[rowIndex] || []
-        const overlayRow = overlay[rowIndex] || []
-        const width = Math.max(baseRow.length, overlayRow.length)
-        return Array.from({ length: width }, (_, columnIndex) => {
-            const overlayPixel = (overlayRow[columnIndex] ?? null) as TPixel
-            return overlayPixel !== null
-                ? overlayPixel
-                : ((baseRow[columnIndex] ?? null) as TPixel)
-        })
-    })
 }
 
 function cloneSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>): TSwatch[] {
@@ -473,17 +454,21 @@ export function prepareFixedPaletteVocabularyExtensionWorld<
     overlayPixels: TPixel[][]
     selectedSwatch: string
 }): FixedPaletteVocabularyExtensionWorldResult<TProfile, TSwatch, TPixel> {
-    const imagePixels = cloneGrid(input.imagePixels)
-    const overlayPixels = cloneGrid(input.overlayPixels)
+    const autoSwatches = cloneSwatches(input.autoSwatches)
+    const world = buildDrawingPaletteWorld({
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        palette: autoSwatches.map((swatch) => swatch.color),
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        makeAutoSwatchId: (index) => autoSwatches[index]?.id ?? `auto-${index}`,
+    })
 
     return {
         world: {
+            ...world,
             profile: input.profile,
-            referenceSignature: input.referenceSignature,
-            autoSwatches: cloneSwatches(input.autoSwatches),
-            imagePixels,
-            overlayPixels,
-            canvasPixels: overlayOverBase(imagePixels, overlayPixels),
+            autoSwatches,
         },
         selectedSwatch: input.selectedSwatch,
     }

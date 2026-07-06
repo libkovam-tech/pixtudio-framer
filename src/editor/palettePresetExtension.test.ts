@@ -376,10 +376,10 @@ describe("palette preset extension", () => {
     it("prepares vocabulary extension worlds without rebuilding pixel assignments", () => {
         const autoSwatches = [
             { id: "auto-0", color: "#001219" },
-            { id: "auto-1", color: "#FF0000" },
+            { id: "auto-3", color: "#FF0000" },
         ]
         const imagePixels = [
-            ["auto-1", "auto-0"],
+            ["auto-3", "auto-0"],
             [null, "auto-0"],
         ]
         const overlayPixels = [
@@ -393,7 +393,7 @@ describe("palette preset extension", () => {
             autoSwatches,
             imagePixels,
             overlayPixels,
-            selectedSwatch: "auto-2",
+            selectedSwatch: "auto-4",
         })
 
         expect(result).toEqual({
@@ -404,11 +404,11 @@ describe("palette preset extension", () => {
                 imagePixels,
                 overlayPixels,
                 canvasPixels: [
-                    ["auto-1", "user-0"],
+                    ["auto-3", "user-0"],
                     [null, "auto-0"],
                 ],
             },
-            selectedSwatch: "auto-2",
+            selectedSwatch: "auto-4",
         })
         expect(result.world.imagePixels).not.toBe(imagePixels)
         expect(result.world.overlayPixels).not.toBe(overlayPixels)
