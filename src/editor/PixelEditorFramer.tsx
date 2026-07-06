@@ -101,6 +101,7 @@ import {
     EXTRACT_QUANTIZATION_PROFILE,
     QUANTIZATION_PROFILES,
     buildDerivedWorld,
+    buildDrawingPaletteWorld,
     extractPalette,
     getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
@@ -5632,24 +5633,13 @@ function PixelEditorFramer({
 
     function buildAutoPaletteDrawingWorld(): DerivedWorld<PixelValue> {
         const count = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
-        const nextAuto = generatePalette(count).map((color, index) => ({
-            id: `auto-${index}`,
-            color,
-            isTransparent: false,
-            isUser: false,
-        }))
-        const nextImage = clonePixelsGrid(imagePixels)
-        const nextOverlay = clonePixelsGrid(overlayPixels)
-
-        return {
+        return buildDrawingPaletteWorld({
             profile: EXTRACT_QUANTIZATION_PROFILE,
             referenceSignature: imageDataSampleSignature(originalImageData),
-            autoSwatches: nextAuto,
-            imagePixels: nextImage,
-            overlayPixels: nextOverlay,
-            canvasPixels:
-                overlayOverBaseGrid(nextImage, nextOverlay) ?? nextImage,
-        }
+            palette: generatePalette(count),
+            imagePixels,
+            overlayPixels,
+        })
     }
 
     function switchDeletedActivePresetToAutoPalette(

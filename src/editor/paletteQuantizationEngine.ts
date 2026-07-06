@@ -576,6 +576,35 @@ export function remapOverlay<TPixel extends string | null>(params: {
     )
 }
 
+export function buildDrawingPaletteWorld<TPixel extends string | null>(params: {
+    profile: QuantizationProfile
+    referenceSignature?: string | null
+    palette: string[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    makeAutoSwatchId?: (index: number) => string
+}): DerivedWorld<TPixel> {
+    const makeAutoSwatchId =
+        params.makeAutoSwatchId ?? ((index: number) => `auto-${index}`)
+    const imagePixels = cloneGrid(params.imagePixels)
+    const overlayPixels = cloneGrid(params.overlayPixels)
+    const autoSwatches = params.palette.map((color, index) => ({
+        id: makeAutoSwatchId(index),
+        color,
+        isTransparent: false,
+        isUser: false,
+    }))
+
+    return {
+        profile: params.profile,
+        referenceSignature: params.referenceSignature,
+        autoSwatches,
+        imagePixels,
+        overlayPixels,
+        canvasPixels: overlayOverBase(imagePixels, overlayPixels),
+    }
+}
+
 export function buildDerivedWorld<TPixel extends string | null>(params: {
     profile: QuantizationProfile
     sourcePixels: QuantizationPixel[][]

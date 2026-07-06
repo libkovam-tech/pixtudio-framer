@@ -13,6 +13,7 @@ import {
     SUNSET_10,
     USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK,
     buildDerivedWorld,
+    buildDrawingPaletteWorld,
     extractPalette,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
@@ -171,6 +172,49 @@ describe("palette quantization engine", () => {
         expect(world.canvasPixels[0][0]).toBe("auto-0")
         expect(source).toEqual([["rgb(0, 0, 0)", "rgb(255, 255, 255)"]])
         expect(overlay).toEqual([["auto-0", null]])
+    })
+
+    it("builds a drawing palette world without changing pixel assignments", () => {
+        const imagePixels = [
+            ["auto-0", null],
+            ["auto-1", "auto-0"],
+        ]
+        const overlayPixels = [
+            [null, "user-0"],
+            [null, null],
+        ]
+
+        const world = buildDrawingPaletteWorld({
+            profile: EXTRACT_QUANTIZATION_PROFILE,
+            referenceSignature: "drawing-reference",
+            palette: ["#111111", "#222222"],
+            imagePixels,
+            overlayPixels,
+        })
+
+        expect(world.referenceSignature).toBe("drawing-reference")
+        expect(world.autoSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#111111",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-1",
+                color: "#222222",
+                isTransparent: false,
+                isUser: false,
+            },
+        ])
+        expect(world.imagePixels).toEqual(imagePixels)
+        expect(world.overlayPixels).toEqual(overlayPixels)
+        expect(world.imagePixels).not.toBe(imagePixels)
+        expect(world.overlayPixels).not.toBe(overlayPixels)
+        expect(world.canvasPixels).toEqual([
+            ["auto-0", "user-0"],
+            ["auto-1", "auto-0"],
+        ])
     })
 
     it("builds a fixed derived world from hex profile colors", () => {
