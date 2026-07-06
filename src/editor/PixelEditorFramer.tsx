@@ -64,6 +64,7 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
+    prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteSwatchDelete,
     upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
@@ -5950,6 +5951,63 @@ function PixelEditorFramer({
         }
     }
 
+    function applyFixedPaletteVocabularyExtension(
+        profile: FixedQuantizationProfile,
+        before: ProjectState,
+        selectedPresetSwatch: SwatchId,
+        importedPresetRegistry: ImportedPalettePreset[],
+        nextAuto: Swatch[]
+    ) {
+        const nextImagePixels = clonePixelsGrid(imagePixels)
+        const nextOverlayPixels = clonePixelsGrid(overlayPixels)
+        const nextCanvasPixels = overlayOverBaseGrid(
+            nextImagePixels,
+            nextOverlayPixels
+        )
+        const afterState: ProjectState = {
+            gridSize,
+            paletteCount,
+            brushSize,
+            imagePixels: clonePixelsGrid(nextImagePixels),
+            overlayPixels: clonePixelsGrid(nextOverlayPixels),
+            showImage,
+            hasOriginalImageData: hasImportContext,
+            referenceSnapshot: originalImageData,
+            autoSwatches: cloneSwatches(nextAuto),
+            userSwatches: cloneSwatches(userSwatches),
+            selectedSwatch: selectedPresetSwatch,
+            quantizationProfile: cloneQuantizationProfileForHistory(profile),
+            importedPalettePresets:
+                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
+            hiddenPresetIds: hiddenPresetIds.slice(),
+            activePaletteTab: "presets",
+            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
+            autoOverrides: { ...autoOverrides },
+        }
+        const nextWorld: DerivedWorld<PixelValue> = {
+            profile,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+            autoSwatches: cloneSwatches(nextAuto),
+            imagePixels: nextImagePixels,
+            overlayPixels: nextOverlayPixels,
+            canvasPixels: nextCanvasPixels,
+        }
+
+        beginEditorActionTransaction("editor-action", before)
+        setQuantizationProfile(profile)
+        setImportedPalettePresets(importedPresetRegistry)
+        setActivePresetButton(profile.id)
+        setPaletteTabsState((prev) => ({
+            ...prev,
+            activeTab: "presets",
+            presetsWorld: nextWorld,
+        }))
+        setAutoSwatches(nextAuto)
+        setSelectedSwatch(selectedPresetSwatch)
+        latestProjectStateRef.current = afterState
+        pushCommit(before, { afterState })
+    }
+
     function applyFixedPalettePreset(
         profile: FixedQuantizationProfile,
         preferredSwatch?: SwatchId | "transparent" | null,
@@ -10287,14 +10345,22 @@ function PixelEditorFramer({
             return
         }
 
-        const applicationColorIndex = findPaletteColorIndexByHex(
-            getFixedProfilePaletteForApplication(extension.profile),
-            colorUpper
-        )
-        const selectedPresetSwatch =
-            `auto-${applicationColorIndex ?? extension.colorIndex}` as SwatchId
-
         if (extension.added) {
+            const preparedExtension = prepareFixedPaletteSwatchExtension({
+                autoSwatches,
+                color: colorUpper,
+                makeSwatch: (id, color) => ({
+                    id,
+                    color,
+                    isTransparent: false,
+                    isUser: false,
+                }),
+            })
+            if (!preparedExtension) {
+                closeColorModalAfterCreate()
+                return
+            }
+
             const nextImportedPalettePresets =
                 upsertImportedPalettePreset(
                     importedPalettePresets,
@@ -10302,13 +10368,20 @@ function PixelEditorFramer({
                         source: "imported"
                     }
                 )
-            setImportedPalettePresets(nextImportedPalettePresets)
-            applyFixedPalettePreset(
+            applyFixedPaletteVocabularyExtension(
                 extension.profile,
-                selectedPresetSwatch,
-                nextImportedPalettePresets
+                latestProjectStateRef.current ?? makeProjectState(),
+                preparedExtension.selectedSwatch as SwatchId,
+                nextImportedPalettePresets,
+                preparedExtension.autoSwatches
             )
         } else {
+            const applicationColorIndex = findPaletteColorIndexByHex(
+                getFixedProfilePaletteForApplication(extension.profile),
+                colorUpper
+            )
+            const selectedPresetSwatch =
+                `auto-${applicationColorIndex ?? extension.colorIndex}` as SwatchId
             setSelectedSwatch(selectedPresetSwatch)
         }
 

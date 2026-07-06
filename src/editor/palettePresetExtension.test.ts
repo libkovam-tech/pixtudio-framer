@@ -8,6 +8,7 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
+    prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
@@ -320,6 +321,54 @@ describe("palette preset extension", () => {
             profile,
             autoSwatches,
             edited: false,
+        })
+    })
+
+    it("prepares fixed palette extension without changing existing swatch ids", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-2", color: "#E9D8A6", isTransparent: false },
+        ]
+
+        const result = prepareFixedPaletteSwatchExtension({
+            autoSwatches,
+            color: "#ff0000",
+            makeSwatch: (id, color) => ({
+                id,
+                color,
+                isTransparent: false,
+            }),
+        })
+
+        expect(result).toEqual({
+            autoSwatches: [
+                autoSwatches[0],
+                autoSwatches[1],
+                {
+                    id: "auto-3",
+                    color: "#FF0000",
+                    isTransparent: false,
+                },
+            ],
+            selectedSwatch: "auto-3",
+        })
+    })
+
+    it("selects an existing fixed palette swatch when extension color already exists", () => {
+        const autoSwatches = [{ id: "auto-1", color: "#E9D8A6" }]
+
+        expect(
+            prepareFixedPaletteSwatchExtension({
+                autoSwatches,
+                color: "#e9d8a6",
+                makeSwatch: (id, color) => ({
+                    id,
+                    color,
+                }),
+            })
+        ).toEqual({
+            autoSwatches,
+            selectedSwatch: "auto-1",
         })
     })
 

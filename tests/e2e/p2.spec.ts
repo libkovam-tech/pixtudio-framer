@@ -277,6 +277,40 @@ test("swatch edit repaint is visible on the canvas immediately", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("added preset swatch preserves edited preset swatch assignments", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.locator('button[title="SUNSET"]').click()
+    await settle(page)
+
+    const editedSwatch = page.locator('button[title="#9B2226"]').first()
+    await expect(editedSwatch).toBeVisible()
+    await editedSwatch.click({ button: "right" })
+    await expect(page.getByText("SWATCH EDIT")).toBeVisible()
+    await page.getByLabel("HEX input").fill("#FF0000")
+    await page.getByRole("button", { name: "OK" }).click()
+
+    const redPoint = await findEditorCanvasPixel(page, [255, 0, 0])
+    expect(redPoint).not.toBeNull()
+
+    await page.locator('button[title="Add swatch"]').first().click()
+    await page.getByLabel("HEX input").fill("#FFFFFF")
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+
+    await expect
+        .poll(() =>
+            readEditorCanvasPixel(page, redPoint?.x ?? 0, redPoint?.y ?? 0)
+        )
+        .toEqual([255, 0, 0, 255])
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("clicked palette swatch uses the active lifted selection style", async ({
     page,
 }) => {
@@ -879,6 +913,33 @@ async function readEditorCanvasPixel(page: Page, x: number, y: number) {
         },
         { x, y }
     )
+}
+
+async function findEditorCanvasPixel(
+    page: Page,
+    rgb: [number, number, number]
+): Promise<{ x: number; y: number } | null> {
+    return page.locator("canvas").first().evaluate((canvas, target) => {
+        const context = canvas.getContext("2d")
+        if (!context) return null
+
+        const { width, height } = canvas
+        const data = context.getImageData(0, 0, width, height).data
+        for (let y = 0; y < height; y += 1) {
+            for (let x = 0; x < width; x += 1) {
+                const index = (y * width + x) * 4
+                if (
+                    data[index] === target[0] &&
+                    data[index + 1] === target[1] &&
+                    data[index + 2] === target[2] &&
+                    data[index + 3] === 255
+                ) {
+                    return { x, y }
+                }
+            }
+        }
+        return null
+    }, rgb)
 }
 
 async function getVisibleSwatchTitle(page: Page, index: number) {

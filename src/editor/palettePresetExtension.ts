@@ -40,6 +40,13 @@ export type FixedPaletteSwatchEditResult<
     edited: boolean
 }
 
+export type FixedPaletteSwatchExtensionResult<
+    TSwatch extends FixedPaletteEditSwatchLike,
+> = {
+    autoSwatches: TSwatch[]
+    selectedSwatch: string
+}
+
 export type ImportedPalettePresetRecord<
     T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
 > = {
@@ -361,6 +368,46 @@ export function prepareFixedPaletteSwatchEdit<
                 : swatch
         ),
         edited: true,
+    }
+}
+
+function makeNextAutoSwatchId<TSwatch extends FixedPaletteEditSwatchLike>(
+    swatches: ReadonlyArray<TSwatch>
+): string {
+    let maxIndex = -1
+    for (const swatch of swatches) {
+        const match = /^auto-(\d+)$/.exec(swatch.id)
+        if (!match) continue
+        maxIndex = Math.max(maxIndex, Number(match[1]))
+    }
+    return `auto-${maxIndex + 1}`
+}
+
+export function prepareFixedPaletteSwatchExtension<
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    autoSwatches: ReadonlyArray<TSwatch>
+    color: string
+    makeSwatch: (id: string, color: string) => TSwatch
+}): FixedPaletteSwatchExtensionResult<TSwatch> | null {
+    const nextColor = normalizeImportedPaletteHex(input.color)
+    if (!nextColor) return null
+
+    const existingSwatch = input.autoSwatches.find(
+        (swatch) => normalizeImportedPaletteHex(swatch.color) === nextColor
+    )
+    if (existingSwatch) {
+        return {
+            autoSwatches: input.autoSwatches.slice(),
+            selectedSwatch: existingSwatch.id,
+        }
+    }
+
+    const id = makeNextAutoSwatchId(input.autoSwatches)
+    const swatch = input.makeSwatch(id, nextColor)
+    return {
+        autoSwatches: [...input.autoSwatches, swatch],
+        selectedSwatch: id,
     }
 }
 
