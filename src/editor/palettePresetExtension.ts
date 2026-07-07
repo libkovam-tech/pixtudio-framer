@@ -72,6 +72,32 @@ export type FixedPaletteVocabularyExtensionWorldResult<
     selectedSwatch: string
 }
 
+export type FixedPaletteVocabularyExtensionWorldInput<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+> = {
+    profile: TProfile
+    referenceSignature?: string | null
+    autoSwatches: ReadonlyArray<TSwatch>
+    candidateAutoSwatches?: ReadonlyArray<TSwatch> | null
+    candidateImagePixels?: TPixel[][] | null
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    selectedSwatch: string
+}
+
+export type FixedPaletteVocabularyExtensionApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+> = FixedPaletteVocabularyExtensionWorldResult<TProfile, TSwatch, TPixel> & {
+    autoSwatches: TSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+}
+
 export type ImportedPalettePresetRecord<
     T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
 > = {
@@ -97,6 +123,10 @@ function cloneSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>): TSwatch[] {
     return swatches.map((swatch) =>
         swatch && typeof swatch === "object" ? { ...swatch } : swatch
     )
+}
+
+function clonePixelGrid<TPixel>(pixels: TPixel[][]): TPixel[][] {
+    return pixels.map((row) => row.slice())
 }
 
 function assignNewVocabularySwatchCells<
@@ -483,16 +513,13 @@ export function prepareFixedPaletteVocabularyExtensionWorld<
     TProfile extends EditableFixedPaletteProfile,
     TSwatch extends FixedPaletteEditSwatchLike,
     TPixel extends string | null,
->(input: {
-    profile: TProfile
-    referenceSignature?: string | null
-    autoSwatches: ReadonlyArray<TSwatch>
-    candidateAutoSwatches?: ReadonlyArray<TSwatch> | null
-    candidateImagePixels?: TPixel[][] | null
-    imagePixels: TPixel[][]
-    overlayPixels: TPixel[][]
-    selectedSwatch: string
-}): FixedPaletteVocabularyExtensionWorldResult<TProfile, TSwatch, TPixel> {
+>(
+    input: FixedPaletteVocabularyExtensionWorldInput<
+        TProfile,
+        TSwatch,
+        TPixel
+    >
+): FixedPaletteVocabularyExtensionWorldResult<TProfile, TSwatch, TPixel> {
     const autoSwatches = cloneSwatches(input.autoSwatches)
     const imagePixels = assignNewVocabularySwatchCells({
         autoSwatches,
@@ -517,6 +544,32 @@ export function prepareFixedPaletteVocabularyExtensionWorld<
             autoSwatches,
         },
         selectedSwatch: input.selectedSwatch,
+    }
+}
+
+export function prepareFixedPaletteVocabularyExtensionApplication<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+>(
+    input: FixedPaletteVocabularyExtensionWorldInput<
+        TProfile,
+        TSwatch,
+        TPixel
+    >
+): FixedPaletteVocabularyExtensionApplicationResult<
+    TProfile,
+    TSwatch,
+    TPixel
+> {
+    const prepared = prepareFixedPaletteVocabularyExtensionWorld(input)
+
+    return {
+        ...prepared,
+        autoSwatches: cloneSwatches(prepared.world.autoSwatches),
+        imagePixels: clonePixelGrid(prepared.world.imagePixels),
+        overlayPixels: clonePixelGrid(prepared.world.overlayPixels),
+        canvasPixels: clonePixelGrid(prepared.world.canvasPixels),
     }
 }
 

@@ -9,6 +9,7 @@ import {
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
+    prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteVocabularyExtensionWorld,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
@@ -454,6 +455,35 @@ describe("palette preset extension", () => {
             ["auto-4", "auto-0"],
             ["auto-3", "auto-4"],
         ])
+    })
+
+    it("prepares vocabulary extension application grids from the same world", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#000000" },
+            { id: "auto-1", color: "#FFFFFF" },
+        ]
+        const result = prepareFixedPaletteVocabularyExtensionApplication({
+            profile: {
+                ...profile,
+                colors: ["#000000", "#FFFFFF"],
+            },
+            referenceSignature: "ref-2",
+            autoSwatches,
+            candidateAutoSwatches: autoSwatches,
+            candidateImagePixels: [["auto-1"]],
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            selectedSwatch: "auto-1",
+        })
+
+        expect(result.imagePixels).toEqual(result.world.imagePixels)
+        expect(result.overlayPixels).toEqual(result.world.overlayPixels)
+        expect(result.canvasPixels).toEqual(result.world.canvasPixels)
+        expect(result.autoSwatches).toEqual(result.world.autoSwatches)
+        expect(result.imagePixels).not.toBe(result.world.imagePixels)
+        expect(result.overlayPixels).not.toBe(result.world.overlayPixels)
+        expect(result.canvasPixels).not.toBe(result.world.canvasPixels)
+        expect(result.autoSwatches).not.toBe(result.world.autoSwatches)
     })
 
     it("prepares fixed palette swatch deletion with an active fallback selection", () => {

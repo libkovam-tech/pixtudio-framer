@@ -65,7 +65,7 @@ import {
     makeImportedPalettePresetName,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
-    prepareFixedPaletteVocabularyExtensionWorld,
+    prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteSwatchDelete,
     upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
@@ -5957,29 +5957,30 @@ function PixelEditorFramer({
             profile,
             referenceSnapshot
         )
-        const preparedWorld = prepareFixedPaletteVocabularyExtensionWorld({
-            profile,
-            referenceSignature: imageDataSampleSignature(referenceSnapshot),
-            autoSwatches: nextAuto,
-            candidateAutoSwatches: candidateWorld?.autoSwatches ?? null,
-            candidateImagePixels: candidateWorld?.imagePixels ?? null,
-            imagePixels,
-            overlayPixels,
-            selectedSwatch: selectedPresetSwatch,
-        })
-        const nextWorld: DerivedWorld<PixelValue> = preparedWorld.world
+        const preparedApplication =
+            prepareFixedPaletteVocabularyExtensionApplication({
+                profile,
+                referenceSignature: imageDataSampleSignature(referenceSnapshot),
+                autoSwatches: nextAuto,
+                candidateAutoSwatches: candidateWorld?.autoSwatches ?? null,
+                candidateImagePixels: candidateWorld?.imagePixels ?? null,
+                imagePixels,
+                overlayPixels,
+                selectedSwatch: selectedPresetSwatch,
+            })
+        const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
         const afterState: ProjectState = {
             gridSize,
             paletteCount,
             brushSize,
-            imagePixels: clonePixelsGrid(nextWorld.imagePixels),
-            overlayPixels: clonePixelsGrid(nextWorld.overlayPixels),
+            imagePixels: preparedApplication.imagePixels,
+            overlayPixels: preparedApplication.overlayPixels,
             showImage,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot,
-            autoSwatches: cloneSwatches(nextWorld.autoSwatches),
+            autoSwatches: preparedApplication.autoSwatches,
             userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: preparedWorld.selectedSwatch as SwatchId,
+            selectedSwatch: preparedApplication.selectedSwatch as SwatchId,
             quantizationProfile: cloneQuantizationProfileForHistory(profile),
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPresetRegistry),
@@ -5998,11 +5999,11 @@ function PixelEditorFramer({
             activeTab: "presets",
             presetsWorld: nextWorld,
         }))
-        setAutoSwatches(nextWorld.autoSwatches as Swatch[])
-        setImagePixels(clonePixelsGrid(nextWorld.imagePixels))
-        setOverlayPixels(clonePixelsGrid(nextWorld.overlayPixels))
-        setCanvasPixels(clonePixelsGrid(nextWorld.canvasPixels))
-        setSelectedSwatch(preparedWorld.selectedSwatch as SwatchId)
+        setAutoSwatches(preparedApplication.autoSwatches as Swatch[])
+        setImagePixels(preparedApplication.imagePixels)
+        setOverlayPixels(preparedApplication.overlayPixels)
+        setCanvasPixels(preparedApplication.canvasPixels)
+        setSelectedSwatch(preparedApplication.selectedSwatch as SwatchId)
         latestProjectStateRef.current = afterState
         pushCommit(before, { afterState })
     }
