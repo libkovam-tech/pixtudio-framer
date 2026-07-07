@@ -63,9 +63,8 @@ import {
     makeImportedPalettePresetName,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
-    prepareFixedPaletteSwatchEdit,
+    prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteVocabularyExtensionApplication,
-    upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
 import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
 import {
@@ -10136,7 +10135,8 @@ function PixelEditorFramer({
                 editingSwatchId.startsWith("auto-") &&
                 !pendingTransparent
             ) {
-                const preparedEdit = prepareFixedPaletteSwatchEdit({
+                const preparedEdit =
+                    prepareFixedPalettePresetSwatchEditApplication({
                     profile: makeEditableFixedPresetProfile(
                         quantizationProfile,
                         makeImportedPalettePresetId
@@ -10145,8 +10145,9 @@ function PixelEditorFramer({
                     displayedColor: currentSwatch.color,
                     nextColor: colorUpper,
                     autoSwatches,
+                    importedPalettePresets,
                 })
-                if (!preparedEdit.edited) {
+                if (preparedEdit.kind === "ignored") {
                     setIsColorModalOpen(false)
                     setEditingSwatchId(null)
                     setColorModalMode("edit")
@@ -10154,17 +10155,12 @@ function PixelEditorFramer({
                     return
                 }
 
-                const nextImportedPalettePresets =
-                    upsertImportedPalettePreset(
-                        importedPalettePresets,
-                        preparedEdit.profile
-                    )
-                setImportedPalettePresets(nextImportedPalettePresets)
+                setImportedPalettePresets(preparedEdit.importedPalettePresets)
                 applyFixedPaletteAsDrawingPalette(
                     preparedEdit.profile,
                     before,
                     editingSwatchId,
-                    nextImportedPalettePresets,
+                    preparedEdit.importedPalettePresets,
                     preparedEdit.autoSwatches
                 )
                 setIsColorModalOpen(false)

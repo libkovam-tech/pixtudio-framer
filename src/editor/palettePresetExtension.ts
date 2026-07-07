@@ -86,6 +86,21 @@ export type FixedPalettePresetSwatchDeleteApplicationResult<
           importedPalettePresets: TPreset[]
       }
 
+export type FixedPalettePresetSwatchEditApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+> =
+    | {
+          kind: "ignored"
+      }
+    | {
+          kind: "edited"
+          profile: TProfile
+          autoSwatches: TSwatch[]
+          importedPalettePresets: TPreset[]
+      }
+
 export type FixedPaletteVocabularyExtensionWorld<
     TProfile extends EditableFixedPaletteProfile,
     TSwatch extends FixedPaletteEditSwatchLike,
@@ -502,6 +517,42 @@ export function prepareFixedPaletteSwatchEdit<
                 : swatch
         ),
         edited: true,
+    }
+}
+
+export function prepareFixedPalettePresetSwatchEditApplication<
+    TProfile extends EditableFixedPaletteProfile & { source: "imported" },
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    profile: TProfile
+    swatchId: string
+    displayedColor: string
+    nextColor: string
+    autoSwatches: ReadonlyArray<TSwatch>
+    importedPalettePresets: ReadonlyArray<TPreset>
+}): FixedPalettePresetSwatchEditApplicationResult<
+    TProfile,
+    TPreset,
+    TSwatch
+> {
+    const preparedEdit = prepareFixedPaletteSwatchEdit({
+        profile: input.profile,
+        swatchId: input.swatchId,
+        displayedColor: input.displayedColor,
+        nextColor: input.nextColor,
+        autoSwatches: input.autoSwatches,
+    })
+    if (!preparedEdit.edited) return { kind: "ignored" }
+
+    return {
+        kind: "edited",
+        profile: preparedEdit.profile,
+        autoSwatches: preparedEdit.autoSwatches,
+        importedPalettePresets: upsertImportedPalettePreset(
+            input.importedPalettePresets,
+            preparedEdit.profile
+        ),
     }
 }
 

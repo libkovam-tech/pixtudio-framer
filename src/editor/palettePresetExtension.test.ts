@@ -9,6 +9,7 @@ import {
     makeImportedPalettePresetName,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
+    prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
@@ -326,6 +327,60 @@ describe("palette preset extension", () => {
             autoSwatches,
             edited: false,
         })
+    })
+
+    it("prepares fixed preset swatch edit applications with registry updates", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+        ]
+        const result = prepareFixedPalettePresetSwatchEditApplication({
+            profile,
+            swatchId: "auto-1",
+            displayedColor: "#E9D8A6",
+            nextColor: "#FFFFFF",
+            autoSwatches,
+            importedPalettePresets: [],
+        })
+
+        expect(result).toEqual({
+            kind: "edited",
+            profile: {
+                ...profile,
+                colors: ["#001219", "#FFFFFF"],
+            },
+            autoSwatches: [
+                autoSwatches[0],
+                {
+                    id: "auto-1",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                },
+            ],
+            importedPalettePresets: [
+                {
+                    id: profile.id,
+                    name: profile.name,
+                    profile: {
+                        ...profile,
+                        colors: ["#001219", "#FFFFFF"],
+                    },
+                },
+            ],
+        })
+    })
+
+    it("ignores fixed preset swatch edit applications for invalid colors", () => {
+        expect(
+            prepareFixedPalettePresetSwatchEditApplication({
+                profile,
+                swatchId: "auto-1",
+                displayedColor: "#E9D8A6",
+                nextColor: "white",
+                autoSwatches: [{ id: "auto-1", color: "#E9D8A6" }],
+                importedPalettePresets: [],
+            })
+        ).toEqual({ kind: "ignored" })
     })
 
     it("prepares fixed palette extension without changing existing swatch ids", () => {
