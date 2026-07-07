@@ -57,14 +57,12 @@ import {
 } from "./saveLoadResult.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
-    extendFixedPaletteProfile,
-    findPaletteColorIndexByHex,
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareFixedPalettePresetSwatchCreate,
     prepareFixedPaletteSwatchEdit,
-    prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteSwatchDelete,
     upsertImportedPalettePreset,
@@ -10336,53 +10334,33 @@ function PixelEditorFramer({
                 quantizationProfile,
                 makeImportedPalettePresetId
             )
-        const extension = extendFixedPaletteProfile(
-            editableProfile,
-            colorUpper
-        )
-        if (!extension) {
+        const preparedCreate = prepareFixedPalettePresetSwatchCreate({
+            profile: editableProfile,
+            color: colorUpper,
+            autoSwatches,
+            importedPalettePresets,
+            makeSwatch: (id, color) => ({
+                id,
+                color,
+                isTransparent: false,
+                isUser: false,
+            }),
+        })
+        if (preparedCreate.kind === "ignored") {
             closeColorModalAfterCreate()
             return
         }
 
-        if (extension.added) {
-            const preparedExtension = prepareFixedPaletteSwatchExtension({
-                autoSwatches,
-                color: colorUpper,
-                makeSwatch: (id, color) => ({
-                    id,
-                    color,
-                    isTransparent: false,
-                    isUser: false,
-                }),
-            })
-            if (!preparedExtension) {
-                closeColorModalAfterCreate()
-                return
-            }
-
-            const nextImportedPalettePresets =
-                upsertImportedPalettePreset(
-                    importedPalettePresets,
-                    extension.profile as FixedQuantizationProfile & {
-                        source: "imported"
-                    }
-                )
+        if (preparedCreate.kind === "added") {
             applyFixedPaletteVocabularyExtension(
-                extension.profile,
+                preparedCreate.profile,
                 latestProjectStateRef.current ?? makeProjectState(),
-                preparedExtension.selectedSwatch as SwatchId,
-                nextImportedPalettePresets,
-                preparedExtension.autoSwatches
+                preparedCreate.selectedSwatch as SwatchId,
+                preparedCreate.importedPalettePresets,
+                preparedCreate.autoSwatches
             )
         } else {
-            const applicationColorIndex = findPaletteColorIndexByHex(
-                getFixedProfilePaletteForApplication(extension.profile),
-                colorUpper
-            )
-            const selectedPresetSwatch =
-                `auto-${applicationColorIndex ?? extension.colorIndex}` as SwatchId
-            setSelectedSwatch(selectedPresetSwatch)
+            setSelectedSwatch(preparedCreate.selectedSwatch as SwatchId)
         }
 
         closeColorModalAfterCreate()

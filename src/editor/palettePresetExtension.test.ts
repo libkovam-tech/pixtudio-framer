@@ -7,6 +7,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareFixedPalettePresetSwatchCreate,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
@@ -371,6 +372,79 @@ describe("palette preset extension", () => {
         ).toEqual({
             autoSwatches,
             selectedSwatch: "auto-1",
+        })
+    })
+
+    it("prepares added imported preset swatches with the updated preset registry", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219", isTransparent: false },
+        ]
+        const result = prepareFixedPalettePresetSwatchCreate({
+            profile,
+            color: "#FFFFFF",
+            autoSwatches,
+            importedPalettePresets: [],
+            makeSwatch: (id, color) => ({
+                id,
+                color,
+                isTransparent: false,
+            }),
+        })
+
+        expect(result).toEqual({
+            kind: "added",
+            profile: {
+                ...profile,
+                colors: ["#001219", "#E9D8A6", "#FFFFFF"],
+            },
+            selectedSwatch: "auto-1",
+            autoSwatches: [
+                autoSwatches[0],
+                {
+                    id: "auto-1",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                },
+            ],
+            importedPalettePresets: [
+                {
+                    id: profile.id,
+                    name: profile.name,
+                    profile: {
+                        ...profile,
+                        colors: ["#001219", "#E9D8A6", "#FFFFFF"],
+                    },
+                },
+            ],
+        })
+    })
+
+    it("prepares existing imported preset swatch selection by application order", () => {
+        const result = prepareFixedPalettePresetSwatchCreate({
+            profile: {
+                ...profile,
+                colors: ["#E9D8A6", "#001219"],
+            },
+            color: "#001219",
+            autoSwatches: [
+                { id: "auto-0", color: "#E9D8A6" },
+                { id: "auto-1", color: "#001219" },
+            ],
+            importedPalettePresets: [],
+            makeSwatch: (id, color) => ({
+                id,
+                color,
+            }),
+        })
+
+        expect(result).toEqual({
+            kind: "existing",
+            profile: {
+                ...profile,
+                colors: ["#E9D8A6", "#001219"],
+            },
+            selectedSwatch: "auto-1",
+            importedPalettePresets: [],
         })
     })
 

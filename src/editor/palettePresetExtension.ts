@@ -50,6 +50,28 @@ export type FixedPaletteSwatchExtensionResult<
     selectedSwatch: string
 }
 
+export type FixedPalettePresetSwatchCreateResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+> =
+    | {
+          kind: "ignored"
+      }
+    | {
+          kind: "existing"
+          profile: TProfile
+          selectedSwatch: string
+          importedPalettePresets: TPreset[]
+      }
+    | {
+          kind: "added"
+          profile: TProfile
+          selectedSwatch: string
+          autoSwatches: TSwatch[]
+          importedPalettePresets: TPreset[]
+      }
+
 export type FixedPaletteVocabularyExtensionWorld<
     TProfile extends EditableFixedPaletteProfile,
     TSwatch extends FixedPaletteEditSwatchLike,
@@ -506,6 +528,54 @@ export function prepareFixedPaletteSwatchExtension<
     return {
         autoSwatches: [...input.autoSwatches, swatch],
         selectedSwatch: id,
+    }
+}
+
+export function prepareFixedPalettePresetSwatchCreate<
+    TProfile extends EditableFixedPaletteProfile & { source: "imported" },
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    profile: TProfile
+    color: string
+    autoSwatches: ReadonlyArray<TSwatch>
+    importedPalettePresets: ReadonlyArray<TPreset>
+    makeSwatch: (id: string, color: string) => TSwatch
+}): FixedPalettePresetSwatchCreateResult<TProfile, TPreset, TSwatch> {
+    const extension = extendFixedPaletteProfile(input.profile, input.color)
+    if (!extension) return { kind: "ignored" }
+
+    if (!extension.added) {
+        const applicationColorIndex = findPaletteColorIndexByHex(
+            getFixedProfilePaletteForApplication(extension.profile),
+            input.color
+        )
+        return {
+            kind: "existing",
+            profile: extension.profile,
+            selectedSwatch: `auto-${
+                applicationColorIndex ?? extension.colorIndex
+            }`,
+            importedPalettePresets: input.importedPalettePresets.slice(),
+        }
+    }
+
+    const preparedExtension = prepareFixedPaletteSwatchExtension({
+        autoSwatches: input.autoSwatches,
+        color: input.color,
+        makeSwatch: input.makeSwatch,
+    })
+    if (!preparedExtension) return { kind: "ignored" }
+
+    return {
+        kind: "added",
+        profile: extension.profile,
+        selectedSwatch: preparedExtension.selectedSwatch,
+        autoSwatches: preparedExtension.autoSwatches,
+        importedPalettePresets: upsertImportedPalettePreset(
+            input.importedPalettePresets,
+            extension.profile
+        ),
     }
 }
 
