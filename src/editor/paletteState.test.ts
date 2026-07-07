@@ -6,6 +6,7 @@ import {
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
     prepareAutoOverridesForSwatchEdit,
+    preparePaletteSwatchEditApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
@@ -545,6 +546,75 @@ describe("palette state", () => {
             "auto-1": { hex: "#FF0000" },
         })
         expect(result.selectedSwatch).toBe("auto-1")
+    })
+
+    it("prepares swatch edit applications with updated swatches and overrides", () => {
+        const result = preparePaletteSwatchEditApplication({
+            swatchId: "auto-0",
+            newColorUpper: "#AABBCC",
+            makeTransparent: false,
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            autoSwatches: [{ id: "auto-0", color: "#112233" }],
+            userSwatches: [{ id: "user-0", color: "#445566" }],
+            selectedSwatch: "auto-0",
+            autoOverrides: {},
+        })
+
+        expect(result).toEqual({
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#AABBCC",
+                    isTransparent: false,
+                },
+            ],
+            userSwatches: [{ id: "user-0", color: "#445566" }],
+            selectedSwatch: "auto-0",
+            autoOverrides: {
+                "auto-0": { hex: "#AABBCC", isTransparent: false },
+            },
+        })
+    })
+
+    it("prepares swatch edit applications with duplicate collapse remaps", () => {
+        const result = preparePaletteSwatchEditApplication({
+            swatchId: "auto-2",
+            newColorUpper: "#FF0000",
+            makeTransparent: false,
+            imagePixels: [["auto-2"]],
+            overlayPixels: [["auto-2"]],
+            autoSwatches: [
+                { id: "auto-1", color: "#FF0000" },
+                { id: "auto-2", color: "#00FF00" },
+            ],
+            userSwatches: [{ id: "user-0", color: "#FF0000" }],
+            selectedSwatch: "auto-2",
+            autoOverrides: {
+                "auto-2": { hex: "#00FF00", isTransparent: false },
+            },
+            pruneAutoOverrides: (autoSwatches, overrides) => {
+                const keep = new Set(autoSwatches.map((swatch) => swatch.id))
+                return Object.fromEntries(
+                    Object.entries(overrides).filter(([id]) => keep.has(id))
+                )
+            },
+        })
+
+        expect(result.imagePixels).toEqual([["auto-1"]])
+        expect(result.overlayPixels).toEqual([["auto-1"]])
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-1",
+        ])
+        expect(result.userSwatches.map((swatch) => swatch.id)).toEqual([
+            "user-0",
+        ])
+        expect(result.selectedSwatch).toBe("auto-1")
+        expect(result.autoOverrides).toEqual({
+            "auto-1": { hex: "#FF0000", isTransparent: false },
+        })
     })
 
     it("removes only pixels owned by a deleted paint swatch", () => {

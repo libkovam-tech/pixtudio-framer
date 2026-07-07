@@ -71,10 +71,9 @@ import {
     appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
-    prepareAutoOverridesForSwatchEdit,
+    preparePaletteSwatchEditApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
-    prepareSwatchesForEdit,
     prepareSwatchDelete,
     resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
@@ -3204,8 +3203,8 @@ function PixelEditorFramer({
     onCaptureSmartObjectCommittedStateForSave?: () => SmartObjectCommittedState | null
 
     // load-side bridge:
-    // editor НЕ имеет права финально писать loaded ref напрямую в себя.
-    // Он передаёт restore в root Smart Object gateway.
+    // The editor must not finalize loaded reference snapshots directly into itself.
+    // It delegates restore to the root Smart Object gateway.
     onRestoreSmartObjectFromLoad?: (payload: {
         base: ImageData | null
         adjustments: SmartReferenceAdjustments
@@ -3217,27 +3216,27 @@ function PixelEditorFramer({
     onRequestOpenProject?: () => void
     onRequestStartScreen?: () => void
 
-    // ✅ NEW: project-open bridge from ROOT
+    // NEW: project-open bridge from ROOT
     pendingProjectFile?: File | null
     onPendingProjectFileConsumed?: () => void
     onOpenSmartReferenceTest?: () => void
 
     // H3:
-    // Root получает bridge для capture/apply editor committed-state.
+    // Root receives the bridge for capturing/applying editor committed state.
     onEditorCommittedStateBridgeReady?: (
         bridge: EditorCommittedStateBridge | null
     ) => void
 
     // H3:
-    // Editor сообщает Root, что committed reference уже доехал
-    // и editor-domain теперь находится в новом committed-state.
+    // The editor tells Root when the committed reference has reached the editor
+    // and the editor domain is now in the new committed state.
     onEditorCommittedStateSettled?: (
         payload: EditorCommittedStateSettledPayload
     ) => void
 
     // Step 0:
-    // editor не пишет root history напрямую.
-    // Он работает через единый user-action protocol.
+    // The editor does not write root history directly.
+    // It works through the unified user-action protocol.
     onBeginUserAction?: (input: UserActionBeginInput) => void
     onFinalizePendingUserAction?: (input?: UserActionFinalizeInput) => void
     onCommitUserAction?: (input: UserActionCommitInput) => void
@@ -3245,15 +3244,15 @@ function PixelEditorFramer({
 
     // H5:
     // S2:
-    // user-facing Undo/Redo приходят из Root History Engine.
-    // Если они переданы, editor должен считать их главными.
+    // User-facing Undo/Redo comes from the Root History Engine.
+    // When provided, the editor must treat it as authoritative.
     onCoordinatedUndo?: () => void
     onCoordinatedRedo?: () => void
     coordinatedCanUndo?: boolean
     coordinatedCanRedo?: boolean
     onEditorCanvasCssSizeChange?: (size: EditorCanvasCssSize | null) => void
 
-    // ✅ NEW: unified import-error bridge (optional)
+    // NEW: unified import-error bridge (optional)
     onShowImportError?: (message: string) => void
     onShowAppError?: (payload: { title: string; message: string }) => void
 }) {
@@ -3309,7 +3308,7 @@ function PixelEditorFramer({
         hPx: number
     } | null>(null)
 
-    // внешний scale от FitToViewport (viewport → content)
+    // External FitToViewport scale (viewport -> content)
     const fitScaleRef = React.useRef<number>(1)
 
     // ------------------- USER ACTION QUEUE (S2) -------------------
@@ -3317,7 +3316,7 @@ function PixelEditorFramer({
     type TxnKind = "gridCommit" | "importLoad" | "save"
     type TxnAction = { kind: TxnKind; run: () => void | Promise<void> }
 
-    // чтобы не запускать drain ре-ентерабельно (и не плодить параллельные сливы)
+    // Prevent re-entrant drain scheduling and parallel drain loops.
     const drainScheduledRef = React.useRef(false)
 
     function isPromiseLike(x: any): x is Promise<any> {
@@ -3340,7 +3339,7 @@ function PixelEditorFramer({
     function enqueueTxn(kind: TxnKind, run: () => void | Promise<void>) {
         const action: TxnAction = { kind, run }
 
-        // если занято (stream/txn) — просто ставим в очередь
+        // If busy (stream/txn), queue the action.
         if (busyKindRef.current !== null) {
             txnQueueRef.current.push(action)
             return
@@ -3350,7 +3349,7 @@ function PixelEditorFramer({
         try {
             const r = run()
 
-            // если async — держим lock до завершения, потом слив
+            // Async actions keep the lock until completion, then drain.
             if (isPromiseLike(r)) {
                 r.finally(() => {
                     if (busyKindRef.current === "txn")
@@ -3366,12 +3365,12 @@ function PixelEditorFramer({
         }
     }
 
-    // drainAfterUnlock: строгий порядок “TXN очередь → pending фон”
+    // drainAfterUnlock: strict order: TXN queue -> pending background work.
     function drainAfterUnlock() {
-        // если прямо сейчас кто-то владеет курсором — выкачивать нельзя
+        // Do not drain while another owner holds the cursor.
         if (busyKindRef.current !== null) return
 
-        // 1) выкачиваем txn-очередь строго последовательно
+        // 1) Drain the txn queue strictly sequentially.
         while (busyKindRef.current === null && txnQueueRef.current.length > 0) {
             const next = txnQueueRef.current.shift()!
             busyKindRef.current = "txn"
@@ -3384,26 +3383,26 @@ function PixelEditorFramer({
                             busyKindRef.current = null
                         scheduleDrainAfterUnlock()
                     })
-                    return // продолжим после завершения async txn
+                    return // Continue after the async txn completes.
                 }
             } finally {
                 if (busyKindRef.current === "txn") busyKindRef.current = null
             }
         }
 
-        // 2) когда TXN пусто — pending фон
+        // 2) When TXN is empty, run pending background work.
         applyPendingAfterUnlock()
     }
 
-    // В S3 эти функции могут быть no-op, чтобы НЕ менять поведение MVP.
-    // Подключение к реальным “тяжёлым” операциям — следующим шагом, когда начнём ставить pendingRef.* = true.
+    // In S3 these functions may stay no-op to preserve MVP behavior.
+    // Hook them to real heavy operations later, once pendingRef flags are set.
 
     function applyPendingGridCommit() {
-        // no-op (или в будущем: commitGridResizeIfNeeded через enqueueTxn)
+        // no-op (future path: commitGridResizeIfNeeded through enqueueTxn)
     }
 
     function applyPendingRepixelize() {
-        // безопасный “пинок”: repixelizeEffect сам решит что делать, но только в idle
+        // Safe nudge: repixelizeEffect decides what to do, but only while idle.
         setRepixelizeKick((x) => x + 1)
     }
 
@@ -3420,7 +3419,7 @@ function PixelEditorFramer({
             return
         }
 
-        // Важно: используем те же autoEffective, что реально в UI/логике
+        // Important: use the same effective auto palette as the UI/domain logic.
         const autoEffective = applyAutoOverrides(autoSwatches, autoOverrides)
 
         const overlayNext = requantizePaintRefsToOverlayPixels({
@@ -3457,9 +3456,9 @@ function PixelEditorFramer({
         )
     }
 
-    // applyPendingAfterUnlock: применяется только когда idle и TXN-очередь пуста
+    // applyPendingAfterUnlock: runs only while idle and after the TXN queue is empty.
     function applyPendingAfterUnlock(): boolean {
-        // safety: этот хелпер должен жить только в idle
+        // Safety: this helper must run only while idle.
         if (busyKindRef.current !== null) return false
         if (txnQueueRef.current.length > 0) return false
 
@@ -3474,7 +3473,7 @@ function PixelEditorFramer({
         p.overlayRequant = false
         p.gridPolicyBlankCheck = false
 
-        // Детерминированный порядок применения pending (фиксируем контракт):
+        // Deterministic pending application order:
         // 1) gridCommit
         // 2) repixelize
         // 3) overlayRequant
@@ -4325,10 +4324,10 @@ function PixelEditorFramer({
     }) {
         const { overlay, auto, user, autoOverrides, reason } = params
 
-        // используем те же “effective auto”, которые реально в UI/логике
+        // Use the same effective auto palette as the UI/domain logic.
         const autoEffective = applyAutoOverrides(auto, autoOverrides)
 
-        // если overlay пустой — эталон должен быть null (иначе он “воскресит прошлое”)
+        // If overlay is empty, the reference must be null or it will resurrect old strokes.
         const nn = countNonNull(overlay)
         if (nn === 0) {
             clearPaintRefs()
@@ -4680,7 +4679,7 @@ function PixelEditorFramer({
             if ((sw as any)?.isTransparent) return
             const hx = toHexUpperOrNull(sw.color)
             if (!hx) return
-            // сохраняем порядок, но схлопываем дубликаты по hex
+            // Preserve order while collapsing duplicate hex colors.
             if (!idByHex.has(hx)) {
                 paletteHex.push(hx)
                 idByHex.set(hx, sw.id)
@@ -4704,13 +4703,13 @@ function PixelEditorFramer({
         // 1) pixelize snapshot -> rgb-grid
         const snapPixels = pixelizeFromImageDominant(snapshot, gridSize, 16)
 
-        // 2) fixed palette = baseAuto + userSwatches (без прозрачных)
+        // 2) fixed palette = baseAuto + userSwatches, excluding transparent swatches
         const { paletteHex, idByHex } = buildFixedPaletteHexAndIdMap({
             baseAuto,
             user,
         })
 
-        // safety: если палитра вдруг пустая — возвращаем прозрачный overlay
+        // Safety: if the palette is somehow empty, return a transparent overlay.
         if (paletteHex.length === 0) {
             return createEmptyPixels(gridSize)
         }
@@ -4718,7 +4717,7 @@ function PixelEditorFramer({
         // 3) quantize rgb-grid to fixed palette
         const q = quantizeToFixedPalette(snapPixels, paletteHex)
 
-        // 4) map rgb -> SwatchId (через hex), null остаётся null
+        // 4) map rgb -> SwatchId through hex; null remains null
         const out: PixelValue[][] = Array.from({ length: gridSize }, () =>
             Array.from({ length: gridSize }, () => null as PixelValue)
         )
@@ -4801,12 +4800,12 @@ function PixelEditorFramer({
         imagePixelsNext: PixelValue[][]
         nextAuto: Swatch[]
         nextUser: Swatch[]
-        // snapshotMode: если есть snapshot — пересчитываем overlay из snapshot
-        // иначе — АВАРИЙНЫЙ legacy resize (строго с warn)
+        // snapshotMode: when a snapshot exists, recalculate overlay from it.
+        // Otherwise use the emergency legacy resize path and warn.
         hasSnap: boolean
         snapshot: ImageData | null
 
-        // кто вызвал (чтобы ловить “как мы сюда попали”)
+        // Caller reason for tracing how this path was reached.
         reason: string
     }) {
         const {
@@ -4860,7 +4859,7 @@ function PixelEditorFramer({
             if (overlayLegacyFallbackWarnKeyRef.current !== key) {
                 overlayLegacyFallbackWarnKeyRef.current = key
 
-                // ВАЖНО: warn НЕ под ENABLE_PREP_LOGS — это не должно быть “тихо”
+                // This warning is not gated by ENABLE_PREP_LOGS; it must not be silent.
                 if (ENABLE_OVERLAY_FALLBACK_LOGS) {
                     console.warn(
                         "[OVERLAY][LEGACY_RESIZE_FALLBACK]",
@@ -4901,11 +4900,11 @@ function PixelEditorFramer({
 
     const ENABLE_OVERLAY_LEGACY_RESIZE_FALLBACK = false
 
-    // warn-once (чтобы не спамить, но не дать “тихого” поведения)
+    // Warn once to avoid spam while still making fallback usage visible.
     const overlayLegacyFallbackWarnKeyRef = React.useRef<string | null>(null)
 
     // =====================
-    // B1 — единый холст (пока “мягкая миграция”: source-of-truth для РЕНДЕРА)
+    // B1 - unified canvas, still in soft migration: source of truth for rendering.
     // =====================
     const [canvasPixels, setCanvasPixels] = React.useState<PixelValue[][]>(() =>
         createEmptyPixels(gridSize)
@@ -8579,30 +8578,30 @@ function PixelEditorFramer({
     React.useEffect(() => {
         const routeKind = initialImageRouteKind ?? "import"
 
-        // Blank import тоже является полноценным import-entry.
-        // А load с null-snapshot всё равно обязан дойти до своей cleanup-ветки.
-        // Поэтому ранний return здесь запрещён.
+        // Blank import is also a real import entry.
+        // A load with a null snapshot must still reach its cleanup branch.
+        // Therefore an early return is forbidden here.
         if (!initialImageData && routeKind == null) return
 
-        // FIX: если раньше был pending blank-check, он не должен доезжать
-        // ни в import, ни в SmartObject Apply.
+        // If a blank-check was pending earlier, it must not reach
+        // either import or SmartObject Apply.
         pendingBlankCheckReasonRef.current = null
 
         if (routeKind === "load") {
-            // LOAD уже восстановил project state отдельно.
-            // Он НЕ имеет права входить в import-style pending/history plumbing.
+            // LOAD has already restored project state separately.
+            // It must not enter import-style pending/history plumbing.
             pendingImportBeforeRef.current = null
 
-            // Но Root всё равно должен получить settled-сигнал,
-            // когда committed reference уже доедет до editor.
+            // Root must still receive the settled signal once the committed
+            // reference reaches the editor.
             pendingCommittedStateSettledKindRef.current = "load"
         } else {
             const before = makeProjectState()
             pendingImportBeforeRef.current = before
 
             // H3:
-            // Root позже должен получить editor committed-state
-            // уже ПОСЛЕ того, как этот reference реально доедет в editor pipeline.
+            // Root must receive editor committed state later, after this
+            // reference has actually reached the editor pipeline.
             pendingCommittedStateSettledKindRef.current = routeKind
         }
 
@@ -8636,9 +8635,9 @@ function PixelEditorFramer({
             setSelectedSwatch("auto-0")
             resetPalettePresetsForNewImport()
 
-            // Blank import = новая пустая сессия.
+            // Blank import = a new empty session.
             if (!initialImageData) {
-                // blank import не имеет права наследовать load-only guard'ы
+                // Blank import must not inherit load-only guards.
                 postLoadCheckNonceRef.current = 0
                 silentLoadHydrationRef.current = false
 
@@ -8647,15 +8646,15 @@ function PixelEditorFramer({
                 setBrushSize(DEFAULT_BRUSH_SIZE)
                 setGridSuppressed(false, "blank-import")
 
-                // новый import-cycle должен гарантированно иметь rebuild
+                // The new import cycle must always trigger a rebuild.
                 setRepixelizeKick((x) => x + 1)
 
                 return
             }
 
-            // Общая часть: editor получает новый committed reference.
-            // Import — это новая import-сессия, а не продолжение post-load hydration.
-            // Поэтому все load-only guards обязаны быть погашены ДО нового ref-driven rebuild.
+            // Shared path: the editor receives a new committed reference.
+            // Import is a new import session, not a continuation of post-load hydration.
+            // Therefore all load-only guards must be cleared before the next ref-driven rebuild.
             silentLoadHydrationRef.current = false
             postLoadCheckNonceRef.current = 0
             setOriginalImageData(initialImageData)
@@ -8671,8 +8670,8 @@ function PixelEditorFramer({
 
             setGridSuppressed(true, "import")
 
-            // Очищаем overlay и его эталон, чтобы старые штрихи
-            // не переехали на новое импортированное изображение.
+            // Clear overlay and its reference so old strokes do not move
+            // onto the newly imported image.
             clearPaintRefs()
             overlayDirtyRef.current = false
             paintSnapshotNonceRef.current = 0
@@ -8682,30 +8681,30 @@ function PixelEditorFramer({
 
             setOverlayPixels(createEmptyPixels(nextGridSize))
 
-            // Страховка: новый import обязан гарантированно запустить rebuild,
-            // даже если перед ним была load-hydration цепочка.
+            // Safety: a new import must always trigger rebuild, even after
+            // a load-hydration chain.
             setRepixelizeKick((x) => x + 1)
 
             return
         }
 
         if (routeKind === "load") {
-            // LOAD уже восстановил ProjectState отдельно.
-            // Здесь editor получает только committed reference snapshot,
-            // без import-side reset'ов и без визуального rebuild из ref.
+            // LOAD has already restored ProjectState separately.
+            // Here the editor only receives the committed reference snapshot,
+            // without import-side resets and without a visual rebuild from ref.
             resetEditorInteractionStateForNewImport()
 
             if (initialImageData) {
-                // обычный load с reference:
-                // допускаем один silent hydration pass
+                // Regular load with reference:
+                // allow one silent hydration pass.
                 silentLoadHydrationRef.current = true
 
                 setOriginalImageData(initialImageData)
                 setShowImage(true)
                 setHasImportContext(true)
             } else {
-                // load без reference:
-                // никаких load-only guard'ов оставаться не должно
+                // Load without reference:
+                // no load-only guards should remain.
                 postLoadCheckNonceRef.current = 0
                 silentLoadHydrationRef.current = false
 
@@ -8718,9 +8717,9 @@ function PixelEditorFramer({
             return
         }
 
-        // SmartObject Apply = НЕ импорт.
-        // Слой штрихов и его эталон обязаны сохраниться.
-        // Никаких import-side effects здесь не допускается:
+        // SmartObject Apply is not an import.
+        // The stroke layer and its reference must be preserved.
+        // No import-side effects are allowed here:
         // - no setGridSuppressed(true, "import")
         // - no setAutoOverrides({})
         // - no setPaintRefImageData(null)
@@ -8728,7 +8727,7 @@ function PixelEditorFramer({
 
         if (!initialImageData) return
 
-        // Общая часть: editor получает новый committed reference.
+        // Shared path: the editor receives a new committed reference.
         setOriginalImageData(initialImageData)
         setShowImage(true)
         setHasImportContext(true)
@@ -8745,8 +8744,8 @@ function PixelEditorFramer({
         const routeKind = pendingCommittedStateSettledKindRef.current
         if (!routeKind) return
 
-        // Пока import/smart-object rebuild ещё не завершён,
-        // committed-state наружу отдавать нельзя.
+        // While import/smart-object rebuild has not finished yet,
+        // committed state must not be published outward.
         if (pendingImportBeforeRef.current) return
 
         pendingCommittedStateSettledKindRef.current = null
@@ -8950,14 +8949,14 @@ function PixelEditorFramer({
                 setImagePixels(indexed)
 
                 // ✅ legacy-mode: canvasPixels НЕ трогаем здесь.
-                // Витрину синхронизирует B1-SYNC: canvasPixels = composeVisualGrid().
+                // B1-SYNC updates the display: canvasPixels = composeVisualGrid().
 
                 const nextAutoEffective = applyAutoOverrides(
                     nextAuto,
                     autoOverrides
                 )
 
-                // ✅ NEW: collapse duplicates + remap BOTH base+overlay,
+                // Collapse duplicates and remap BOTH base+overlay,
                 // so "any method" truly means any (including repixelize).
                 const collapsed = collapseDuplicateSwatchesAndRemap({
                     imagePixels: indexed,
@@ -8982,7 +8981,7 @@ function PixelEditorFramer({
 
                 setAutoOverrides(collapsed.autoOverrides)
 
-                // ✅ важно: если collapse срезал auto-индексы, валидируем selection по НОВОЙ длине
+                // If collapse trimmed auto indexes, validate selection against the new length.
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setSelectedSwatch (with-original) [after collapse]",
                 })
@@ -9000,7 +8999,7 @@ function PixelEditorFramer({
                     return prev
                 })
 
-                // ✅ NEW: overlay тоже обязан быть ремапнут, иначе он может ссылаться на "удалённый" свотч
+                // Overlay must also be remapped; otherwise it may reference a removed swatch.
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setSelectedSwatch (with-original)",
                 })
@@ -9064,7 +9063,7 @@ function PixelEditorFramer({
                     autoOverrides
                 )
 
-                // ✅ NEW: collapse + remap base+overlay
+                // Collapse and remap base+overlay.
                 const collapsed = collapseDuplicateSwatchesAndRemap({
                     imagePixels: imageNext,
                     overlayPixels,
@@ -9882,6 +9881,13 @@ function PixelEditorFramer({
         setIsColorModalOpen(true)
     }
 
+    function getAutoSwatchIndex(swatchId: SwatchId): number | null {
+        const match = /^auto-(\d+)$/.exec(String(swatchId))
+        if (!match) return null
+        const index = Number(match[1])
+        return Number.isInteger(index) ? index : null
+    }
+
     function collapseDuplicateSwatchesAndRemap(input: {
         imagePixels: PixelValue[][]
         overlayPixels: PixelValue[][]
@@ -9901,13 +9907,6 @@ function PixelEditorFramer({
             ...input,
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
         })
-    }
-
-    function getAutoSwatchIndex(swatchId: SwatchId): number | null {
-        const match = /^auto-(\d+)$/.exec(String(swatchId))
-        if (!match) return null
-        const index = Number(match[1])
-        return Number.isInteger(index) ? index : null
     }
 
     function handleDeleteSwatchFromModal() {
@@ -10081,9 +10080,9 @@ function PixelEditorFramer({
             return
         }
 
-        // 1) вычисляем “истинный” цвет для применения:
-        //    - если прозрачный: цвет неважен, но оставим pendingColor
-        //    - иначе: если hexDraft валиден — берём его (даже если blur не случился)
+        // 1) Resolve the true color to apply:
+        //    - transparent: the color is irrelevant, but keep pendingColor
+        //    - otherwise: use valid hexDraft even if blur has not fired
         let colorUpper = (pendingColor || "#FF0000").toUpperCase()
 
         if (!pendingTransparent) {
@@ -10093,7 +10092,7 @@ function PixelEditorFramer({
             }
         }
 
-        // 2) готовим next swatches (локально, синхронно)
+        // 2) Prepare next swatches locally and synchronously.
         if (colorModalMode === "create-user") {
             createUserSwatchFromModal(colorUpper, !!pendingTransparent)
             return
@@ -10171,42 +10170,27 @@ function PixelEditorFramer({
             }
         }
 
-        const { nextAuto, nextUser } = prepareSwatchesForEdit({
+        const preparedEdit = preparePaletteSwatchEditApplication({
             swatchId: editingSwatchId,
             newColorUpper: colorUpper,
             makeTransparent: pendingTransparent,
-            autoSwatches,
-            userSwatches,
-        })
-
-        // 3) Prepare next auto overrides locally and synchronously.
-        const nextAutoOverrides = prepareAutoOverridesForSwatchEdit({
-            swatchId: editingSwatchId,
-            newColorUpper: colorUpper,
-            makeTransparent: pendingTransparent,
-            autoSwatches,
-            currentOverrides: autoOverrides,
-        })
-
-        // 4) Collapse duplicate auto swatches and remap pixels + selectedSwatch.
-        const collapsed = collapseDuplicateSwatchesAndRemap({
             imagePixels,
             overlayPixels,
-            nextAuto,
-            nextUser,
-            nextAutoOverrides,
-            selectedSwatch: selectedSwatch as any,
+            autoSwatches,
+            userSwatches,
+            selectedSwatch,
+            autoOverrides,
+            pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
         })
 
-        // 5) Apply the resulting state.
         const afterState: ProjectState = {
             ...(latestProjectStateRef.current ?? makeProjectState()),
-            imagePixels: clonePixelsGrid(collapsed.imagePixels),
-            overlayPixels: clonePixelsGrid(collapsed.overlayPixels),
-            autoSwatches: cloneSwatches(collapsed.autoSwatches),
-            userSwatches: cloneSwatches(collapsed.userSwatches),
-            selectedSwatch: collapsed.selectedSwatch as any,
-            autoOverrides: { ...collapsed.autoOverrides },
+            imagePixels: clonePixelsGrid(preparedEdit.imagePixels),
+            overlayPixels: clonePixelsGrid(preparedEdit.overlayPixels),
+            autoSwatches: cloneSwatches(preparedEdit.autoSwatches),
+            userSwatches: cloneSwatches(preparedEdit.userSwatches),
+            selectedSwatch: preparedEdit.selectedSwatch as any,
+            autoOverrides: { ...preparedEdit.autoOverrides },
         }
 
         if (isSameProjectState(before, afterState)) {
@@ -10219,12 +10203,12 @@ function PixelEditorFramer({
 
         beginEditorActionTransaction("editor-action", before)
 
-        setAutoSwatches(collapsed.autoSwatches)
-        setUserSwatches(collapsed.userSwatches)
-        setImagePixels(collapsed.imagePixels)
-        setOverlayPixels(collapsed.overlayPixels)
-        setAutoOverrides(collapsed.autoOverrides)
-        setSelectedSwatch(collapsed.selectedSwatch as any)
+        setAutoSwatches(preparedEdit.autoSwatches)
+        setUserSwatches(preparedEdit.userSwatches)
+        setImagePixels(preparedEdit.imagePixels)
+        setOverlayPixels(preparedEdit.overlayPixels)
+        setAutoOverrides(preparedEdit.autoOverrides)
+        setSelectedSwatch(preparedEdit.selectedSwatch as any)
         syncPaintRefToOverlay({
             overlay: afterState.overlayPixels,
             auto: afterState.autoSwatches,
@@ -10468,7 +10452,7 @@ function PixelEditorFramer({
             )}, canSaveAs=${String(canSaveAs)}`
         )
 
-        // 1) Если можем — открываем Save As СРАЗУ (пока есть user gesture)
+        // 1) If possible, open Save As immediately while the user gesture is active.
         if (canSaveAs) {
             let handle: any = null
             let selectedFilename = filename
@@ -10487,13 +10471,13 @@ function PixelEditorFramer({
                         e?.message ?? "-"
                     }`
                 )
-                // cancel → считаем экспорт отменённым
+                // Cancel means the export was cancelled.
                 if (e?.name === "AbortError") return false
-                // прочие ошибки → fallback download ниже
+                // Other errors fall back to download below.
                 handle = null
             }
 
-            // 2) Готовим blob уже после выбора файла
+            // 2) Prepare the blob only after the file is selected.
             const blob = await produceBlob(selectedFilename)
             if (!blob) return false
             savePathDebug(
@@ -10513,7 +10497,7 @@ function PixelEditorFramer({
                             e?.message ?? "-"
                         }`
                     )
-                    // permission/прочее → fallback download ниже
+                    // Permission or other write errors fall back to download below.
                 }
             }
 
@@ -10522,7 +10506,7 @@ function PixelEditorFramer({
             return true
         }
 
-        // нет API → старый download
+        // No API: use the legacy download path.
         savePathDebug("no picker path: producing blob")
         const blob = await produceBlob(filename)
         if (!blob) return false
@@ -10620,13 +10604,13 @@ function PixelEditorFramer({
                 await writable.close()
                 return
             } catch (e: any) {
-                // Если пользователь отменил диалог — ничего не делаем (и НЕ скачиваем через fallback)
+                // If the user cancelled the dialog, do nothing and do not download through fallback.
                 if (e?.name === "AbortError") return
-                // иначе — fallback ниже
+                // Otherwise fall back below.
             }
         }
 
-        // Fallback — старый download
+        // Fallback: legacy download.
         downloadBlob(blob, filename)
     }
     void saveBlob
@@ -10661,18 +10645,18 @@ function PixelEditorFramer({
             for (let c = 0; c < cols; c++) {
                 let v: any = null
 
-                // includeStroke=false → полностью игнорируем overlay (включая “ластик”)
+                // includeStroke=false: ignore overlay completely, including eraser cells.
                 if (includeStroke) {
                     const o = oRow?.[c] ?? null
                     if (o != null) {
-                        // overlay имеет приоритет всегда, включая прозрачность (ластик)
+                        // Overlay always has priority, including transparent eraser cells.
                         v = o
                     }
                 }
 
-                // includeImage=false → игнорируем image, остаются только штрихи (или пусто)
+                // includeImage=false: ignore image; keep only strokes, or empty cells.
                 if (v == null && includeImage) {
-                    // экспорт НЕ зависит от showImage
+                    // Export does not depend on showImage.
                     v = iRow?.[c] ?? null
                 }
 
@@ -10724,13 +10708,13 @@ function PixelEditorFramer({
                 if (includeStroke) {
                     const o = oRow?.[c] ?? null
                     if (o != null) {
-                        // overlay имеет приоритет всегда, включая прозрачность (ластик)
+                        // Overlay always has priority, including transparent eraser cells.
                         v = o
                     }
                 }
 
                 if (v == null && includeImage) {
-                    // экспорт НЕ зависит от showImage
+                    // Export does not depend on showImage.
                     v = iRow?.[c] ?? null
                 }
 
@@ -10908,7 +10892,7 @@ function PixelEditorFramer({
     }
 
     const toggleManual = () => {
-        // на всякий случай: если было открыто Import/Export — закрываем
+        // Safety: close Import/Export if it was open.
         closeOverlay()
         setManualOpen((v) => !v)
     }

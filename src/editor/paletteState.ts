@@ -682,6 +682,58 @@ export function collapseDuplicateSwatchesAndRemapPixels<
     }
 }
 
+export function preparePaletteSwatchEditApplication<
+    TSwatch extends PalettePaintSwatchLike & { id: string },
+    TPixel extends string | null,
+>(input: {
+    swatchId: string
+    newColorUpper: string
+    makeTransparent: boolean
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    selectedSwatch: PaletteSelection
+    autoOverrides?: PaletteAutoOverridesMap<PaletteAutoOverrideLike> | null
+    pruneAutoOverrides?: (
+        currentAuto: TSwatch[],
+        overrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike>
+    ) => PaletteAutoOverridesMap<PaletteAutoOverrideLike>
+}): {
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: TSwatch[]
+    userSwatches: TSwatch[]
+    autoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike>
+    selectedSwatch: PaletteSelection
+} {
+    const { nextAuto, nextUser } = prepareSwatchesForEdit({
+        swatchId: input.swatchId,
+        newColorUpper: input.newColorUpper,
+        makeTransparent: input.makeTransparent,
+        autoSwatches: input.autoSwatches,
+        userSwatches: input.userSwatches,
+    })
+
+    const nextAutoOverrides = prepareAutoOverridesForSwatchEdit({
+        swatchId: input.swatchId,
+        newColorUpper: input.newColorUpper,
+        makeTransparent: input.makeTransparent,
+        autoSwatches: input.autoSwatches,
+        currentOverrides: input.autoOverrides,
+    })
+
+    return collapseDuplicateSwatchesAndRemapPixels({
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        nextAuto,
+        nextUser,
+        nextAutoOverrides,
+        selectedSwatch: input.selectedSwatch,
+        pruneAutoOverrides: input.pruneAutoOverrides,
+    })
+}
+
 export function resolveSelectedSwatchAfterAutoChange(input: {
     nextAutoSwatches:
         | ReadonlyArray<PaletteSwatchLike | null | undefined>
