@@ -5951,7 +5951,8 @@ function PixelEditorFramer({
         importedPresetRegistry: ImportedPalettePreset[],
         nextAuto: Swatch[]
     ) {
-        const referenceSnapshot = before.referenceSnapshot ?? originalImageData
+        const referenceSnapshot =
+            originalImageData ?? before.referenceSnapshot ?? null
         const candidateWorld = buildFixedPresetWorldFromReference(
             profile,
             referenceSnapshot
@@ -5998,6 +5999,9 @@ function PixelEditorFramer({
             presetsWorld: nextWorld,
         }))
         setAutoSwatches(nextWorld.autoSwatches as Swatch[])
+        setImagePixels(clonePixelsGrid(nextWorld.imagePixels))
+        setOverlayPixels(clonePixelsGrid(nextWorld.overlayPixels))
+        setCanvasPixels(clonePixelsGrid(nextWorld.canvasPixels))
         setSelectedSwatch(preparedWorld.selectedSwatch as SwatchId)
         latestProjectStateRef.current = afterState
         pushCommit(before, { afterState })
