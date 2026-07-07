@@ -90,6 +90,7 @@ import {
     cloneSwatches,
     imageDataSampleSignature,
     type EditorCommittedState,
+    type ImageDataSampleSource,
 } from "./editorHistoryState.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
@@ -1729,7 +1730,7 @@ function hsvToRgbIntoDeg(
 
 // ---- pixelize: dominant color + rounding ----
 function pixelizeFromImageDominant(
-    imageData: ImageData,
+    imageData: ImageDataSampleSource,
     gridSize: number,
     roundStep = 16
 ) {
@@ -5841,12 +5842,13 @@ function PixelEditorFramer({
     }, [originalImageData])
 
     function buildFixedPresetWorldFromReference(
-        profile: FixedQuantizationProfile
+        profile: FixedQuantizationProfile,
+        referenceSnapshot: ImageDataSampleSource | null = originalImageData
     ): DerivedWorld<PixelValue> | null {
-        if (!originalImageData) return null
+        if (!referenceSnapshot) return null
 
         const sourcePixels = pixelizeFromImageDominant(
-            originalImageData,
+            referenceSnapshot,
             gridSize,
             16
         )
@@ -5861,7 +5863,7 @@ function PixelEditorFramer({
         })
         return {
             ...world,
-            referenceSignature: imageDataSampleSignature(originalImageData),
+            referenceSignature: imageDataSampleSignature(referenceSnapshot),
         }
     }
 
@@ -5949,15 +5951,19 @@ function PixelEditorFramer({
         importedPresetRegistry: ImportedPalettePreset[],
         nextAuto: Swatch[]
     ) {
+        const referenceSnapshot = before.referenceSnapshot ?? originalImageData
+        const candidateWorld = buildFixedPresetWorldFromReference(
+            profile,
+            referenceSnapshot
+        )
         const preparedWorld = prepareFixedPaletteVocabularyExtensionWorld({
             profile,
-            referenceSignature: imageDataSampleSignature(originalImageData),
+            referenceSignature: imageDataSampleSignature(referenceSnapshot),
             autoSwatches: nextAuto,
+            candidateAutoSwatches: candidateWorld?.autoSwatches ?? null,
+            candidateImagePixels: candidateWorld?.imagePixels ?? null,
             imagePixels,
             overlayPixels,
-            sourcePixels: originalImageData
-                ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
-                : null,
             selectedSwatch: selectedPresetSwatch,
         })
         const nextWorld: DerivedWorld<PixelValue> = preparedWorld.world
@@ -5969,7 +5975,7 @@ function PixelEditorFramer({
             overlayPixels: clonePixelsGrid(nextWorld.overlayPixels),
             showImage,
             hasOriginalImageData: hasImportContext,
-            referenceSnapshot: originalImageData,
+            referenceSnapshot,
             autoSwatches: cloneSwatches(nextWorld.autoSwatches),
             userSwatches: cloneSwatches(userSwatches),
             selectedSwatch: preparedWorld.selectedSwatch as SwatchId,

@@ -1,7 +1,6 @@
 import {
     buildDrawingPaletteWorld,
     getFixedProfilePaletteForApplication,
-    quantizeWithFixedPalette,
 } from "./paletteQuantizationEngine.ts"
 
 export type EditableFixedPaletteProfile = {
@@ -100,87 +99,39 @@ function cloneSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>): TSwatch[] {
     )
 }
 
-type Rgb = { r: number; g: number; b: number }
-
-const NEW_VOCABULARY_SWATCH_DISTANCE_BIAS = 9000
-
-function parsePaletteRgb(color: string): Rgb {
-    const hex = normalizeEditablePaletteColor(color).slice(1)
-    return {
-        r: parseInt(hex.slice(0, 2), 16),
-        g: parseInt(hex.slice(2, 4), 16),
-        b: parseInt(hex.slice(4, 6), 16),
-    }
-}
-
-function colorDistanceSq(a: Rgb, b: Rgb): number {
-    const dr = a.r - b.r
-    const dg = a.g - b.g
-    const db = a.b - b.b
-    return dr * dr + dg * dg + db * db
-}
-
 function assignNewVocabularySwatchCells<
     TSwatch extends FixedPaletteEditSwatchLike,
     TPixel extends string | null,
 >(input: {
     autoSwatches: ReadonlyArray<TSwatch>
+    candidateAutoSwatches?: ReadonlyArray<TSwatch> | null
+    candidateImagePixels?: TPixel[][] | null
     imagePixels: TPixel[][]
     selectedSwatch: string
-    sourcePixels?: (string | null)[][] | null
 }): TPixel[][] {
-    if (!input.sourcePixels) return input.imagePixels
+    if (!input.candidateImagePixels) return input.imagePixels
 
     const selectedSwatch = input.autoSwatches.find(
         (swatch) => swatch.id === input.selectedSwatch
     )
     if (!selectedSwatch) return input.imagePixels
 
-    const selectedRgb = parsePaletteRgb(selectedSwatch.color)
-    const swatchById = new Map(
-        input.autoSwatches.map((swatch) => [swatch.id, swatch])
-    )
-    const swatchIdByColor = new Map(
-        input.autoSwatches.map((swatch) => [
-            normalizeEditablePaletteColor(swatch.color),
-            swatch.id,
-        ])
-    )
-    const quantizedPixels = quantizeWithFixedPalette(
-        input.sourcePixels,
-        input.autoSwatches.map((swatch) => swatch.color)
-    )
+    const candidateSelectedSwatch =
+        input.candidateAutoSwatches?.find(
+            (swatch) =>
+                normalizeEditablePaletteColor(swatch.color) ===
+                normalizeEditablePaletteColor(selectedSwatch.color)
+        )?.id ?? selectedSwatch.id
 
     return input.imagePixels.map((row, rowIndex) =>
         row.map((pixel, columnIndex) => {
-            const sourceColor = input.sourcePixels?.[rowIndex]?.[columnIndex]
-            if (sourceColor == null) return pixel
-
-            const quantizedColor = quantizedPixels[rowIndex]?.[columnIndex]
-            if (quantizedColor == null) return pixel
-
-            const quantizedSwatchId = swatchIdByColor.get(
-                normalizeEditablePaletteColor(quantizedColor)
-            )
-            if (quantizedSwatchId === selectedSwatch.id) {
+            if (
+                input.candidateImagePixels?.[rowIndex]?.[columnIndex] ===
+                candidateSelectedSwatch
+            ) {
                 return selectedSwatch.id as TPixel
             }
-
-            const currentSwatch =
-                typeof pixel === "string" ? swatchById.get(pixel) : null
-            if (!currentSwatch) return pixel
-
-            const sourceRgb = parsePaletteRgb(sourceColor)
-            const selectedDistance = colorDistanceSq(sourceRgb, selectedRgb)
-            const currentDistance = colorDistanceSq(
-                sourceRgb,
-                parsePaletteRgb(currentSwatch.color)
-            )
-
-            return selectedDistance <=
-                currentDistance + NEW_VOCABULARY_SWATCH_DISTANCE_BIAS
-                ? (selectedSwatch.id as TPixel)
-                : pixel
+            return pixel
         })
     )
 }
@@ -536,17 +487,19 @@ export function prepareFixedPaletteVocabularyExtensionWorld<
     profile: TProfile
     referenceSignature?: string | null
     autoSwatches: ReadonlyArray<TSwatch>
+    candidateAutoSwatches?: ReadonlyArray<TSwatch> | null
+    candidateImagePixels?: TPixel[][] | null
     imagePixels: TPixel[][]
     overlayPixels: TPixel[][]
-    sourcePixels?: (string | null)[][] | null
     selectedSwatch: string
 }): FixedPaletteVocabularyExtensionWorldResult<TProfile, TSwatch, TPixel> {
     const autoSwatches = cloneSwatches(input.autoSwatches)
     const imagePixels = assignNewVocabularySwatchCells({
         autoSwatches,
+        candidateAutoSwatches: input.candidateAutoSwatches,
+        candidateImagePixels: input.candidateImagePixels,
         imagePixels: input.imagePixels,
         selectedSwatch: input.selectedSwatch,
-        sourcePixels: input.sourcePixels,
     })
     const world = buildDrawingPaletteWorld({
         profile: input.profile,

@@ -421,6 +421,11 @@ describe("palette preset extension", () => {
             { id: "auto-3", color: "#E9D8A6" },
             { id: "auto-4", color: "#FFFFFF" },
         ]
+        const candidateAutoSwatches = [
+            { id: "auto-0", color: "#000000" },
+            { id: "auto-1", color: "#E9D8A6" },
+            { id: "auto-2", color: "#FFFFFF" },
+        ]
         const imagePixels = [
             ["auto-3", "auto-0"],
             ["auto-3", "auto-0"],
@@ -432,21 +437,22 @@ describe("palette preset extension", () => {
                 colors: ["#000000", "#E9D8A6", "#FFFFFF"],
             },
             autoSwatches,
+            candidateAutoSwatches,
+            candidateImagePixels: [
+                ["auto-2", "auto-0"],
+                ["auto-1", "auto-2"],
+            ],
             imagePixels,
             overlayPixels: [
                 [null, null],
                 [null, null],
-            ],
-            sourcePixels: [
-                ["#EFDFB0", "rgb(0, 0, 0)"],
-                ["rgb(245, 245, 245)", "rgb(255, 0, 0)"],
             ],
             selectedSwatch: "auto-4",
         })
 
         expect(result.world.imagePixels).toEqual([
             ["auto-4", "auto-0"],
-            ["auto-4", "auto-0"],
+            ["auto-3", "auto-4"],
         ])
     })
 
