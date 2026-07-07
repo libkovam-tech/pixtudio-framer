@@ -448,6 +448,30 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("selects the current swatch id when adding an existing preset color", () => {
+        const result = prepareFixedPalettePresetSwatchCreate({
+            profile: {
+                ...profile,
+                colors: ["#E9D8A6", "#001219"],
+            },
+            color: "#001219",
+            autoSwatches: [
+                { id: "auto-5", color: "#001219" },
+                { id: "auto-7", color: "#E9D8A6" },
+            ],
+            importedPalettePresets: [],
+            makeSwatch: (id, color) => ({
+                id,
+                color,
+            }),
+        })
+
+        expect(result).toMatchObject({
+            kind: "existing",
+            selectedSwatch: "auto-5",
+        })
+    })
+
     it("prepares vocabulary extension worlds without rebuilding pixel assignments", () => {
         const autoSwatches = [
             { id: "auto-0", color: "#001219" },

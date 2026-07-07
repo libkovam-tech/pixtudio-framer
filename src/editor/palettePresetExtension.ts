@@ -546,6 +546,11 @@ export function prepareFixedPalettePresetSwatchCreate<
     if (!extension) return { kind: "ignored" }
 
     if (!extension.added) {
+        const existingSwatch = input.autoSwatches.find(
+            (swatch) =>
+                normalizeImportedPaletteHex(swatch.color) ===
+                normalizeImportedPaletteHex(input.color)
+        )
         const applicationColorIndex = findPaletteColorIndexByHex(
             getFixedProfilePaletteForApplication(extension.profile),
             input.color
@@ -553,9 +558,9 @@ export function prepareFixedPalettePresetSwatchCreate<
         return {
             kind: "existing",
             profile: extension.profile,
-            selectedSwatch: `auto-${
-                applicationColorIndex ?? extension.colorIndex
-            }`,
+            selectedSwatch:
+                existingSwatch?.id ??
+                `auto-${applicationColorIndex ?? extension.colorIndex}`,
             importedPalettePresets: input.importedPalettePresets.slice(),
         }
     }
