@@ -72,6 +72,20 @@ export type FixedPalettePresetSwatchCreateResult<
           importedPalettePresets: TPreset[]
       }
 
+export type FixedPalettePresetSwatchDeleteApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TPreset extends ImportedPalettePresetRecord,
+> =
+    | {
+          kind: "ignored"
+      }
+    | {
+          kind: "deleted"
+          profile: TProfile
+          selectedSwatch: string
+          importedPalettePresets: TPreset[]
+      }
+
 export type FixedPaletteVocabularyExtensionWorld<
     TProfile extends EditableFixedPaletteProfile,
     TSwatch extends FixedPaletteEditSwatchLike,
@@ -685,5 +699,36 @@ export function prepareFixedPaletteSwatchDelete<
                 ? (`auto-${Math.max(0, input.swatchIndex - 1)}` as TSelection)
                 : input.selectedSwatch,
         removed: true,
+    }
+}
+
+export function prepareFixedPalettePresetSwatchDeleteApplication<
+    TProfile extends EditableFixedPaletteProfile & { source: "imported" },
+    TPreset extends ImportedPalettePresetRecord,
+>(input: {
+    profile: TProfile
+    swatchColor: string
+    swatchId: string
+    swatchIndex: number | null
+    selectedSwatch: string
+    importedPalettePresets: ReadonlyArray<TPreset>
+}): FixedPalettePresetSwatchDeleteApplicationResult<TProfile, TPreset> {
+    const preparedDelete = prepareFixedPaletteSwatchDelete({
+        profile: input.profile,
+        swatchColor: input.swatchColor,
+        swatchId: input.swatchId,
+        swatchIndex: input.swatchIndex,
+        selectedSwatch: input.selectedSwatch,
+    })
+    if (!preparedDelete.removed) return { kind: "ignored" }
+
+    return {
+        kind: "deleted",
+        profile: preparedDelete.profile,
+        selectedSwatch: preparedDelete.selectedSwatch,
+        importedPalettePresets: upsertImportedPalettePreset(
+            input.importedPalettePresets,
+            preparedDelete.profile
+        ),
     }
 }

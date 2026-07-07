@@ -8,6 +8,7 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareFixedPalettePresetSwatchCreate,
+    prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
@@ -636,5 +637,48 @@ describe("palette preset extension", () => {
             selectedSwatch: "auto-1",
             removed: false,
         })
+    })
+
+    it("prepares fixed preset swatch delete applications with registry updates", () => {
+        const result = prepareFixedPalettePresetSwatchDeleteApplication({
+            profile,
+            swatchColor: "#E9D8A6",
+            swatchId: "auto-1",
+            swatchIndex: 1,
+            selectedSwatch: "auto-1",
+            importedPalettePresets: [],
+        })
+
+        expect(result).toEqual({
+            kind: "deleted",
+            profile: {
+                ...profile,
+                colors: ["#001219"],
+            },
+            selectedSwatch: "auto-0",
+            importedPalettePresets: [
+                {
+                    id: profile.id,
+                    name: profile.name,
+                    profile: {
+                        ...profile,
+                        colors: ["#001219"],
+                    },
+                },
+            ],
+        })
+    })
+
+    it("ignores fixed preset swatch delete applications for invalid indexes", () => {
+        expect(
+            prepareFixedPalettePresetSwatchDeleteApplication({
+                profile,
+                swatchColor: "#E9D8A6",
+                swatchId: "auto-1",
+                swatchIndex: null,
+                selectedSwatch: "auto-1",
+                importedPalettePresets: [],
+            })
+        ).toEqual({ kind: "ignored" })
     })
 })

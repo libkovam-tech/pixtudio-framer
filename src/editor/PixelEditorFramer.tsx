@@ -62,9 +62,9 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareFixedPalettePresetSwatchCreate,
+    prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteVocabularyExtensionApplication,
-    prepareFixedPaletteSwatchDelete,
     upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
 import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
@@ -9932,35 +9932,25 @@ function PixelEditorFramer({
                 quantizationProfile,
                 makeImportedPalettePresetId
             )
-            const preparedDelete = prepareFixedPaletteSwatchDelete({
+            const preparedDelete =
+                prepareFixedPalettePresetSwatchDeleteApplication({
                 profile: editableProfile,
                 swatchColor: swatch.color,
                 swatchId: editingSwatchId,
                 swatchIndex: colorIndex,
                 selectedSwatch,
+                importedPalettePresets,
             })
-            if (!preparedDelete.removed) {
+            if (preparedDelete.kind === "ignored") {
                 handleModalCancel()
                 return
             }
 
-            const nextImportedPalettePresets = importedPalettePresets.map(
-                (preset) =>
-                    preset.id === preparedDelete.profile.id
-                        ? { ...preset, profile: preparedDelete.profile }
-                        : preset
-            )
-            const nextPresetRegistry = upsertImportedPalettePreset(
-                nextImportedPalettePresets,
-                preparedDelete.profile as FixedQuantizationProfile & {
-                    source: "imported"
-                }
-            )
-            setImportedPalettePresets(nextPresetRegistry)
+            setImportedPalettePresets(preparedDelete.importedPalettePresets)
             applyFixedPalettePreset(
                 preparedDelete.profile,
                 preparedDelete.selectedSwatch,
-                nextPresetRegistry
+                preparedDelete.importedPalettePresets
             )
             closeColorModalAfterCreate()
             return
