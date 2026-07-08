@@ -61,6 +61,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareFixedPaletteDrawingApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
@@ -5864,49 +5865,38 @@ function PixelEditorFramer({
         importedPresetRegistry = importedPalettePresets,
         autoSwatchesOverride?: Swatch[] | null
     ) {
-        const nextAuto =
-            autoSwatchesOverride ?? makeAutoSwatchesFromFixedProfile(profile)
-        if (nextAuto.length <= 0) return
-
-        const nextSelectedSwatch = resolveSelectedSwatchAfterAutoChange({
-            nextAutoSwatches: nextAuto,
-            userSwatches,
-            selectedSwatch,
-            preferredSwatch,
-        })
-        const nextImagePixels = clonePixelsGrid(imagePixels)
-        const nextOverlayPixels = clonePixelsGrid(overlayPixels)
-        const nextCanvasPixels = overlayOverBaseGrid(
-            nextImagePixels,
-            nextOverlayPixels
-        )
-        const nextAutoOverrides: AutoSwatchOverridesMap = {}
-        const nextWorld: DerivedWorld<PixelValue> = {
+        const preparedApplication = prepareFixedPaletteDrawingApplication({
             profile,
             referenceSignature: imageDataSampleSignature(originalImageData),
-            autoSwatches: cloneSwatches(nextAuto),
-            imagePixels: nextImagePixels,
-            overlayPixels: nextOverlayPixels,
-            canvasPixels: nextCanvasPixels,
-        }
+            imagePixels,
+            overlayPixels,
+            selectedSwatch,
+            preferredSwatch,
+            userSwatches,
+            autoSwatchesOverride,
+            makeAutoSwatches: makeAutoSwatchesFromFixedProfile,
+        })
+        if (preparedApplication.kind === "ignored") return
+
+        const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
         const afterState: ProjectState = {
             gridSize,
             paletteCount,
             brushSize,
-            imagePixels: clonePixelsGrid(nextImagePixels),
-            overlayPixels: clonePixelsGrid(nextOverlayPixels),
+            imagePixels: preparedApplication.imagePixels,
+            overlayPixels: preparedApplication.overlayPixels,
             showImage,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
-            autoSwatches: cloneSwatches(nextAuto),
+            autoSwatches: preparedApplication.autoSwatches,
             userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: nextSelectedSwatch,
+            selectedSwatch: preparedApplication.selectedSwatch,
             quantizationProfile: cloneQuantizationProfileForHistory(profile),
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPresetRegistry),
             hiddenPresetIds: hiddenPresetIds.slice(),
             activePaletteTab: "presets",
-            autoOverrides: nextAutoOverrides,
+            autoOverrides: preparedApplication.autoOverrides,
         }
 
         beginEditorActionTransaction("editor-action", before)
@@ -5917,9 +5907,9 @@ function PixelEditorFramer({
             activeTab: "presets",
             presetsWorld: nextWorld,
         }))
-        setAutoOverrides(nextAutoOverrides)
-        setAutoSwatches(nextAuto)
-        setSelectedSwatch(nextSelectedSwatch)
+        setAutoOverrides(preparedApplication.autoOverrides)
+        setAutoSwatches(preparedApplication.autoSwatches)
+        setSelectedSwatch(preparedApplication.selectedSwatch)
         latestProjectStateRef.current = afterState
         pushCommit(before, { afterState })
 
@@ -5927,9 +5917,11 @@ function PixelEditorFramer({
             console.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
                 profileId: profile.id,
                 source: profile.source,
-                autoSwatches: nextAuto.length,
-                imageNonNull: countNonNullCells(nextImagePixels),
-                overlayNonNull: countNonNullCells(nextOverlayPixels),
+                autoSwatches: preparedApplication.autoSwatches.length,
+                imageNonNull: countNonNullCells(preparedApplication.imagePixels),
+                overlayNonNull: countNonNullCells(
+                    preparedApplication.overlayPixels
+                ),
             })
         }
     }

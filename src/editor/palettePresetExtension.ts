@@ -2,6 +2,13 @@ import {
     buildDrawingPaletteWorld,
     getFixedProfilePaletteForApplication,
 } from "./paletteQuantizationEngine.ts"
+import {
+    resolveSelectedSwatchAfterAutoChange,
+    type PaletteAutoOverrideLike,
+    type PaletteAutoOverridesMap,
+    type PaletteSelection,
+    type PaletteSwatchLike,
+} from "./paletteState.ts"
 
 export type EditableFixedPaletteProfile = {
     kind: "fixed"
@@ -148,6 +155,42 @@ export type FixedPaletteVocabularyExtensionApplicationResult<
     overlayPixels: TPixel[][]
     canvasPixels: TPixel[][]
 }
+
+export type FixedPaletteDrawingApplicationWorld<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+> = {
+    profile: TProfile
+    referenceSignature?: string | null
+    autoSwatches: TSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+}
+
+export type FixedPaletteDrawingApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+> =
+    | {
+          kind: "ignored"
+      }
+    | {
+          kind: "applied"
+          world: FixedPaletteDrawingApplicationWorld<
+              TProfile,
+              TSwatch,
+              TPixel
+          >
+          selectedSwatch: PaletteSelection
+          autoSwatches: TSwatch[]
+          imagePixels: TPixel[][]
+          overlayPixels: TPixel[][]
+          canvasPixels: TPixel[][]
+          autoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike>
+      }
 
 export type ImportedPalettePresetRecord<
     T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
@@ -322,6 +365,69 @@ export function makeAutoSwatchesFromFixedProfile(
         isTransparent: false,
         isUser: false,
     }))
+}
+
+export function prepareFixedPaletteDrawingApplication<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+    TPixel extends string | null,
+>(input: {
+    profile: TProfile
+    referenceSignature?: string | null
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    userSwatches:
+        | ReadonlyArray<PaletteSwatchLike | null | undefined>
+        | null
+        | undefined
+    autoSwatchesOverride?: ReadonlyArray<TSwatch> | null
+    makeAutoSwatches?: (profile: TProfile) => TSwatch[]
+}): FixedPaletteDrawingApplicationResult<TProfile, TSwatch, TPixel> {
+    const autoSwatches =
+        input.autoSwatchesOverride?.map((swatch) => ({ ...swatch })) ??
+        (input.makeAutoSwatches?.(input.profile) ??
+            (makeAutoSwatchesFromFixedProfile(
+                input.profile
+            ) as unknown as TSwatch[]))
+
+    if (autoSwatches.length <= 0) return { kind: "ignored" }
+
+    const selectedSwatch = resolveSelectedSwatchAfterAutoChange({
+        nextAutoSwatches: autoSwatches,
+        userSwatches: input.userSwatches,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+    })
+    const world = buildDrawingPaletteWorld({
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        palette: autoSwatches.map((swatch) => swatch.color),
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        makeAutoSwatchId: (index) => autoSwatches[index]?.id ?? `auto-${index}`,
+    })
+    const preparedWorld: FixedPaletteDrawingApplicationWorld<
+        TProfile,
+        TSwatch,
+        TPixel
+    > = {
+        ...world,
+        profile: input.profile,
+        autoSwatches,
+    }
+
+    return {
+        kind: "applied",
+        world: preparedWorld,
+        selectedSwatch,
+        autoSwatches: cloneSwatches(preparedWorld.autoSwatches),
+        imagePixels: clonePixelGrid(preparedWorld.imagePixels),
+        overlayPixels: clonePixelGrid(preparedWorld.overlayPixels),
+        canvasPixels: clonePixelGrid(preparedWorld.canvasPixels),
+        autoOverrides: {},
+    }
 }
 
 export function makeEditableFixedPresetProfile<

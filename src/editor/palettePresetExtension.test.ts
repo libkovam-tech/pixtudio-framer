@@ -7,6 +7,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareFixedPaletteDrawingApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
@@ -112,6 +113,84 @@ describe("palette preset extension", () => {
             ...profile,
             colors: ["#FF0000"],
         })
+    })
+
+    it("prepares fixed palette drawing applications without rebuilding pixels", () => {
+        const imagePixels = [
+            ["auto-1", null],
+            ["auto-0", "auto-1"],
+        ]
+        const overlayPixels = [
+            [null, "user-0"],
+            [null, null],
+        ]
+        const autoSwatchesOverride = [
+            {
+                id: "auto-5",
+                color: "#001219",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-9",
+                color: "#E9D8A6",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+
+        const result = prepareFixedPaletteDrawingApplication({
+            profile,
+            referenceSignature: "reference-1",
+            imagePixels,
+            overlayPixels,
+            selectedSwatch: "auto-0",
+            preferredSwatch: "auto-9",
+            userSwatches: [{ id: "user-0" }],
+            autoSwatchesOverride,
+        })
+
+        expect(result).toEqual({
+            kind: "applied",
+            world: {
+                profile,
+                referenceSignature: "reference-1",
+                autoSwatches: autoSwatchesOverride,
+                imagePixels,
+                overlayPixels,
+                canvasPixels: [
+                    ["auto-1", "user-0"],
+                    ["auto-0", "auto-1"],
+                ],
+            },
+            selectedSwatch: "auto-9",
+            autoSwatches: autoSwatchesOverride,
+            imagePixels,
+            overlayPixels,
+            canvasPixels: [
+                ["auto-1", "user-0"],
+                ["auto-0", "auto-1"],
+            ],
+            autoOverrides: {},
+        })
+        if (result.kind !== "applied") throw new Error("expected application")
+        expect(result.world.imagePixels).not.toBe(imagePixels)
+        expect(result.world.overlayPixels).not.toBe(overlayPixels)
+        expect(result.imagePixels).not.toBe(result.world.imagePixels)
+        expect(result.overlayPixels).not.toBe(result.world.overlayPixels)
+    })
+
+    it("ignores fixed palette drawing applications with empty swatches", () => {
+        expect(
+            prepareFixedPaletteDrawingApplication({
+                profile,
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+                selectedSwatch: "auto-0",
+                userSwatches: [],
+                autoSwatchesOverride: [],
+            })
+        ).toEqual({ kind: "ignored" })
     })
 
     it("appends imported palette preset records to a registry", () => {
