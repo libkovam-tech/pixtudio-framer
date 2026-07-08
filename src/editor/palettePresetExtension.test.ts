@@ -7,6 +7,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
@@ -271,6 +272,78 @@ describe("palette preset extension", () => {
                 overlayPixels: [[null]],
                 previousSwatches: [],
                 userSwatches: [],
+                pixelizeReference: () => {
+                    pixelized = true
+                    return [["#FFFFFF"]]
+                },
+            })
+        ).toBeNull()
+        expect(pixelized).toBe(false)
+    })
+
+    it("prepares auto palette worlds from reference snapshots", () => {
+        const calls: Array<[string, number]> = []
+
+        const result = prepareAutoPaletteWorldFromReference({
+            profile: { kind: "extract" },
+            referenceSnapshot: "reference-2",
+            gridSize: 3,
+            overlayPixels: [
+                [null, null, null],
+                [null, "user-0", null],
+            ],
+            previousSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#333333",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#FF00FF",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            paletteCountTarget: 2,
+            excludedColors: ["#333333"],
+            pixelizeReference: (snapshot, gridSize) => {
+                calls.push([snapshot, gridSize])
+                return [
+                    ["#111111", "#222222", "#333333"],
+                    ["#444444", "#555555", "#666666"],
+                ]
+            },
+            referenceSignature: (snapshot) =>
+                snapshot ? `sig:${snapshot}` : "null",
+        })
+
+        expect(calls).toEqual([["reference-2", 3]])
+        expect(result?.profile).toEqual({ kind: "extract" })
+        expect(result?.referenceSignature).toBe("sig:reference-2")
+        expect(result?.autoSwatches).toHaveLength(2)
+        expect(
+            result?.autoSwatches.map((swatch) => swatch.color.toUpperCase())
+        ).not.toContain("#333333")
+        expect(result?.overlayPixels[1]?.[1]).toBe("user-0")
+        expect(result?.canvasPixels[1]?.[1]).toBe("user-0")
+    })
+
+    it("ignores auto palette world preparation without a reference snapshot", () => {
+        let pixelized = false
+
+        expect(
+            prepareAutoPaletteWorldFromReference({
+                profile: { kind: "extract" },
+                referenceSnapshot: undefined as string | undefined,
+                gridSize: 2,
+                overlayPixels: [[null]],
+                previousSwatches: [],
+                userSwatches: [],
+                paletteCountTarget: 2,
                 pixelizeReference: () => {
                     pixelized = true
                     return [["#FFFFFF"]]

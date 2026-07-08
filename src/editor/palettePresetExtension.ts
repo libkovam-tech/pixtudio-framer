@@ -2,6 +2,7 @@ import {
     buildDerivedWorld,
     buildDrawingPaletteWorld,
     getFixedProfilePaletteForApplication,
+    type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
 import {
     resolveSelectedSwatchAfterAutoChange,
@@ -196,6 +197,16 @@ export type FixedPaletteDrawingApplicationResult<
 export type FixedPaletteReferenceWorld<
     TProfile extends EditableFixedPaletteProfile,
     TPixel extends string | null,
+> = PaletteReferenceWorld<TProfile, TPixel>
+
+export type AutoPaletteReferenceWorld<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+> = PaletteReferenceWorld<TProfile, TPixel>
+
+export type PaletteReferenceWorld<
+    TProfile extends QuantizationProfile,
+    TPixel extends string | null,
 > = {
     profile: TProfile
     referenceSignature?: string | null
@@ -218,6 +229,28 @@ export type FixedPaletteAutoSwatch = {
     color: string
     isTransparent: boolean
     isUser: boolean
+}
+
+type PaletteReferenceWorldInput<
+    TProfile extends QuantizationProfile,
+    TReference,
+    TPixel extends string | null,
+> = {
+    profile: TProfile
+    referenceSnapshot: TReference | null | undefined
+    gridSize: number
+    overlayPixels: TPixel[][]
+    previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    paletteCountTarget: number
+    excludedColors?: string[]
+    pixelizeReference: (
+        referenceSnapshot: TReference,
+        gridSize: number
+    ) => (string | null)[][]
+    referenceSignature?: (
+        referenceSnapshot: TReference | null
+    ) => string | null
 }
 
 function normalizeImportedPaletteHex(color: string): string | null {
@@ -443,25 +476,13 @@ export function prepareFixedPaletteDrawingApplication<
     }
 }
 
-export function prepareFixedPaletteWorldFromReference<
-    TProfile extends EditableFixedPaletteProfile,
+function preparePaletteWorldFromReference<
+    TProfile extends QuantizationProfile,
     TReference,
     TPixel extends string | null,
->(input: {
-    profile: TProfile
-    referenceSnapshot: TReference | null | undefined
-    gridSize: number
-    overlayPixels: TPixel[][]
-    previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
-    userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
-    pixelizeReference: (
-        referenceSnapshot: TReference,
-        gridSize: number
-    ) => (string | null)[][]
-    referenceSignature?: (
-        referenceSnapshot: TReference | null
-    ) => string | null
-}): FixedPaletteReferenceWorld<TProfile, TPixel> | null {
+>(
+    input: PaletteReferenceWorldInput<TProfile, TReference, TPixel>
+): PaletteReferenceWorld<TProfile, TPixel> | null {
     if (!input.referenceSnapshot) return null
 
     const sourcePixels = input.pixelizeReference(
@@ -474,8 +495,8 @@ export function prepareFixedPaletteWorldFromReference<
         overlayPixels: input.overlayPixels,
         previousSwatches: cloneSwatches(input.previousSwatches),
         userSwatches: cloneSwatches(input.userSwatches),
-        paletteCountTarget: getFixedProfilePaletteForApplication(input.profile)
-            .length,
+        paletteCountTarget: input.paletteCountTarget,
+        excludedColors: input.excludedColors,
     })
 
     return {
@@ -484,6 +505,31 @@ export function prepareFixedPaletteWorldFromReference<
         referenceSignature:
             input.referenceSignature?.(input.referenceSnapshot) ?? null,
     }
+}
+
+export function prepareFixedPaletteWorldFromReference<
+    TProfile extends EditableFixedPaletteProfile,
+    TReference,
+    TPixel extends string | null,
+>(input: Omit<
+    PaletteReferenceWorldInput<TProfile, TReference, TPixel>,
+    "paletteCountTarget" | "excludedColors"
+>): FixedPaletteReferenceWorld<TProfile, TPixel> | null {
+    return preparePaletteWorldFromReference({
+        ...input,
+        paletteCountTarget: getFixedProfilePaletteForApplication(input.profile)
+            .length,
+    })
+}
+
+export function prepareAutoPaletteWorldFromReference<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TReference,
+    TPixel extends string | null,
+>(
+    input: PaletteReferenceWorldInput<TProfile, TReference, TPixel>
+): AutoPaletteReferenceWorld<TProfile, TPixel> | null {
+    return preparePaletteWorldFromReference(input)
 }
 
 export function makeEditableFixedPresetProfile<

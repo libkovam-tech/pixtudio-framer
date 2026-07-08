@@ -61,6 +61,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
@@ -100,7 +101,6 @@ import {
 import {
     EXTRACT_QUANTIZATION_PROFILE,
     QUANTIZATION_PROFILES,
-    buildDerivedWorld,
     buildDrawingPaletteWorld,
     extractPalette,
     getFixedProfilePaletteForApplication,
@@ -928,14 +928,14 @@ type ImportedPalettePreset = {
     profile: FixedQuantizationProfile
 }
 
-// ===== PIXEL TYPE (НАЧАЛО) =====
+// ===== PIXEL TYPE (START) =====
 type Pixel = {
     swatchId: string | null
 }
 export type { Pixel }
-// ===== PIXEL TYPE (КОНЕЦ) =====
+// ===== PIXEL TYPE (END) =====
 
-// ===== SWATCH TYPE (НАЧАЛО) =====
+// ===== SWATCH TYPE (START) =====
 type Swatch = {
     id: string
     color: string
@@ -945,7 +945,7 @@ type Swatch = {
 
 type SwatchId = string
 
-// ===== SWATCH TYPE (КОНЕЦ) =====
+// ===== SWATCH TYPE (END) =====
 
 // Swatch "Transparency" must visually match canvas checkerboard.
 // Canvas itself is rendered in CANVAS_SIZE pixels (no DPR upscale), so we keep CSS size deterministic.
@@ -5601,27 +5601,19 @@ function PixelEditorFramer({
     }
 
     function buildExtractWorldFromReference(): DerivedWorld<PixelValue> | null {
-        if (!originalImageData) return null
-
-        const sourcePixels = pixelizeFromImageDominant(
-            originalImageData,
-            gridSize,
-            16
-        )
-
-        const world = buildDerivedWorld<PixelValue>({
+        return prepareAutoPaletteWorldFromReference({
             profile: EXTRACT_QUANTIZATION_PROFILE,
-            sourcePixels,
+            referenceSnapshot: originalImageData,
+            gridSize,
             overlayPixels,
             previousSwatches: autoSwatches,
             userSwatches,
             paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
             excludedColors: deletedAutoPaletteColors,
+            pixelizeReference: (snapshot, nextGridSize) =>
+                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+            referenceSignature: imageDataSampleSignature,
         })
-        return {
-            ...world,
-            referenceSignature: imageDataSampleSignature(originalImageData),
-        }
     }
 
     function buildAutoPaletteDrawingWorld(): DerivedWorld<PixelValue> {
@@ -9949,9 +9941,10 @@ function PixelEditorFramer({
                 currentDeletedColors: deletedAutoPaletteColors,
                 sourcePixels,
             })
-            const world = buildDerivedWorld<PixelValue>({
+            const world = prepareAutoPaletteWorldFromReference({
                 profile: EXTRACT_QUANTIZATION_PROFILE,
-                sourcePixels,
+                referenceSnapshot: originalImageData,
+                gridSize,
                 overlayPixels,
                 previousSwatches: autoSwatches,
                 userSwatches,
@@ -9961,7 +9954,13 @@ function PixelEditorFramer({
                     PALETTE_MAX
                 ),
                 excludedColors: nextDeletedColors,
+                pixelizeReference: () => sourcePixels,
+                referenceSignature: imageDataSampleSignature,
             })
+            if (!world) {
+                handleModalCancel()
+                return
+            }
             const preferred =
                 selectedSwatch === editingSwatchId ? null : selectedSwatch
             const afterState: ProjectState = {
@@ -9974,11 +9973,7 @@ function PixelEditorFramer({
             setPaletteTabsState((prev) => ({
                 ...prev,
                 activeTab: "size",
-                sizeWorld: {
-                    ...world,
-                    referenceSignature:
-                        imageDataSampleSignature(originalImageData),
-                },
+                sizeWorld: world,
             }))
             applyDerivedWorldSnapshot(world, preferred)
             latestProjectStateRef.current = afterState

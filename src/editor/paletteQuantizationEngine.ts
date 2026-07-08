@@ -60,7 +60,10 @@ export type PaletteTabsState<TPixel extends string | null = QuantizationPixel> =
     presetsWorld: DerivedWorld<TPixel> | null
 }
 
-export const EXTRACT_QUANTIZATION_PROFILE: QuantizationProfile = {
+export const EXTRACT_QUANTIZATION_PROFILE: Extract<
+    QuantizationProfile,
+    { kind: "extract" }
+> = {
     kind: "extract",
 }
 
