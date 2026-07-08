@@ -15,6 +15,7 @@ import {
     prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteVocabularyExtensionWorld,
+    prepareFixedPaletteWorldFromReference,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
@@ -191,6 +192,92 @@ describe("palette preset extension", () => {
                 autoSwatchesOverride: [],
             })
         ).toEqual({ kind: "ignored" })
+    })
+
+    it("prepares fixed palette worlds from reference snapshots", () => {
+        const referenceProfile = { ...profile, colors: ["#FFFFFF"] }
+        const calls: Array<[string, number]> = []
+
+        const result = prepareFixedPaletteWorldFromReference({
+            profile: referenceProfile,
+            referenceSnapshot: "reference-1",
+            gridSize: 2,
+            overlayPixels: [
+                [null, "user-0"],
+                [null, null],
+            ],
+            previousSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#001219",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#FF00FF",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            pixelizeReference: (snapshot, gridSize) => {
+                calls.push([snapshot, gridSize])
+                return [
+                    ["rgb(240, 240, 240)", "rgb(1, 1, 1)"],
+                    [null, "rgb(200, 200, 200)"],
+                ]
+            },
+            referenceSignature: (snapshot) =>
+                snapshot ? `sig:${snapshot}` : "null",
+        })
+
+        expect(calls).toEqual([["reference-1", 2]])
+        expect(result).toEqual({
+            profile: referenceProfile,
+            referenceSignature: "sig:reference-1",
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels: [
+                ["auto-0", "auto-0"],
+                [null, "auto-0"],
+            ],
+            overlayPixels: [
+                [null, "user-0"],
+                [null, null],
+            ],
+            canvasPixels: [
+                ["auto-0", "user-0"],
+                [null, "auto-0"],
+            ],
+        })
+    })
+
+    it("ignores fixed palette world preparation without a reference snapshot", () => {
+        let pixelized = false
+
+        expect(
+            prepareFixedPaletteWorldFromReference({
+                profile,
+                referenceSnapshot: null as string | null,
+                gridSize: 2,
+                overlayPixels: [[null]],
+                previousSwatches: [],
+                userSwatches: [],
+                pixelizeReference: () => {
+                    pixelized = true
+                    return [["#FFFFFF"]]
+                },
+            })
+        ).toBeNull()
+        expect(pixelized).toBe(false)
     })
 
     it("appends imported palette preset records to a registry", () => {

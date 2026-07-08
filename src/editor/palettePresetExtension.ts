@@ -1,4 +1,5 @@
 import {
+    buildDerivedWorld,
     buildDrawingPaletteWorld,
     getFixedProfilePaletteForApplication,
 } from "./paletteQuantizationEngine.ts"
@@ -191,6 +192,18 @@ export type FixedPaletteDrawingApplicationResult<
           canvasPixels: TPixel[][]
           autoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike>
       }
+
+export type FixedPaletteReferenceWorld<
+    TProfile extends EditableFixedPaletteProfile,
+    TPixel extends string | null,
+> = {
+    profile: TProfile
+    referenceSignature?: string | null
+    autoSwatches: FixedPaletteAutoSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+}
 
 export type ImportedPalettePresetRecord<
     T extends EditableFixedPaletteProfile = EditableFixedPaletteProfile,
@@ -427,6 +440,49 @@ export function prepareFixedPaletteDrawingApplication<
         overlayPixels: clonePixelGrid(preparedWorld.overlayPixels),
         canvasPixels: clonePixelGrid(preparedWorld.canvasPixels),
         autoOverrides: {},
+    }
+}
+
+export function prepareFixedPaletteWorldFromReference<
+    TProfile extends EditableFixedPaletteProfile,
+    TReference,
+    TPixel extends string | null,
+>(input: {
+    profile: TProfile
+    referenceSnapshot: TReference | null | undefined
+    gridSize: number
+    overlayPixels: TPixel[][]
+    previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    pixelizeReference: (
+        referenceSnapshot: TReference,
+        gridSize: number
+    ) => (string | null)[][]
+    referenceSignature?: (
+        referenceSnapshot: TReference | null
+    ) => string | null
+}): FixedPaletteReferenceWorld<TProfile, TPixel> | null {
+    if (!input.referenceSnapshot) return null
+
+    const sourcePixels = input.pixelizeReference(
+        input.referenceSnapshot,
+        input.gridSize
+    )
+    const world = buildDerivedWorld<TPixel>({
+        profile: input.profile,
+        sourcePixels,
+        overlayPixels: input.overlayPixels,
+        previousSwatches: cloneSwatches(input.previousSwatches),
+        userSwatches: cloneSwatches(input.userSwatches),
+        paletteCountTarget: getFixedProfilePaletteForApplication(input.profile)
+            .length,
+    })
+
+    return {
+        ...world,
+        profile: input.profile,
+        referenceSignature:
+            input.referenceSignature?.(input.referenceSnapshot) ?? null,
     }
 }
 

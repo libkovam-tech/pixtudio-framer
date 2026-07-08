@@ -66,6 +66,7 @@ import {
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteVocabularyExtensionApplication,
+    prepareFixedPaletteWorldFromReference,
 } from "./palettePresetExtension.ts"
 import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
 import {
@@ -1513,7 +1514,7 @@ function warnIfBwPaletteInvalid(palette: string[]) {
 void warnIfBwPaletteInvalid
 
 // -------------------- BW PRESET (Step BW2) — threshold helper --------------------
-// Принимает grid пикселей как после pixelizeFromImageDominant: (string|null)[][]
+// Accepts a pixel grid like the one returned by pixelizeFromImageDominant: (string|null)[][]
 function toBlackWhiteGrid(pixels: (string | null)[][]): (string | null)[][] {
     if (!pixels || pixels.length === 0) return pixels
 
@@ -5836,26 +5837,17 @@ function PixelEditorFramer({
         profile: FixedQuantizationProfile,
         referenceSnapshot: ImageDataSampleSource | null = originalImageData
     ): DerivedWorld<PixelValue> | null {
-        if (!referenceSnapshot) return null
-
-        const sourcePixels = pixelizeFromImageDominant(
+        return prepareFixedPaletteWorldFromReference({
+            profile,
             referenceSnapshot,
             gridSize,
-            16
-        )
-
-        const world = buildDerivedWorld<PixelValue>({
-            profile,
-            sourcePixels,
             overlayPixels,
             previousSwatches: autoSwatches,
             userSwatches,
-            paletteCountTarget: getFixedProfilePaletteForApplication(profile).length,
+            pixelizeReference: (snapshot, nextGridSize) =>
+                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+            referenceSignature: imageDataSampleSignature,
         })
-        return {
-            ...world,
-            referenceSignature: imageDataSampleSignature(referenceSnapshot),
-        }
     }
 
     function applyFixedPaletteAsDrawingPalette(
