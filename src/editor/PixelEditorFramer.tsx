@@ -11056,7 +11056,7 @@ function PixelEditorFramer({
             if (!isValid) return
         }
 
-        // иначе можно синхронизировать
+        // Otherwise it is safe to sync.
         setHexDraft(canon)
     }, [pendingColor, pendingTransparent])
 
@@ -11068,15 +11068,17 @@ function PixelEditorFramer({
 
     const SWATCH_PX = 26
     const SWATCH_GAP = 10
+    const ACTIVE_SWATCH_SCALE_MOBILE = 1.3
+    const ACTIVE_SWATCH_SCALE_DESKTOP = 1.725
 
     const renderSwatchButton = (sw: Swatch) => {
         const isActive = selectedSwatch === sw.id
         const isMobileActiveSwatch = isMobileUI && isActive
         const isDesktopActiveSwatch = !isMobileUI && isActive
         const swatchTransform = isMobileActiveSwatch
-            ? "scale(1.3)"
+            ? `scale(${ACTIVE_SWATCH_SCALE_MOBILE})`
             : isDesktopActiveSwatch
-              ? "scale(1.15)"
+              ? `scale(${ACTIVE_SWATCH_SCALE_DESKTOP})`
               : "scale(1)"
 
         let longPressTimeout: number | null = null
@@ -11146,9 +11148,9 @@ function PixelEditorFramer({
         const isDesktopActiveTransparent =
             !isMobileUI && isTransparentSelected
         const transparentTransform = isMobileActiveTransparent
-            ? "scale(1.3)"
+            ? `scale(${ACTIVE_SWATCH_SCALE_MOBILE})`
             : isDesktopActiveTransparent
-              ? "scale(1.15)"
+              ? `scale(${ACTIVE_SWATCH_SCALE_DESKTOP})`
               : "scale(1)"
 
         return (
@@ -12487,9 +12489,9 @@ function PixelEditorFramer({
                                         !isMobileUI && isTransparentSelected
                                     const transparentTransform =
                                         isMobileActiveTransparent
-                                            ? "scale(1.3)"
+                                            ? `scale(${ACTIVE_SWATCH_SCALE_MOBILE})`
                                             : isDesktopActiveTransparent
-                                              ? "scale(1.15)"
+                                              ? `scale(${ACTIVE_SWATCH_SCALE_DESKTOP})`
                                               : "scale(1)"
 
                                     return (
