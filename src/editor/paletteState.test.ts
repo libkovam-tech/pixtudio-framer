@@ -580,6 +580,25 @@ describe("palette state", () => {
         })
     })
 
+    it("selects the swatch that was edited", () => {
+        const result = preparePaletteSwatchEditApplication({
+            swatchId: "auto-1",
+            newColorUpper: "#AABBCC",
+            makeTransparent: false,
+            imagePixels: [["auto-0", "auto-1"]],
+            overlayPixels: [[null, null]],
+            autoSwatches: [
+                { id: "auto-0", color: "#112233" },
+                { id: "auto-1", color: "#445566" },
+            ],
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            autoOverrides: {},
+        })
+
+        expect(result.selectedSwatch).toBe("auto-1")
+    })
+
     it("prepares swatch edit applications with duplicate collapse remaps", () => {
         const result = preparePaletteSwatchEditApplication({
             swatchId: "auto-2",

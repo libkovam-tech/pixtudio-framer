@@ -766,7 +766,7 @@ export function preparePaletteSwatchEditApplication<
         nextAuto,
         nextUser,
         nextAutoOverrides,
-        selectedSwatch: input.selectedSwatch,
+        selectedSwatch: input.swatchId,
         pruneAutoOverrides: input.pruneAutoOverrides,
     })
 }
