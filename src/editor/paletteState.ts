@@ -28,6 +28,33 @@ export type PaletteTabWorldState<TWorld> = {
     presetsWorld: TWorld | null
 }
 
+export type PaletteWorldSnapshotLike<
+    TSwatch extends PaletteSwatchLike & { id: string },
+    TPixel extends string | null,
+> = {
+    profile: {
+        kind: "extract" | "fixed"
+        id?: string
+    }
+    autoSwatches: ReadonlyArray<TSwatch>
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+}
+
+export type PaletteWorldSnapshotApplication<
+    TSwatch extends PaletteSwatchLike & { id: string },
+    TPixel extends string | null,
+> = {
+    autoSwatches: TSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+    selectedSwatch: PaletteSelection
+    activePresetButton: string | null
+    activePaletteTab: PaletteTabKey
+}
+
 function clampInt(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value))
 }
@@ -63,6 +90,16 @@ function swatchListHasId(
     id: string
 ): boolean {
     return (swatches ?? []).some((swatch) => swatch?.id === id)
+}
+
+function clonePaletteSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>) {
+    return swatches.map((swatch) =>
+        swatch && typeof swatch === "object" ? { ...swatch } : swatch
+    )
+}
+
+function clonePaletteGrid<TPixel>(pixels: TPixel[][]): TPixel[][] {
+    return pixels.map((row) => row.slice())
 }
 
 function componentToHex(value: number): string {
@@ -732,6 +769,43 @@ export function preparePaletteSwatchEditApplication<
         selectedSwatch: input.selectedSwatch,
         pruneAutoOverrides: input.pruneAutoOverrides,
     })
+}
+
+export function preparePaletteWorldSnapshotApplication<
+    TSwatch extends PaletteSwatchLike & { id: string },
+    TPixel extends string | null,
+>(input: {
+    world: PaletteWorldSnapshotLike<TSwatch, TPixel>
+    userSwatches:
+        | ReadonlyArray<PaletteSwatchLike | null | undefined>
+        | null
+        | undefined
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    activeTab: PaletteTabKey
+}): PaletteWorldSnapshotApplication<TSwatch, TPixel> {
+    const autoSwatches = clonePaletteSwatches(input.world.autoSwatches)
+    const selectedSwatch = resolveSelectedSwatchAfterAutoChange({
+        nextAutoSwatches: autoSwatches,
+        userSwatches: input.userSwatches,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+    })
+    const activePresetButton =
+        input.world.profile.kind === "fixed"
+            ? input.world.profile.id ?? null
+            : null
+
+    return {
+        autoSwatches,
+        imagePixels: clonePaletteGrid(input.world.imagePixels),
+        overlayPixels: clonePaletteGrid(input.world.overlayPixels),
+        canvasPixels: clonePaletteGrid(input.world.canvasPixels),
+        selectedSwatch,
+        activePresetButton,
+        activePaletteTab:
+            input.world.profile.kind === "fixed" ? "presets" : input.activeTab,
+    }
 }
 
 export function resolveSelectedSwatchAfterAutoChange(input: {

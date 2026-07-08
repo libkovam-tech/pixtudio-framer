@@ -7,6 +7,7 @@ import {
     computePaletteCountFromSwatches,
     prepareAutoOverridesForSwatchEdit,
     preparePaletteSwatchEditApplication,
+    preparePaletteWorldSnapshotApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
@@ -615,6 +616,73 @@ describe("palette state", () => {
         expect(result.autoOverrides).toEqual({
             "auto-1": { hex: "#FF0000", isTransparent: false },
         })
+    })
+
+    it("prepares fixed palette world snapshot applications for presets", () => {
+        const world = {
+            profile: {
+                kind: "fixed" as const,
+                id: "sunset-custom",
+            },
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#111111",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels: [["auto-1"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-1"]],
+        }
+
+        const result = preparePaletteWorldSnapshotApplication({
+            world,
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            preferredSwatch: "auto-1",
+            activeTab: "size",
+        })
+
+        expect(result).toEqual({
+            autoSwatches: world.autoSwatches,
+            imagePixels: [["auto-1"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-1"]],
+            selectedSwatch: "auto-1",
+            activePresetButton: "sunset-custom",
+            activePaletteTab: "presets",
+        })
+        expect(result.autoSwatches).not.toBe(world.autoSwatches)
+        expect(result.imagePixels).not.toBe(world.imagePixels)
+        expect(result.overlayPixels).not.toBe(world.overlayPixels)
+        expect(result.canvasPixels).not.toBe(world.canvasPixels)
+    })
+
+    it("prepares extract palette world snapshot applications without changing tabs", () => {
+        const result = preparePaletteWorldSnapshotApplication({
+            world: {
+                profile: { kind: "extract" },
+                autoSwatches: [{ id: "auto-0" }],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+                canvasPixels: [["auto-0"]],
+            },
+            userSwatches: [{ id: "user-0" }],
+            selectedSwatch: "auto-missing",
+            activeTab: "size",
+        })
+
+        expect(result.selectedSwatch).toBe("auto-0")
+        expect(result.activePresetButton).toBeNull()
+        expect(result.activePaletteTab).toBe("size")
     })
 
     it("removes only pixels owned by a deleted paint swatch", () => {

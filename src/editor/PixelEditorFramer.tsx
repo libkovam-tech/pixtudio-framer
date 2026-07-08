@@ -72,6 +72,7 @@ import {
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
     preparePaletteSwatchEditApplication,
+    preparePaletteWorldSnapshotApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchDelete,
@@ -5532,21 +5533,19 @@ function PixelEditorFramer({
         importedPresetRegistry = importedPalettePresets,
         hiddenPresetRegistry = hiddenPresetIds
     ) {
-        const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
-        const nextImage = clonePixelsGrid(world.imagePixels)
-        const nextOverlay = clonePixelsGrid(world.overlayPixels)
-        const nextSelectedSwatch = resolveSelectedSwatchAfterAutoChange({
-            nextAutoSwatches: nextAuto,
+        const preparedApplication = preparePaletteWorldSnapshotApplication({
+            world,
             userSwatches,
             selectedSwatch,
             preferredSwatch,
+            activeTab: paletteTabsState.activeTab,
         })
         paletteUndoTrace("applyDerivedWorldSnapshot:before", {
             activeTab: paletteTabsState.activeTab,
             currentProfile: quantizationProfileTraceSummary(quantizationProfile),
             worldProfile: quantizationProfileTraceSummary(world.profile),
             selectedSwatch,
-            nextSelectedSwatch,
+            nextSelectedSwatch: preparedApplication.selectedSwatch,
             latestRef: editorCommittedStateTraceSummary(
                 latestProjectStateRef.current
             ),
@@ -5554,35 +5553,30 @@ function PixelEditorFramer({
             worldOverlayNonNull: countNonNullCells(world.overlayPixels),
         })
         setQuantizationProfile(world.profile)
-        setActivePresetButton(
-            world.profile.kind === "fixed" ? world.profile.id : null
-        )
-        setAutoSwatches(nextAuto)
-        setImagePixels(nextImage)
-        setOverlayPixels(nextOverlay)
-        setCanvasPixels(clonePixelsGrid(world.canvasPixels))
+        setActivePresetButton(preparedApplication.activePresetButton)
+        setAutoSwatches(preparedApplication.autoSwatches)
+        setImagePixels(preparedApplication.imagePixels)
+        setOverlayPixels(preparedApplication.overlayPixels)
+        setCanvasPixels(preparedApplication.canvasPixels)
         latestProjectStateRef.current = {
             gridSize,
             paletteCount,
             brushSize,
-            imagePixels: nextImage,
-            overlayPixels: nextOverlay,
+            imagePixels: preparedApplication.imagePixels,
+            overlayPixels: preparedApplication.overlayPixels,
             showImage,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
-            autoSwatches: nextAuto,
+            autoSwatches: preparedApplication.autoSwatches,
             userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: nextSelectedSwatch,
+            selectedSwatch: preparedApplication.selectedSwatch,
             quantizationProfile: cloneQuantizationProfileForHistory(
                 world.profile
             ),
             importedPalettePresets:
                 cloneImportedPalettePresetsForHistory(importedPresetRegistry),
             hiddenPresetIds: hiddenPresetRegistry.slice(),
-            activePaletteTab:
-                world.profile.kind === "fixed"
-                    ? "presets"
-                    : paletteTabsState.activeTab,
+            activePaletteTab: preparedApplication.activePaletteTab,
             deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
             autoOverrides: { ...autoOverrides },
         }
@@ -5593,15 +5587,15 @@ function PixelEditorFramer({
         })
         enforceGridRuleAfterRestore(
             {
-                imagePixels: nextImage,
-                overlayPixels: nextOverlay,
-                autoSwatches: nextAuto,
+                imagePixels: preparedApplication.imagePixels,
+                overlayPixels: preparedApplication.overlayPixels,
+                autoSwatches: preparedApplication.autoSwatches,
                 userSwatches,
                 hasOriginalImageData: hasImportContext,
             },
             `palette-world:${world.profile.kind}`
         )
-        setSelectedSwatch(nextSelectedSwatch)
+        setSelectedSwatch(preparedApplication.selectedSwatch)
     }
 
     function buildExtractWorldFromReference(): DerivedWorld<PixelValue> | null {
