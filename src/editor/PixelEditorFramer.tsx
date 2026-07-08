@@ -11069,7 +11069,7 @@ function PixelEditorFramer({
     const SWATCH_PX = 26
     const SWATCH_GAP = 10
     const ACTIVE_SWATCH_SCALE_MOBILE = 1.3
-    const ACTIVE_SWATCH_SCALE_DESKTOP = 1.725
+    const ACTIVE_SWATCH_SCALE_DESKTOP = 1.4
 
     const renderSwatchButton = (sw: Swatch) => {
         const isActive = selectedSwatch === sw.id
