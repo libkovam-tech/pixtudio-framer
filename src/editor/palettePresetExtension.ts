@@ -204,6 +204,11 @@ export type AutoPaletteReferenceWorld<
     TPixel extends string | null,
 > = PaletteReferenceWorld<TProfile, TPixel>
 
+export type AutoPaletteDrawingWorld<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+> = PaletteReferenceWorld<TProfile, TPixel>
+
 export type PaletteReferenceWorld<
     TProfile extends QuantizationProfile,
     TPixel extends string | null,
@@ -473,6 +478,30 @@ export function prepareFixedPaletteDrawingApplication<
         overlayPixels: clonePixelGrid(preparedWorld.overlayPixels),
         canvasPixels: clonePixelGrid(preparedWorld.canvasPixels),
         autoOverrides: {},
+    }
+}
+
+export function prepareAutoPaletteDrawingWorld<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+>(input: {
+    profile: TProfile
+    referenceSignature?: string | null
+    palette: string[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+}): AutoPaletteDrawingWorld<TProfile, TPixel> {
+    const world = buildDrawingPaletteWorld({
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        palette: input.palette,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+    })
+
+    return {
+        ...world,
+        profile: input.profile,
     }
 }
 

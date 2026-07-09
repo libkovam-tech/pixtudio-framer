@@ -7,6 +7,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPalettePresetSwatchCreate,
@@ -193,6 +194,52 @@ describe("palette preset extension", () => {
                 autoSwatchesOverride: [],
             })
         ).toEqual({ kind: "ignored" })
+    })
+
+    it("prepares auto palette drawing worlds without reference rebuilds", () => {
+        const imagePixels = [
+            ["auto-1", null],
+            ["auto-0", "auto-1"],
+        ]
+        const overlayPixels = [
+            [null, "user-0"],
+            [null, null],
+        ]
+
+        const result = prepareAutoPaletteDrawingWorld({
+            profile: { kind: "extract" },
+            referenceSignature: "reference-3",
+            palette: ["#112233", "#445566"],
+            imagePixels,
+            overlayPixels,
+        })
+
+        expect(result).toEqual({
+            profile: { kind: "extract" },
+            referenceSignature: "reference-3",
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#112233",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#445566",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels,
+            overlayPixels,
+            canvasPixels: [
+                ["auto-1", "user-0"],
+                ["auto-0", "auto-1"],
+            ],
+        })
+        expect(result.imagePixels).not.toBe(imagePixels)
+        expect(result.overlayPixels).not.toBe(overlayPixels)
     })
 
     it("prepares fixed palette worlds from reference snapshots", () => {

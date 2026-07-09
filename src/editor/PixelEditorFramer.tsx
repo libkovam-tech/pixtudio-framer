@@ -61,6 +61,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPalettePresetSwatchCreate,
@@ -101,7 +102,6 @@ import {
 import {
     EXTRACT_QUANTIZATION_PROFILE,
     QUANTIZATION_PROFILES,
-    buildDrawingPaletteWorld,
     extractPalette,
     getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
@@ -5618,7 +5618,7 @@ function PixelEditorFramer({
 
     function buildAutoPaletteDrawingWorld(): DerivedWorld<PixelValue> {
         const count = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
-        return buildDrawingPaletteWorld({
+        return prepareAutoPaletteDrawingWorld({
             profile: EXTRACT_QUANTIZATION_PROFILE,
             referenceSignature: imageDataSampleSignature(originalImageData),
             palette: generatePalette(count),
