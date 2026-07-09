@@ -1,9 +1,11 @@
 import {
     buildDerivedWorld,
     buildDrawingPaletteWorld,
+    EXTRACT_QUANTIZATION_PROFILE,
     getFixedProfilePaletteForApplication,
     overlayOverBase,
     remapOverlay,
+    type PaletteTab,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
 import {
@@ -310,6 +312,9 @@ export type AutoPaletteDrawingProjectApplicationResult<
         TImportedPreset
     >
 }
+
+export type PaletteTabReferenceWorld<TPixel extends string | null> =
+    PaletteReferenceWorld<QuantizationProfile, TPixel>
 
 export type PaletteReferenceWorld<
     TProfile extends QuantizationProfile,
@@ -810,6 +815,64 @@ export function prepareFixedPaletteWorldFromReference<
         paletteCountTarget: getFixedProfilePaletteForApplication(input.profile)
             .length,
     })
+}
+
+export function preparePaletteTabReferenceWorld<
+    TReference,
+    TPixel extends string | null,
+>(input: {
+    tab: PaletteTab
+    staleWorld?: PaletteReferenceWorld<QuantizationProfile, TPixel> | null
+    currentProfile: QuantizationProfile
+    referenceSnapshot: TReference | null | undefined
+    gridSize: number
+    overlayPixels: TPixel[][]
+    previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    paletteCountTarget: number
+    excludedColors?: string[]
+    pixelizeReference: (
+        referenceSnapshot: TReference,
+        gridSize: number
+    ) => (string | null)[][]
+    referenceSignature?: (
+        referenceSnapshot: TReference | null
+    ) => string | null
+}): PaletteTabReferenceWorld<TPixel> | null {
+    if (input.tab === "size") {
+        return prepareAutoPaletteWorldFromReference({
+            profile: EXTRACT_QUANTIZATION_PROFILE,
+            referenceSnapshot: input.referenceSnapshot,
+            gridSize: input.gridSize,
+            overlayPixels: input.overlayPixels,
+            previousSwatches: input.previousSwatches,
+            userSwatches: input.userSwatches,
+            paletteCountTarget: input.paletteCountTarget,
+            excludedColors: input.excludedColors,
+            pixelizeReference: input.pixelizeReference,
+            referenceSignature: input.referenceSignature,
+        })
+    }
+
+    const profile =
+        input.staleWorld?.profile.kind === "fixed"
+            ? input.staleWorld.profile
+            : input.currentProfile.kind === "fixed"
+              ? input.currentProfile
+              : null
+
+    return profile
+        ? prepareFixedPaletteWorldFromReference({
+              profile,
+              referenceSnapshot: input.referenceSnapshot,
+              gridSize: input.gridSize,
+              overlayPixels: input.overlayPixels,
+              previousSwatches: input.previousSwatches,
+              userSwatches: input.userSwatches,
+              pixelizeReference: input.pixelizeReference,
+              referenceSignature: input.referenceSignature,
+          })
+        : null
 }
 
 export function prepareFixedPaletteReferenceProjectApplication<

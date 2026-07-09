@@ -22,6 +22,7 @@ import {
     prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteVocabularyExtensionProjectApplication,
     prepareFixedPaletteVocabularyExtensionWorld,
+    preparePaletteTabReferenceWorld,
     prepareFixedPaletteWorldFromReference,
     prepareSharedOverlayPaletteWorld,
     prepareFixedPaletteSwatchDelete,
@@ -853,6 +854,154 @@ describe("palette preset extension", () => {
             kind: "ignored",
             reason: "missing-reference",
         })
+        expect(pixelized).toBe(false)
+    })
+
+    it("prepares size tab reference worlds from extract profiles", () => {
+        const calls: Array<[string, number]> = []
+
+        const result = preparePaletteTabReferenceWorld({
+            tab: "size",
+            currentProfile: profile,
+            referenceSnapshot: "reference-size",
+            gridSize: 2,
+            overlayPixels: [
+                [null, "user-0"],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#FF00FF",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            paletteCountTarget: 2,
+            excludedColors: ["#333333"],
+            pixelizeReference: (snapshot, gridSize) => {
+                calls.push([snapshot, gridSize])
+                return [
+                    ["#111111", "#222222"],
+                    ["#333333", "#444444"],
+                ]
+            },
+            referenceSignature: (snapshot) =>
+                snapshot ? `sig:${snapshot}` : "null",
+        })
+
+        expect(calls).toEqual([["reference-size", 2]])
+        expect(result?.profile).toEqual({ kind: "extract" })
+        expect(result?.referenceSignature).toBe("sig:reference-size")
+        expect(result?.autoSwatches).toHaveLength(2)
+        expect(
+            result?.autoSwatches.map((swatch) => swatch.color.toUpperCase())
+        ).not.toContain("#333333")
+        expect(result?.overlayPixels[0]?.[1]).toBe("user-0")
+    })
+
+    it("prepares presets tab reference worlds from stale fixed profiles first", () => {
+        const staleProfile = {
+            ...profile,
+            id: "stale-fixed",
+            colors: ["#FFFFFF"],
+        }
+        const currentProfile = {
+            ...profile,
+            id: "current-fixed",
+            colors: ["#000000"],
+        }
+
+        const result = preparePaletteTabReferenceWorld({
+            tab: "presets",
+            staleWorld: {
+                profile: staleProfile,
+                referenceSignature: "stale",
+                autoSwatches: [],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+                canvasPixels: [["auto-0"]],
+            },
+            currentProfile,
+            referenceSnapshot: "reference-presets",
+            gridSize: 1,
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: 16,
+            pixelizeReference: () => [["#FFFFFF"]],
+        })
+
+        expect(result?.profile).toEqual(staleProfile)
+        expect(result?.autoSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#FFFFFF",
+                isTransparent: false,
+                isUser: false,
+            },
+        ])
+    })
+
+    it("prepares presets tab reference worlds from current fixed profiles", () => {
+        const currentProfile = {
+            ...profile,
+            id: "current-fixed",
+            colors: ["#000000"],
+        }
+
+        const result = preparePaletteTabReferenceWorld({
+            tab: "presets",
+            staleWorld: null,
+            currentProfile,
+            referenceSnapshot: "reference-presets",
+            gridSize: 1,
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: 16,
+            pixelizeReference: () => [["#000000"]],
+        })
+
+        expect(result?.profile).toEqual(currentProfile)
+        expect(result?.autoSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#000000",
+                isTransparent: false,
+                isUser: false,
+            },
+        ])
+    })
+
+    it("skips presets tab reference worlds without a fixed profile", () => {
+        let pixelized = false
+
+        const result = preparePaletteTabReferenceWorld({
+            tab: "presets",
+            staleWorld: {
+                profile: { kind: "extract" },
+                referenceSignature: "stale",
+                autoSwatches: [],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+                canvasPixels: [["auto-0"]],
+            },
+            currentProfile: { kind: "extract" },
+            referenceSnapshot: "reference-presets",
+            gridSize: 1,
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: 16,
+            pixelizeReference: () => {
+                pixelized = true
+                return [["#000000"]]
+            },
+        })
+
+        expect(result).toBeNull()
         expect(pixelized).toBe(false)
     })
 

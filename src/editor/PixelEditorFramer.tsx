@@ -63,13 +63,13 @@ import {
     makeImportedPalettePresetName,
     prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteReferenceProjectApplication,
-    prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteVocabularyExtensionProjectApplication,
+    preparePaletteTabReferenceWorld,
     prepareFixedPaletteWorldFromReference,
     prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
@@ -5465,16 +5465,21 @@ function PixelEditorFramer({
         tab: PaletteTab,
         staleWorld?: DerivedWorld<PixelValue> | null
     ): DerivedWorld<PixelValue> | null {
-        if (tab === "size") return buildExtractWorldFromReference()
-
-        const profile =
-            staleWorld?.profile.kind === "fixed"
-                ? staleWorld.profile
-                : quantizationProfile.kind === "fixed"
-                  ? quantizationProfile
-                  : null
-
-        return profile ? buildFixedPresetWorldFromReference(profile) : null
+        return preparePaletteTabReferenceWorld({
+            tab,
+            staleWorld,
+            currentProfile: quantizationProfile,
+            referenceSnapshot: originalImageData,
+            gridSize,
+            overlayPixels,
+            previousSwatches: autoSwatches,
+            userSwatches,
+            paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            excludedColors: deletedAutoPaletteColors,
+            pixelizeReference: (snapshot, nextGridSize) =>
+                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+            referenceSignature: imageDataSampleSignature,
+        })
     }
 
     function applyDerivedWorldSnapshot(
@@ -5536,22 +5541,6 @@ function PixelEditorFramer({
             `palette-world:${world.profile.kind}`
         )
         setSelectedSwatch(preparedApplication.selectedSwatch)
-    }
-
-    function buildExtractWorldFromReference(): DerivedWorld<PixelValue> | null {
-        return prepareAutoPaletteWorldFromReference({
-            profile: EXTRACT_QUANTIZATION_PROFILE,
-            referenceSnapshot: originalImageData,
-            gridSize,
-            overlayPixels,
-            previousSwatches: autoSwatches,
-            userSwatches,
-            paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
-            excludedColors: deletedAutoPaletteColors,
-            pixelizeReference: (snapshot, nextGridSize) =>
-                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
-            referenceSignature: imageDataSampleSignature,
-        })
     }
 
     function switchDeletedActivePresetToAutoPalette(
