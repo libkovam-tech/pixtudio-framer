@@ -63,7 +63,7 @@ import {
     makeImportedPalettePresetName,
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteWorldFromReference,
-    prepareFixedPaletteDrawingApplication,
+    prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
@@ -5812,7 +5812,7 @@ function PixelEditorFramer({
         importedPresetRegistry = importedPalettePresets,
         autoSwatchesOverride?: Swatch[] | null
     ) {
-        const preparedApplication = prepareFixedPaletteDrawingApplication({
+        const prepared = prepareFixedPaletteDrawingProjectApplication({
             profile,
             referenceSignature: imageDataSampleSignature(originalImageData),
             imagePixels,
@@ -5822,29 +5822,20 @@ function PixelEditorFramer({
             userSwatches,
             autoSwatchesOverride,
             makeAutoSwatches: makeAutoSwatchesFromFixedProfile,
-        })
-        if (preparedApplication.kind === "ignored") return
-
-        const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
-        const afterState: ProjectState = {
             gridSize,
             paletteCount,
             brushSize,
-            imagePixels: preparedApplication.imagePixels,
-            overlayPixels: preparedApplication.overlayPixels,
             showImage,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
-            autoSwatches: preparedApplication.autoSwatches,
-            userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: preparedApplication.selectedSwatch,
-            quantizationProfile: cloneQuantizationProfileForHistory(profile),
-            importedPalettePresets:
-                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
-            hiddenPresetIds: hiddenPresetIds.slice(),
-            activePaletteTab: "presets",
-            autoOverrides: preparedApplication.autoOverrides,
-        }
+            importedPalettePresets: importedPresetRegistry,
+            hiddenPresetIds,
+        })
+        if (prepared.kind === "ignored") return
+
+        const preparedApplication = prepared.application
+        const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
+        const afterState: ProjectState = prepared.projectState
 
         beginEditorActionTransaction("editor-action", before)
         setQuantizationProfile(profile)

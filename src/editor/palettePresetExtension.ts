@@ -13,6 +13,14 @@ import {
     type PaletteSelection,
     type PaletteSwatchLike,
 } from "./paletteState.ts"
+import {
+    cloneImportedPalettePresetsForHistory,
+    cloneQuantizationProfileForHistory,
+    type EditorCommittedState,
+    type EditorHistorySwatch,
+    type ImageDataSampleSource,
+    type ImportedPalettePresetForHistory,
+} from "./editorHistoryState.ts"
 
 export type EditableFixedPaletteProfile = {
     kind: "fixed"
@@ -194,6 +202,32 @@ export type FixedPaletteDrawingApplicationResult<
           overlayPixels: TPixel[][]
           canvasPixels: TPixel[][]
           autoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike>
+      }
+
+export type FixedPaletteDrawingProjectApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+> =
+    | {
+          kind: "ignored"
+      }
+    | {
+          kind: "applied"
+          application: Extract<
+              FixedPaletteDrawingApplicationResult<
+                  TProfile,
+                  TSwatch,
+                  TPixel
+              >,
+              { kind: "applied" }
+          >
+          projectState: EditorCommittedState<
+              TPixel,
+              TSwatch,
+              TImportedPreset
+          >
       }
 
 export type FixedPaletteReferenceWorld<
@@ -480,6 +514,76 @@ export function prepareFixedPaletteDrawingApplication<
         overlayPixels: clonePixelGrid(preparedWorld.overlayPixels),
         canvasPixels: clonePixelGrid(preparedWorld.canvasPixels),
         autoOverrides: {},
+    }
+}
+
+export function prepareFixedPaletteDrawingProjectApplication<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    profile: TProfile
+    referenceSignature?: string | null
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    userSwatches: ReadonlyArray<TSwatch>
+    autoSwatchesOverride?: ReadonlyArray<TSwatch> | null
+    makeAutoSwatches?: (profile: TProfile) => TSwatch[]
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+}): FixedPaletteDrawingProjectApplicationResult<
+    TProfile,
+    TSwatch,
+    TPixel,
+    TImportedPreset
+> {
+    const application = prepareFixedPaletteDrawingApplication({
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+        userSwatches: input.userSwatches,
+        autoSwatchesOverride: input.autoSwatchesOverride,
+        makeAutoSwatches: input.makeAutoSwatches,
+    })
+    if (application.kind === "ignored") return { kind: "ignored" }
+
+    return {
+        kind: "applied",
+        application,
+        projectState: {
+            gridSize: input.gridSize,
+            paletteCount: input.paletteCount,
+            brushSize: input.brushSize,
+            imagePixels: application.imagePixels,
+            overlayPixels: application.overlayPixels,
+            showImage: input.showImage,
+            hasOriginalImageData: input.hasOriginalImageData,
+            referenceSnapshot: input.referenceSnapshot,
+            autoSwatches: application.autoSwatches,
+            userSwatches: cloneSwatches(input.userSwatches),
+            selectedSwatch: application.selectedSwatch,
+            quantizationProfile: cloneQuantizationProfileForHistory(
+                input.profile
+            ),
+            importedPalettePresets: cloneImportedPalettePresetsForHistory(
+                input.importedPalettePresets
+            ),
+            hiddenPresetIds: input.hiddenPresetIds.slice(),
+            activePaletteTab: "presets",
+            autoOverrides: application.autoOverrides,
+        },
     }
 }
 

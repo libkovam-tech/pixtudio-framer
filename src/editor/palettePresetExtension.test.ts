@@ -10,6 +10,7 @@ import {
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
+    prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
@@ -195,6 +196,73 @@ describe("palette preset extension", () => {
                 autoSwatchesOverride: [],
             })
         ).toEqual({ kind: "ignored" })
+    })
+
+    it("prepares fixed palette drawing applications with committed project state", () => {
+        const imagePixels = [["auto-1"]]
+        const overlayPixels = [[null]]
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF0000",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [
+            {
+                id: profile.id,
+                name: profile.name,
+                profile,
+            },
+        ]
+
+        const result = prepareFixedPaletteDrawingProjectApplication({
+            profile,
+            referenceSignature: "reference-2",
+            imagePixels,
+            overlayPixels,
+            selectedSwatch: "auto-0",
+            preferredSwatch: "auto-1",
+            userSwatches,
+            gridSize: 1,
+            paletteCount: 2,
+            brushSize: 3,
+            showImage: false,
+            hasOriginalImageData: false,
+            referenceSnapshot: null,
+            importedPalettePresets,
+            hiddenPresetIds: ["hidden"],
+        })
+
+        expect(result.kind).toBe("applied")
+        if (result.kind !== "applied") throw new Error("expected application")
+
+        expect(result.application.selectedSwatch).toBe("auto-1")
+        expect(result.projectState).toMatchObject({
+            gridSize: 1,
+            paletteCount: 2,
+            brushSize: 3,
+            imagePixels: result.application.imagePixels,
+            overlayPixels: result.application.overlayPixels,
+            showImage: false,
+            hasOriginalImageData: false,
+            referenceSnapshot: null,
+            autoSwatches: result.application.autoSwatches,
+            selectedSwatch: "auto-1",
+            quantizationProfile: profile,
+            hiddenPresetIds: ["hidden"],
+            activePaletteTab: "presets",
+            autoOverrides: {},
+        })
+        expect(result.projectState.userSwatches).toEqual(userSwatches)
+        expect(result.projectState.userSwatches).not.toBe(userSwatches)
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
+        expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
+            importedPalettePresets[0]
+        )
     })
 
     it("prepares auto palette drawing worlds without reference rebuilds", () => {
