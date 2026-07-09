@@ -9,6 +9,7 @@ import {
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotApplication,
     preparePaletteTabSwitch,
+    prepareProjectStateFromPaletteWorld,
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
     prepareSwatchDelete,
@@ -702,6 +703,82 @@ describe("palette state", () => {
         expect(result.selectedSwatch).toBe("auto-0")
         expect(result.activePresetButton).toBeNull()
         expect(result.activePaletteTab).toBe("size")
+    })
+
+    it("prepares committed project state from a palette world", () => {
+        const fixedProfile = {
+            kind: "fixed" as const,
+            id: "custom",
+            name: "Custom",
+            source: "imported" as const,
+            colors: ["#111111", "#222222"],
+        }
+        const world = {
+            profile: fixedProfile,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#111111",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+        }
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#333333",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [
+            {
+                id: "preset-custom",
+                name: "Custom preset",
+                profile: fixedProfile,
+            },
+        ]
+        const autoOverrides = {
+            "auto-0": { hex: "#AAAAAA", isTransparent: false },
+        }
+
+        const result = prepareProjectStateFromPaletteWorld({
+            world,
+            activePaletteTab: "presets",
+            gridSize: 1,
+            paletteCount: 2,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            referenceSnapshot: { width: 1, height: 1, data: [0, 0, 0, 255] },
+            userSwatches,
+            selectedSwatch: "missing",
+            preferredSwatch: "user-0",
+            importedPalettePresets,
+            hiddenPresetIds: ["hidden"],
+            deletedAutoPaletteColors: ["#000000"],
+            autoOverrides,
+        })
+
+        expect(result.selectedSwatch).toBe("user-0")
+        expect(result.activePaletteTab).toBe("presets")
+        expect(result.imagePixels).toEqual([["auto-0"]])
+        expect(result.overlayPixels).toEqual([[null]])
+        expect(result.autoOverrides).toEqual(autoOverrides)
+        expect(result.quantizationProfile).toEqual(fixedProfile)
+        expect(result.importedPalettePresets).toEqual(importedPalettePresets)
+        expect(result.autoSwatches).not.toBe(world.autoSwatches)
+        expect(result.userSwatches).not.toBe(userSwatches)
+        expect(result.imagePixels).not.toBe(world.imagePixels)
+        expect(result.overlayPixels).not.toBe(world.overlayPixels)
+        expect(result.quantizationProfile).not.toBe(fixedProfile)
+        expect(result.importedPalettePresets?.[0]).not.toBe(
+            importedPalettePresets[0]
+        )
+        expect(result.autoOverrides).not.toBe(autoOverrides)
     })
 
     it("removes only pixels owned by a deleted paint swatch", () => {

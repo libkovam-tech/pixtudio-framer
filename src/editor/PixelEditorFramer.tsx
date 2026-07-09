@@ -76,13 +76,13 @@ import {
     appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
+    prepareProjectStateFromPaletteWorld,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchDelete,
     resolvePaletteWorldSelection,
-    resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
 import {
     areEditorCommittedStatesEqual,
@@ -5432,36 +5432,23 @@ function PixelEditorFramer({
         importedPresetRegistry = importedPalettePresets,
         hiddenPresetRegistry = hiddenPresetIds
     ): ProjectState {
-        const nextAuto = cloneSwatches(world.autoSwatches as Swatch[])
-        return {
+        return prepareProjectStateFromPaletteWorld({
+            world,
+            activePaletteTab,
             gridSize,
             paletteCount,
             brushSize,
-            imagePixels: clonePixelsGrid(world.imagePixels),
-            overlayPixels: clonePixelsGrid(world.overlayPixels),
             showImage,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
-            autoSwatches: nextAuto,
-            userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: resolveSelectedSwatchAfterAutoChange({
-                nextAutoSwatches: nextAuto,
-                userSwatches,
-                selectedSwatch,
-                preferredSwatch,
-            }),
-            quantizationProfile: cloneQuantizationProfileForHistory(
-                world.profile
-            ),
-            // Imported preset swatch edits are session state, so history must carry
-            // the preset registry in lockstep with the active quantization profile.
-            importedPalettePresets:
-                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
-            hiddenPresetIds: hiddenPresetRegistry.slice(),
-            activePaletteTab,
-            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
-            autoOverrides: { ...autoOverrides },
-        }
+            userSwatches,
+            selectedSwatch,
+            preferredSwatch,
+            importedPalettePresets: importedPresetRegistry,
+            hiddenPresetIds: hiddenPresetRegistry,
+            deletedAutoPaletteColors,
+            autoOverrides,
+        })
     }
 
     function makeCurrentDerivedWorldSnapshot(): DerivedWorld<PixelValue> {

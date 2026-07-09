@@ -1,3 +1,15 @@
+import {
+    cloneImportedPalettePresetsForHistory,
+    clonePixelsGrid,
+    cloneQuantizationProfileForHistory,
+    cloneSwatches,
+    type EditorCommittedState,
+    type EditorHistorySwatch,
+    type ImageDataSampleSource,
+    type ImportedPalettePresetForHistory,
+} from "./editorHistoryState.ts"
+import type { QuantizationProfile } from "./paletteQuantizationEngine.ts"
+
 export type PaletteSwatchLike = {
     id?: string | null
     isTransparent?: boolean | null
@@ -53,6 +65,75 @@ export type PaletteWorldSnapshotApplication<
     selectedSwatch: PaletteSelection
     activePresetButton: string | null
     activePaletteTab: PaletteTabKey
+}
+
+export type PaletteProjectStateWorldLike<
+    TSwatch extends EditorHistorySwatch,
+    TPixel extends string | null,
+> = {
+    profile: QuantizationProfile
+    autoSwatches: ReadonlyArray<TSwatch>
+    imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>
+    overlayPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+}
+
+export function prepareProjectStateFromPaletteWorld<
+    TPixel extends string | null,
+    TSwatch extends EditorHistorySwatch,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    world: PaletteProjectStateWorldLike<TSwatch, TPixel>
+    activePaletteTab: PaletteTabKey
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    userSwatches: ReadonlyArray<TSwatch>
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): EditorCommittedState<TPixel, TSwatch, TImportedPreset> {
+    const nextAuto = cloneSwatches(input.world.autoSwatches)
+
+    return {
+        gridSize: input.gridSize,
+        paletteCount: input.paletteCount,
+        brushSize: input.brushSize,
+        imagePixels: clonePixelsGrid(input.world.imagePixels),
+        overlayPixels: clonePixelsGrid(input.world.overlayPixels),
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        referenceSnapshot: input.referenceSnapshot,
+        autoSwatches: nextAuto,
+        userSwatches: cloneSwatches(input.userSwatches),
+        selectedSwatch: resolveSelectedSwatchAfterAutoChange({
+            nextAutoSwatches: nextAuto,
+            userSwatches: input.userSwatches,
+            selectedSwatch: input.selectedSwatch,
+            preferredSwatch: input.preferredSwatch,
+        }),
+        quantizationProfile: cloneQuantizationProfileForHistory(
+            input.world.profile
+        ),
+        // Imported preset swatch edits are session state, so history must carry
+        // the preset registry in lockstep with the active quantization profile.
+        importedPalettePresets: cloneImportedPalettePresetsForHistory(
+            input.importedPalettePresets
+        ),
+        hiddenPresetIds: input.hiddenPresetIds.slice(),
+        activePaletteTab: input.activePaletteTab,
+        deletedAutoPaletteColors: input.deletedAutoPaletteColors.slice(),
+        autoOverrides: { ...input.autoOverrides },
+    }
 }
 
 function clampInt(value: number, min: number, max: number): number {
