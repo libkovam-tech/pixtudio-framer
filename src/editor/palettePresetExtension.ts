@@ -298,6 +298,19 @@ export type AutoPaletteDrawingWorld<
     TPixel extends string | null,
 > = PaletteReferenceWorld<TProfile, TPixel>
 
+export type AutoPaletteDrawingProjectApplicationResult<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+> = {
+    world: AutoPaletteDrawingWorld<TProfile, TPixel>
+    projectState: EditorCommittedState<
+        TPixel,
+        FixedPaletteAutoSwatch,
+        TImportedPreset
+    >
+}
+
 export type PaletteReferenceWorld<
     TProfile extends QuantizationProfile,
     TPixel extends string | null,
@@ -661,6 +674,68 @@ export function prepareAutoPaletteDrawingWorld<
     return {
         ...world,
         profile: input.profile,
+    }
+}
+
+export function prepareAutoPaletteDrawingProjectApplication<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    profile: TProfile
+    referenceSignature?: string | null
+    palette: string[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    gridSize: number
+    projectPaletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        FixedPaletteAutoSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): AutoPaletteDrawingProjectApplicationResult<
+    TProfile,
+    TPixel,
+    TImportedPreset
+> {
+    const world = prepareAutoPaletteDrawingWorld({
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        palette: input.palette,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+    })
+
+    return {
+        world,
+        projectState: prepareProjectStateFromPaletteWorld({
+            world,
+            activePaletteTab: "size",
+            gridSize: input.gridSize,
+            paletteCount: input.projectPaletteCount,
+            brushSize: input.brushSize,
+            showImage: input.showImage,
+            hasOriginalImageData: input.hasOriginalImageData,
+            referenceSnapshot: input.referenceSnapshot,
+            userSwatches: input.userSwatches,
+            selectedSwatch: input.selectedSwatch,
+            preferredSwatch: input.preferredSwatch,
+            importedPalettePresets: input.importedPalettePresets,
+            hiddenPresetIds: input.hiddenPresetIds,
+            deletedAutoPaletteColors: input.deletedAutoPaletteColors,
+            autoOverrides: input.autoOverrides,
+        }),
     }
 }
 

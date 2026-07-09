@@ -61,7 +61,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
-    prepareAutoPaletteDrawingWorld,
+    prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteReferenceProjectApplication,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingProjectApplication,
@@ -80,7 +80,6 @@ import {
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
     prepareCurrentPaletteWorldSnapshot,
-    prepareProjectStateFromPaletteWorld,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitch,
@@ -5429,32 +5428,6 @@ function PixelEditorFramer({
     const pendingBlankCheckReasonRef = React.useRef<string | null>(null)
     const isRestoringHistoryRef = React.useRef(false)
 
-    function makeProjectStateFromDerivedWorld(
-        world: DerivedWorld<PixelValue>,
-        activePaletteTab: PaletteTab,
-        preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets,
-        hiddenPresetRegistry = hiddenPresetIds
-    ): ProjectState {
-        return prepareProjectStateFromPaletteWorld({
-            world,
-            activePaletteTab,
-            gridSize,
-            paletteCount,
-            brushSize,
-            showImage,
-            hasOriginalImageData: hasImportContext,
-            referenceSnapshot: originalImageData,
-            userSwatches,
-            selectedSwatch,
-            preferredSwatch,
-            importedPalettePresets: importedPresetRegistry,
-            hiddenPresetIds: hiddenPresetRegistry,
-            deletedAutoPaletteColors,
-            autoOverrides,
-        })
-    }
-
     function makeCurrentDerivedWorldSnapshot(): DerivedWorld<PixelValue> {
         return prepareCurrentPaletteWorldSnapshot({
             profile: quantizationProfile,
@@ -5581,17 +5554,6 @@ function PixelEditorFramer({
         })
     }
 
-    function buildAutoPaletteDrawingWorld(): DerivedWorld<PixelValue> {
-        const count = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
-        return prepareAutoPaletteDrawingWorld({
-            profile: EXTRACT_QUANTIZATION_PROFILE,
-            referenceSignature: imageDataSampleSignature(originalImageData),
-            palette: generatePalette(count),
-            imagePixels,
-            overlayPixels,
-        })
-    }
-
     function switchDeletedActivePresetToAutoPalette(
         nextHiddenPresetIds: string[],
         nextImportedPalettePresets: ImportedPalettePreset[]
@@ -5627,25 +5589,37 @@ function PixelEditorFramer({
                 deletedAutoPaletteColors,
                 autoOverrides,
             })
-        const world =
-            preparedReference.kind === "applied"
-                ? preparedReference.world
-                : buildAutoPaletteDrawingWorld()
-        const afterState: ProjectState =
-            preparedReference.kind === "applied"
-                ? preparedReference.projectState
-                : {
-                      ...makeProjectStateFromDerivedWorld(
-                          world,
-                          "size",
-                          null,
-                          nextImportedPalettePresets,
-                          nextHiddenPresetIds
-                      ),
-                      quantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
-                      activePaletteTab: "size",
-                      hiddenPresetIds: nextHiddenPresetIds.slice(),
-                  }
+        let world: DerivedWorld<PixelValue>
+        let afterState: ProjectState
+        if (preparedReference.kind === "applied") {
+            world = preparedReference.world
+            afterState = preparedReference.projectState
+        } else {
+            const preparedDrawing = prepareAutoPaletteDrawingProjectApplication({
+                profile: EXTRACT_QUANTIZATION_PROFILE,
+                referenceSignature: imageDataSampleSignature(originalImageData),
+                palette: generatePalette(
+                    clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
+                ),
+                imagePixels,
+                overlayPixels,
+                selectedSwatch,
+                preferredSwatch: null,
+                gridSize,
+                projectPaletteCount: paletteCount,
+                brushSize,
+                showImage,
+                hasOriginalImageData: hasImportContext,
+                referenceSnapshot: originalImageData,
+                userSwatches,
+                importedPalettePresets: nextImportedPalettePresets,
+                hiddenPresetIds: nextHiddenPresetIds,
+                deletedAutoPaletteColors,
+                autoOverrides,
+            })
+            world = preparedDrawing.world
+            afterState = preparedDrawing.projectState
+        }
 
         beginEditorActionTransaction("editor-action", before)
         setHiddenPresetIds(nextHiddenPresetIds)

@@ -7,6 +7,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteReferenceProjectApplication,
     prepareAutoPaletteWorldFromReference,
@@ -312,6 +313,87 @@ describe("palette preset extension", () => {
         })
         expect(result.imagePixels).not.toBe(imagePixels)
         expect(result.overlayPixels).not.toBe(overlayPixels)
+    })
+
+    it("prepares auto palette drawing applications with committed project state", () => {
+        const imagePixels = [
+            ["auto-1", null],
+            ["auto-0", "auto-1"],
+        ]
+        const overlayPixels = [
+            [null, "user-0"],
+            [null, null],
+        ]
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF00FF",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [
+            {
+                id: profile.id,
+                name: profile.name,
+                profile,
+            },
+        ]
+        const autoOverrides = {
+            "auto-0": { hex: "#111111", isTransparent: false },
+        }
+
+        const result = prepareAutoPaletteDrawingProjectApplication({
+            profile: { kind: "extract" },
+            referenceSignature: null,
+            palette: ["#112233", "#445566"],
+            imagePixels,
+            overlayPixels,
+            selectedSwatch: "auto-1",
+            preferredSwatch: null,
+            gridSize: 2,
+            projectPaletteCount: 11,
+            brushSize: 3,
+            showImage: false,
+            hasOriginalImageData: false,
+            referenceSnapshot: null,
+            userSwatches,
+            importedPalettePresets,
+            hiddenPresetIds: ["hidden"],
+            deletedAutoPaletteColors: ["#112233"],
+            autoOverrides,
+        })
+
+        expect(result.world.canvasPixels).toEqual([
+            ["auto-1", "user-0"],
+            ["auto-0", "auto-1"],
+        ])
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 11,
+            brushSize: 3,
+            imagePixels: result.world.imagePixels,
+            overlayPixels: result.world.overlayPixels,
+            showImage: false,
+            hasOriginalImageData: false,
+            referenceSnapshot: null,
+            autoSwatches: result.world.autoSwatches,
+            selectedSwatch: "auto-1",
+            quantizationProfile: { kind: "extract" },
+            hiddenPresetIds: ["hidden"],
+            activePaletteTab: "size",
+            deletedAutoPaletteColors: ["#112233"],
+            autoOverrides,
+        })
+        expect(result.projectState.userSwatches).toEqual(userSwatches)
+        expect(result.projectState.userSwatches).not.toBe(userSwatches)
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
+        expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
+            importedPalettePresets[0]
+        )
+        expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
     })
 
     it("prepares palette worlds with shared overlay remapping", () => {
