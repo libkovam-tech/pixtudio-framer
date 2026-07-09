@@ -8,6 +8,7 @@ import {
     prepareAutoOverridesForSwatchEdit,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotApplication,
+    preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitch,
     prepareProjectStateFromPaletteWorld,
     prepareStrokePaintSwatch,
@@ -703,6 +704,119 @@ describe("palette state", () => {
         expect(result.selectedSwatch).toBe("auto-0")
         expect(result.activePresetButton).toBeNull()
         expect(result.activePaletteTab).toBe("size")
+    })
+
+    it("prepares palette world application and committed project state together", () => {
+        const fixedProfile = {
+            kind: "fixed" as const,
+            id: "sunset-custom",
+            name: "Sunset Custom",
+            source: "imported" as const,
+            colors: ["#111111", "#FFFFFF"],
+        }
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#222222",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [
+            {
+                id: "preset-sunset-custom",
+                name: "Sunset Custom",
+                profile: fixedProfile,
+            },
+        ]
+        const autoOverrides = {
+            "auto-1": { hex: "#EEEEEE", isTransparent: false },
+        }
+
+        const result = preparePaletteWorldSnapshotProjectApplication({
+            world: {
+                profile: fixedProfile,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#111111",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                    {
+                        id: "auto-1",
+                        color: "#FFFFFF",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                ],
+                imagePixels: [["auto-1"]],
+                overlayPixels: [[null]],
+                canvasPixels: [["auto-1"]],
+            },
+            userSwatches,
+            selectedSwatch: "auto-0",
+            preferredSwatch: "auto-1",
+            activeTab: "size",
+            gridSize: 1,
+            paletteCount: 2,
+            brushSize: 4,
+            showImage: true,
+            hasOriginalImageData: true,
+            referenceSnapshot: { width: 1, height: 1, data: [0, 0, 0, 255] },
+            importedPalettePresets,
+            hiddenPresetIds: ["hidden-preset"],
+            deletedAutoPaletteColors: ["#000000"],
+            autoOverrides,
+        })
+
+        expect(result.application).toEqual({
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#111111",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels: [["auto-1"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-1"]],
+            selectedSwatch: "auto-1",
+            activePresetButton: "sunset-custom",
+            activePaletteTab: "presets",
+        })
+        expect(result.projectState.selectedSwatch).toBe("auto-1")
+        expect(result.projectState.activePaletteTab).toBe("presets")
+        expect(result.projectState.quantizationProfile).toEqual(fixedProfile)
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
+        expect(result.projectState.hiddenPresetIds).toEqual(["hidden-preset"])
+        expect(result.projectState.deletedAutoPaletteColors).toEqual([
+            "#000000",
+        ])
+        expect(result.projectState.autoOverrides).toEqual(autoOverrides)
+        expect(result.projectState.autoSwatches).toBe(
+            result.application.autoSwatches
+        )
+        expect(result.projectState.imagePixels).toBe(
+            result.application.imagePixels
+        )
+        expect(result.projectState.overlayPixels).toBe(
+            result.application.overlayPixels
+        )
+        expect(result.projectState.userSwatches).not.toBe(userSwatches)
+        expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
+            importedPalettePresets[0]
+        )
+        expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
     })
 
     it("prepares committed project state from a palette world", () => {

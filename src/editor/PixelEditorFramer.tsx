@@ -78,7 +78,7 @@ import {
     computePaletteCountFromSwatches,
     prepareProjectStateFromPaletteWorld,
     preparePaletteSwatchEditApplication,
-    preparePaletteWorldSnapshotApplication,
+    preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchDelete,
@@ -5516,13 +5516,24 @@ function PixelEditorFramer({
         importedPresetRegistry = importedPalettePresets,
         hiddenPresetRegistry = hiddenPresetIds
     ) {
-        const preparedApplication = preparePaletteWorldSnapshotApplication({
+        const preparedSnapshot = preparePaletteWorldSnapshotProjectApplication({
             world,
             userSwatches,
             selectedSwatch,
             preferredSwatch,
             activeTab: paletteTabsState.activeTab,
+            gridSize,
+            paletteCount,
+            brushSize,
+            showImage,
+            hasOriginalImageData: hasImportContext,
+            referenceSnapshot: originalImageData,
+            importedPalettePresets: importedPresetRegistry,
+            hiddenPresetIds: hiddenPresetRegistry,
+            deletedAutoPaletteColors,
+            autoOverrides,
         })
+        const preparedApplication = preparedSnapshot.application
         paletteUndoTrace("applyDerivedWorldSnapshot:before", {
             activeTab: paletteTabsState.activeTab,
             currentProfile: quantizationProfileTraceSummary(quantizationProfile),
@@ -5541,28 +5552,7 @@ function PixelEditorFramer({
         setImagePixels(preparedApplication.imagePixels)
         setOverlayPixels(preparedApplication.overlayPixels)
         setCanvasPixels(preparedApplication.canvasPixels)
-        latestProjectStateRef.current = {
-            gridSize,
-            paletteCount,
-            brushSize,
-            imagePixels: preparedApplication.imagePixels,
-            overlayPixels: preparedApplication.overlayPixels,
-            showImage,
-            hasOriginalImageData: hasImportContext,
-            referenceSnapshot: originalImageData,
-            autoSwatches: preparedApplication.autoSwatches,
-            userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: preparedApplication.selectedSwatch,
-            quantizationProfile: cloneQuantizationProfileForHistory(
-                world.profile
-            ),
-            importedPalettePresets:
-                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
-            hiddenPresetIds: hiddenPresetRegistry.slice(),
-            activePaletteTab: preparedApplication.activePaletteTab,
-            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
-            autoOverrides: { ...autoOverrides },
-        }
+        latestProjectStateRef.current = preparedSnapshot.projectState
         paletteUndoTrace("applyDerivedWorldSnapshot:latest-ref-updated", {
             latestRef: editorCommittedStateTraceSummary(
                 latestProjectStateRef.current

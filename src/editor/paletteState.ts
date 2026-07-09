@@ -67,6 +67,15 @@ export type PaletteWorldSnapshotApplication<
     activePaletteTab: PaletteTabKey
 }
 
+export type PaletteWorldSnapshotProjectApplication<
+    TPixel extends string | null,
+    TSwatch extends EditorHistorySwatch,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+> = {
+    application: PaletteWorldSnapshotApplication<TSwatch, TPixel>
+    projectState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+}
+
 export type PaletteProjectStateWorldLike<
     TSwatch extends EditorHistorySwatch,
     TPixel extends string | null,
@@ -75,6 +84,58 @@ export type PaletteProjectStateWorldLike<
     autoSwatches: ReadonlyArray<TSwatch>
     imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>
     overlayPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+}
+
+function buildProjectStateFromPaletteParts<
+    TPixel extends string | null,
+    TSwatch extends EditorHistorySwatch,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    profile: QuantizationProfile
+    activePaletteTab: PaletteTabKey
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    autoSwatches: TSwatch[]
+    userSwatches: ReadonlyArray<TSwatch>
+    selectedSwatch: PaletteSelection
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): EditorCommittedState<TPixel, TSwatch, TImportedPreset> {
+    return {
+        gridSize: input.gridSize,
+        paletteCount: input.paletteCount,
+        brushSize: input.brushSize,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        referenceSnapshot: input.referenceSnapshot,
+        autoSwatches: input.autoSwatches,
+        userSwatches: cloneSwatches(input.userSwatches),
+        selectedSwatch: input.selectedSwatch,
+        quantizationProfile: cloneQuantizationProfileForHistory(input.profile),
+        // Imported preset swatch edits are session state, so history must carry
+        // the preset registry in lockstep with the active quantization profile.
+        importedPalettePresets: cloneImportedPalettePresetsForHistory(
+            input.importedPalettePresets
+        ),
+        hiddenPresetIds: input.hiddenPresetIds.slice(),
+        activePaletteTab: input.activePaletteTab,
+        deletedAutoPaletteColors: input.deletedAutoPaletteColors.slice(),
+        autoOverrides: { ...input.autoOverrides },
+    }
 }
 
 export function prepareProjectStateFromPaletteWorld<
@@ -103,37 +164,32 @@ export function prepareProjectStateFromPaletteWorld<
     >["autoOverrides"]
 }): EditorCommittedState<TPixel, TSwatch, TImportedPreset> {
     const nextAuto = cloneSwatches(input.world.autoSwatches)
+    const selectedSwatch = resolveSelectedSwatchAfterAutoChange({
+        nextAutoSwatches: nextAuto,
+        userSwatches: input.userSwatches,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+    })
 
-    return {
+    return buildProjectStateFromPaletteParts({
+        profile: input.world.profile,
+        activePaletteTab: input.activePaletteTab,
         gridSize: input.gridSize,
         paletteCount: input.paletteCount,
         brushSize: input.brushSize,
         imagePixels: clonePixelsGrid(input.world.imagePixels),
         overlayPixels: clonePixelsGrid(input.world.overlayPixels),
+        autoSwatches: nextAuto,
         showImage: input.showImage,
         hasOriginalImageData: input.hasOriginalImageData,
         referenceSnapshot: input.referenceSnapshot,
-        autoSwatches: nextAuto,
-        userSwatches: cloneSwatches(input.userSwatches),
-        selectedSwatch: resolveSelectedSwatchAfterAutoChange({
-            nextAutoSwatches: nextAuto,
-            userSwatches: input.userSwatches,
-            selectedSwatch: input.selectedSwatch,
-            preferredSwatch: input.preferredSwatch,
-        }),
-        quantizationProfile: cloneQuantizationProfileForHistory(
-            input.world.profile
-        ),
-        // Imported preset swatch edits are session state, so history must carry
-        // the preset registry in lockstep with the active quantization profile.
-        importedPalettePresets: cloneImportedPalettePresetsForHistory(
-            input.importedPalettePresets
-        ),
-        hiddenPresetIds: input.hiddenPresetIds.slice(),
-        activePaletteTab: input.activePaletteTab,
-        deletedAutoPaletteColors: input.deletedAutoPaletteColors.slice(),
-        autoOverrides: { ...input.autoOverrides },
-    }
+        userSwatches: input.userSwatches,
+        selectedSwatch,
+        importedPalettePresets: input.importedPalettePresets,
+        hiddenPresetIds: input.hiddenPresetIds,
+        deletedAutoPaletteColors: input.deletedAutoPaletteColors,
+        autoOverrides: input.autoOverrides,
+    })
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -887,6 +943,67 @@ export function preparePaletteWorldSnapshotApplication<
         activePaletteTab:
             input.world.profile.kind === "fixed" ? "presets" : input.activeTab,
     }
+}
+
+export function preparePaletteWorldSnapshotProjectApplication<
+    TPixel extends string | null,
+    TSwatch extends EditorHistorySwatch,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    world: PaletteWorldSnapshotLike<TSwatch, TPixel> & {
+        profile: QuantizationProfile
+    }
+    userSwatches: ReadonlyArray<TSwatch>
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    activeTab: PaletteTabKey
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): PaletteWorldSnapshotProjectApplication<
+    TPixel,
+    TSwatch,
+    TImportedPreset
+> {
+    const application = preparePaletteWorldSnapshotApplication({
+        world: input.world,
+        userSwatches: input.userSwatches,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+        activeTab: input.activeTab,
+    })
+    const projectState = buildProjectStateFromPaletteParts({
+        profile: input.world.profile,
+        activePaletteTab: application.activePaletteTab,
+        gridSize: input.gridSize,
+        paletteCount: input.paletteCount,
+        brushSize: input.brushSize,
+        imagePixels: application.imagePixels,
+        overlayPixels: application.overlayPixels,
+        autoSwatches: application.autoSwatches,
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        referenceSnapshot: input.referenceSnapshot,
+        userSwatches: input.userSwatches,
+        selectedSwatch: application.selectedSwatch,
+        importedPalettePresets: input.importedPalettePresets,
+        hiddenPresetIds: input.hiddenPresetIds,
+        deletedAutoPaletteColors: input.deletedAutoPaletteColors,
+        autoOverrides: input.autoOverrides,
+    })
+
+    return { application, projectState }
 }
 
 export function resolveSelectedSwatchAfterAutoChange(input: {
