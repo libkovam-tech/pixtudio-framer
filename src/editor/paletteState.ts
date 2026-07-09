@@ -1145,6 +1145,26 @@ export function resolvePaletteWorldSelection(input: {
     )
 }
 
+export function resolvePaletteTabTargetSelection(input: {
+    targetWorld: {
+        autoSwatches:
+            | ReadonlyArray<PaletteSwatchLike | null | undefined>
+            | null
+            | undefined
+    }
+    userSwatches:
+        | ReadonlyArray<PaletteSwatchLike | null | undefined>
+        | null
+        | undefined
+    preferredSwatch?: PaletteSelection | null
+}): PaletteSelection {
+    return resolvePaletteWorldSelection({
+        autoSwatches: input.targetWorld.autoSwatches,
+        userSwatches: input.userSwatches,
+        preferredSwatch: input.preferredSwatch,
+    })
+}
+
 export function preparePaletteTabSwitch<TWorld>(input: {
     state: PaletteTabWorldState<TWorld>
     currentWorld: TWorld

@@ -85,7 +85,7 @@ import {
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchDelete,
-    resolvePaletteWorldSelection,
+    resolvePaletteTabTargetSelection,
 } from "./paletteState.ts"
 import {
     areEditorCommittedStatesEqual,
@@ -5658,8 +5658,8 @@ function PixelEditorFramer({
                 targetWorld,
                 overlayPixels
             )
-            const targetSelectedSwatch = resolvePaletteWorldSelection({
-                autoSwatches: sharedTargetWorld.autoSwatches as Swatch[],
+            const targetSelectedSwatch = resolvePaletteTabTargetSelection({
+                targetWorld: sharedTargetWorld,
                 userSwatches,
                 preferredSwatch: preferredSwatchForNextTab,
             })
@@ -5704,8 +5704,8 @@ function PixelEditorFramer({
             setActivePresetButton(null)
 
             if (lazyWorld) {
-                const targetSelectedSwatch = resolvePaletteWorldSelection({
-                    autoSwatches: lazyWorld.autoSwatches as Swatch[],
+                const targetSelectedSwatch = resolvePaletteTabTargetSelection({
+                    targetWorld: lazyWorld,
                     userSwatches,
                     preferredSwatch: preferredSwatchForNextTab,
                 })
@@ -5728,8 +5728,8 @@ function PixelEditorFramer({
             }
         } else {
             if (lazyWorld) {
-                const targetSelectedSwatch = resolvePaletteWorldSelection({
-                    autoSwatches: lazyWorld.autoSwatches as Swatch[],
+                const targetSelectedSwatch = resolvePaletteTabTargetSelection({
+                    targetWorld: lazyWorld,
                     userSwatches,
                     preferredSwatch: preferredSwatchForNextTab,
                 })

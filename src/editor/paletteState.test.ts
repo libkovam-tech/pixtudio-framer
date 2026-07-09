@@ -17,6 +17,7 @@ import {
     prepareSwatchesForEdit,
     prepareSwatchDelete,
     removePalettePixelValueFromGrid,
+    resolvePaletteTabTargetSelection,
     resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
@@ -208,6 +209,54 @@ describe("palette state", () => {
                 preferredSwatch: "auto-9",
             })
         ).toBe("auto-0")
+    })
+
+    it("resolves target palette tab auto swatch selections", () => {
+        expect(
+            resolvePaletteTabTargetSelection({
+                targetWorld: {
+                    autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+                },
+                userSwatches: [],
+                preferredSwatch: "auto-1",
+            })
+        ).toBe("auto-1")
+    })
+
+    it("resolves target palette tab user swatch selections", () => {
+        expect(
+            resolvePaletteTabTargetSelection({
+                targetWorld: {
+                    autoSwatches: [{ id: "auto-0" }],
+                },
+                userSwatches: [{ id: "user-0" }],
+                preferredSwatch: "user-0",
+            })
+        ).toBe("user-0")
+    })
+
+    it("falls back inside target palette tabs when preferred swatches are missing", () => {
+        expect(
+            resolvePaletteTabTargetSelection({
+                targetWorld: {
+                    autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+                },
+                userSwatches: [{ id: "user-0" }],
+                preferredSwatch: "auto-9",
+            })
+        ).toBe("auto-0")
+    })
+
+    it("keeps transparent target palette tab selections", () => {
+        expect(
+            resolvePaletteTabTargetSelection({
+                targetWorld: {
+                    autoSwatches: [{ id: "auto-0" }],
+                },
+                userSwatches: [{ id: "user-0" }],
+                preferredSwatch: "transparent",
+            })
+        ).toBe("transparent")
     })
 
     it("stores the current world before switching palette tabs", () => {
