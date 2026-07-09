@@ -69,6 +69,7 @@ import {
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteWorldFromReference,
+    prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
 import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
 import {
@@ -106,7 +107,6 @@ import {
     getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
-    remapOverlay,
     type DerivedWorld,
     type PaletteTab,
     type PaletteTabsState,
@@ -5479,18 +5479,12 @@ function PixelEditorFramer({
         world: DerivedWorld<PixelValue>,
         sharedOverlay: PixelValue[][]
     ): DerivedWorld<PixelValue> {
-        const nextOverlay = remapOverlay({
-            overlayPixels: sharedOverlay,
-            swatches: [...autoSwatches, ...userSwatches],
-            targetAutoSwatches: world.autoSwatches,
+        return prepareSharedOverlayPaletteWorld({
+            world,
+            sharedOverlay,
+            currentAutoSwatches: autoSwatches,
+            userSwatches,
         })
-        const nextImage = clonePixelsGrid(world.imagePixels)
-        return {
-            ...world,
-            imagePixels: nextImage,
-            overlayPixels: nextOverlay,
-            canvasPixels: overlayOverBaseGrid(nextImage, nextOverlay) ?? nextImage,
-        }
     }
 
     function isPixelGridCompatibleWithCurrentGrid(

@@ -18,6 +18,7 @@ import {
     prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteVocabularyExtensionWorld,
     prepareFixedPaletteWorldFromReference,
+    prepareSharedOverlayPaletteWorld,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
     removeFixedPaletteProfileColorByHex,
@@ -240,6 +241,77 @@ describe("palette preset extension", () => {
         })
         expect(result.imagePixels).not.toBe(imagePixels)
         expect(result.overlayPixels).not.toBe(overlayPixels)
+    })
+
+    it("prepares palette worlds with shared overlay remapping", () => {
+        const imagePixels = [
+            ["auto-0", "auto-1"],
+            ["auto-1", "auto-0"],
+        ]
+        const sharedOverlay = [
+            ["auto-0", "user-0"],
+            [null, "auto-0"],
+        ]
+        const world = {
+            profile: { kind: "extract" as const },
+            referenceSignature: "reference-4",
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#0000FF",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#FF0000",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels,
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            canvasPixels: imagePixels,
+        }
+
+        const result = prepareSharedOverlayPaletteWorld({
+            world,
+            sharedOverlay,
+            currentAutoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "rgb(250, 0, 0)",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#12AB34",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+        })
+
+        expect(result).toEqual({
+            ...world,
+            imagePixels,
+            overlayPixels: [
+                ["auto-1", "user-0"],
+                [null, "auto-1"],
+            ],
+            canvasPixels: [
+                ["auto-1", "user-0"],
+                ["auto-1", "auto-1"],
+            ],
+        })
+        expect(result.imagePixels).not.toBe(imagePixels)
+        expect(result.overlayPixels).not.toBe(sharedOverlay)
     })
 
     it("prepares fixed palette worlds from reference snapshots", () => {

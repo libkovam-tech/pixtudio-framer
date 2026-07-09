@@ -237,7 +237,7 @@ function makeEmptyGrid<T>(size: number, value: T): T[][] {
     )
 }
 
-function overlayOverBase<TPixel extends string | null>(
+export function overlayOverBase<TPixel extends string | null>(
     base: TPixel[][],
     overlay: TPixel[][]
 ): TPixel[][] {

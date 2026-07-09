@@ -2,6 +2,8 @@ import {
     buildDerivedWorld,
     buildDrawingPaletteWorld,
     getFixedProfilePaletteForApplication,
+    overlayOverBase,
+    remapOverlay,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
 import {
@@ -502,6 +504,33 @@ export function prepareAutoPaletteDrawingWorld<
     return {
         ...world,
         profile: input.profile,
+    }
+}
+
+export function prepareSharedOverlayPaletteWorld<
+    TProfile extends QuantizationProfile,
+    TPixel extends string | null,
+>(input: {
+    world: PaletteReferenceWorld<TProfile, TPixel>
+    sharedOverlay: TPixel[][]
+    currentAutoSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+}): PaletteReferenceWorld<TProfile, TPixel> {
+    const imagePixels = clonePixelGrid(input.world.imagePixels)
+    const overlayPixels = remapOverlay({
+        overlayPixels: input.sharedOverlay,
+        swatches: [
+            ...cloneSwatches(input.currentAutoSwatches),
+            ...cloneSwatches(input.userSwatches),
+        ],
+        targetAutoSwatches: input.world.autoSwatches,
+    })
+
+    return {
+        ...input.world,
+        imagePixels,
+        overlayPixels,
+        canvasPixels: overlayOverBase(imagePixels, overlayPixels),
     }
 }
 
