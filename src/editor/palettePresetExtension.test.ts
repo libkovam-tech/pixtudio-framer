@@ -11,6 +11,7 @@ import {
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPaletteDrawingProjectApplication,
+    prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
@@ -466,6 +467,115 @@ describe("palette preset extension", () => {
                 },
             })
         ).toBeNull()
+        expect(pixelized).toBe(false)
+    })
+
+    it("prepares fixed palette reference applications with committed project state", () => {
+        const referenceSnapshot = {
+            width: 1,
+            height: 1,
+            data: [0, 0, 0, 255],
+        }
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF00FF",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [
+            {
+                id: profile.id,
+                name: profile.name,
+                profile,
+            },
+        ]
+        const autoOverrides = {
+            "auto-0": { hex: "#111111", isTransparent: false },
+        }
+
+        const result = prepareFixedPaletteReferenceProjectApplication({
+            profile,
+            referenceSnapshot,
+            gridSize: 1,
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches,
+            pixelizeReference: () => [["#E9D8A6"]],
+            referenceSignature: () => "ref-application",
+            selectedSwatch: "auto-1",
+            preferredSwatch: "auto-0",
+            projectPaletteCount: 11,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets,
+            hiddenPresetIds: ["hidden"],
+            deletedAutoPaletteColors: ["#001219"],
+            autoOverrides,
+        })
+
+        expect(result.kind).toBe("applied")
+        if (result.kind !== "applied") return
+        expect(result.world.referenceSignature).toBe("ref-application")
+        expect(result.projectState).toMatchObject({
+            gridSize: 1,
+            paletteCount: 11,
+            brushSize: 3,
+            imagePixels: result.world.imagePixels,
+            overlayPixels: result.world.overlayPixels,
+            showImage: true,
+            hasOriginalImageData: true,
+            referenceSnapshot,
+            autoSwatches: result.world.autoSwatches,
+            selectedSwatch: "auto-0",
+            quantizationProfile: profile,
+            hiddenPresetIds: ["hidden"],
+            activePaletteTab: "presets",
+            deletedAutoPaletteColors: ["#001219"],
+            autoOverrides,
+        })
+        expect(result.projectState.userSwatches).toEqual(userSwatches)
+        expect(result.projectState.userSwatches).not.toBe(userSwatches)
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
+        expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
+            importedPalettePresets[0]
+        )
+        expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
+    })
+
+    it("ignores fixed palette reference application preparation without a reference snapshot", () => {
+        let pixelized = false
+
+        const result = prepareFixedPaletteReferenceProjectApplication({
+            profile,
+            referenceSnapshot: null,
+            gridSize: 1,
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches: [],
+            pixelizeReference: () => {
+                pixelized = true
+                return [["#E9D8A6"]]
+            },
+            selectedSwatch: "auto-0",
+            projectPaletteCount: 11,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets: [],
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result).toEqual({
+            kind: "ignored",
+            reason: "missing-reference",
+        })
         expect(pixelized).toBe(false)
     })
 

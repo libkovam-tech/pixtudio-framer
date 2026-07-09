@@ -64,6 +64,7 @@ import {
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingProjectApplication,
+    prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
@@ -5937,10 +5938,35 @@ function PixelEditorFramer({
         })
         const beforeReferenceSignature =
             imageDataSampleSignature(originalImageData)
-        const world = buildFixedPresetWorldFromReference(profile)
+        const preparedReference =
+            prepareFixedPaletteReferenceProjectApplication({
+                profile,
+                referenceSnapshot: originalImageData,
+                gridSize,
+                overlayPixels,
+                previousSwatches: autoSwatches,
+                userSwatches,
+                pixelizeReference: (referenceSnapshot, nextGridSize) =>
+                    pixelizeFromImageDominant(
+                        referenceSnapshot,
+                        nextGridSize,
+                        16
+                    ),
+                referenceSignature: imageDataSampleSignature,
+                selectedSwatch,
+                preferredSwatch,
+                projectPaletteCount: paletteCount,
+                brushSize,
+                showImage,
+                hasOriginalImageData: hasImportContext,
+                importedPalettePresets: importedPresetRegistry,
+                hiddenPresetIds,
+                deletedAutoPaletteColors,
+                autoOverrides,
+            })
         const afterReferenceSignature = imageDataSampleSignature(originalImageData)
 
-        if (!world) {
+        if (preparedReference.kind === "ignored") {
             if (!originalImageData) {
                 applyFixedPaletteAsDrawingPalette(
                     profile,
@@ -5965,12 +5991,8 @@ function PixelEditorFramer({
             return
         }
 
-        const afterState = makeProjectStateFromDerivedWorld(
-            world,
-            "presets",
-            preferredSwatch,
-            importedPresetRegistry
-        )
+        const world = preparedReference.world
+        const afterState = preparedReference.projectState
         beginEditorActionTransaction("editor-action", before)
         setActivePresetButton(profile.id)
         setPaletteTabsState((prev) => ({
