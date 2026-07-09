@@ -62,6 +62,7 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareAutoPaletteDrawingWorld,
+    prepareAutoPaletteReferenceProjectApplication,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPaletteReferenceProjectApplication,
@@ -5598,20 +5599,53 @@ function PixelEditorFramer({
         // Deleting the active preset must leave the canvas in a real palette
         // world, not in an invisible fixed profile that would still save later.
         const before = latestProjectStateRef.current ?? makeProjectState()
+        const preparedReference =
+            prepareAutoPaletteReferenceProjectApplication({
+                profile: EXTRACT_QUANTIZATION_PROFILE,
+                referenceSnapshot: originalImageData,
+                gridSize,
+                overlayPixels,
+                previousSwatches: autoSwatches,
+                userSwatches,
+                paletteCountTarget: clamp(
+                    paletteCount,
+                    PALETTE_MIN,
+                    PALETTE_MAX
+                ),
+                excludedColors: deletedAutoPaletteColors,
+                pixelizeReference: (snapshot, nextGridSize) =>
+                    pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+                referenceSignature: imageDataSampleSignature,
+                selectedSwatch,
+                preferredSwatch: null,
+                projectPaletteCount: paletteCount,
+                brushSize,
+                showImage,
+                hasOriginalImageData: hasImportContext,
+                importedPalettePresets: nextImportedPalettePresets,
+                hiddenPresetIds: nextHiddenPresetIds,
+                deletedAutoPaletteColors,
+                autoOverrides,
+            })
         const world =
-            buildExtractWorldFromReference() ?? buildAutoPaletteDrawingWorld()
-        const afterState: ProjectState = {
-            ...makeProjectStateFromDerivedWorld(
-                world,
-                "size",
-                null,
-                nextImportedPalettePresets,
-                nextHiddenPresetIds
-            ),
-            quantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
-            activePaletteTab: "size",
-            hiddenPresetIds: nextHiddenPresetIds.slice(),
-        }
+            preparedReference.kind === "applied"
+                ? preparedReference.world
+                : buildAutoPaletteDrawingWorld()
+        const afterState: ProjectState =
+            preparedReference.kind === "applied"
+                ? preparedReference.projectState
+                : {
+                      ...makeProjectStateFromDerivedWorld(
+                          world,
+                          "size",
+                          null,
+                          nextImportedPalettePresets,
+                          nextHiddenPresetIds
+                      ),
+                      quantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
+                      activePaletteTab: "size",
+                      hiddenPresetIds: nextHiddenPresetIds.slice(),
+                  }
 
         beginEditorActionTransaction("editor-action", before)
         setHiddenPresetIds(nextHiddenPresetIds)
@@ -9910,32 +9944,44 @@ function PixelEditorFramer({
                 currentDeletedColors: deletedAutoPaletteColors,
                 sourcePixels,
             })
-            const world = prepareAutoPaletteWorldFromReference({
-                profile: EXTRACT_QUANTIZATION_PROFILE,
-                referenceSnapshot: originalImageData,
-                gridSize,
-                overlayPixels,
-                previousSwatches: autoSwatches,
-                userSwatches,
-                paletteCountTarget: clamp(
-                    paletteCount,
-                    PALETTE_MIN,
-                    PALETTE_MAX
-                ),
-                excludedColors: nextDeletedColors,
-                pixelizeReference: () => sourcePixels,
-                referenceSignature: imageDataSampleSignature,
-            })
-            if (!world) {
+            const preparedReference =
+                prepareAutoPaletteReferenceProjectApplication({
+                    profile: EXTRACT_QUANTIZATION_PROFILE,
+                    referenceSnapshot: originalImageData,
+                    gridSize,
+                    overlayPixels,
+                    previousSwatches: autoSwatches,
+                    userSwatches,
+                    paletteCountTarget: clamp(
+                        paletteCount,
+                        PALETTE_MIN,
+                        PALETTE_MAX
+                    ),
+                    excludedColors: nextDeletedColors,
+                    pixelizeReference: () => sourcePixels,
+                    referenceSignature: imageDataSampleSignature,
+                    selectedSwatch,
+                    preferredSwatch:
+                        selectedSwatch === editingSwatchId
+                            ? null
+                            : selectedSwatch,
+                    projectPaletteCount: paletteCount,
+                    brushSize,
+                    showImage,
+                    hasOriginalImageData: hasImportContext,
+                    importedPalettePresets,
+                    hiddenPresetIds,
+                    deletedAutoPaletteColors: nextDeletedColors,
+                    autoOverrides,
+                })
+            if (preparedReference.kind === "ignored") {
                 handleModalCancel()
                 return
             }
+            const world = preparedReference.world
             const preferred =
                 selectedSwatch === editingSwatchId ? null : selectedSwatch
-            const afterState: ProjectState = {
-                ...makeProjectStateFromDerivedWorld(world, "size", preferred),
-                deletedAutoPaletteColors: nextDeletedColors,
-            }
+            const afterState: ProjectState = preparedReference.projectState
 
             beginEditorActionTransaction("editor-action", before)
             setDeletedAutoPaletteColors(nextDeletedColors)

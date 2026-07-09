@@ -274,6 +274,25 @@ export type AutoPaletteReferenceWorld<
     TPixel extends string | null,
 > = PaletteReferenceWorld<TProfile, TPixel>
 
+export type AutoPaletteReferenceProjectApplicationResult<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+> =
+    | {
+          kind: "ignored"
+          reason: "missing-reference"
+      }
+    | {
+          kind: "applied"
+          world: AutoPaletteReferenceWorld<TProfile, TPixel>
+          projectState: EditorCommittedState<
+              TPixel,
+              FixedPaletteAutoSwatch,
+              TImportedPreset
+          >
+      }
+
 export type AutoPaletteDrawingWorld<
     TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
     TPixel extends string | null,
@@ -786,6 +805,64 @@ export function prepareAutoPaletteWorldFromReference<
     input: PaletteReferenceWorldInput<TProfile, TReference, TPixel>
 ): AutoPaletteReferenceWorld<TProfile, TPixel> | null {
     return preparePaletteWorldFromReference(input)
+}
+
+export function prepareAutoPaletteReferenceProjectApplication<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TReference extends ImageDataSampleSource,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(
+    input: PaletteReferenceWorldInput<TProfile, TReference, TPixel> & {
+        selectedSwatch: PaletteSelection
+        preferredSwatch?: PaletteSelection | null
+        projectPaletteCount: number
+        brushSize: number
+        showImage: boolean
+        hasOriginalImageData: boolean
+        importedPalettePresets: ReadonlyArray<TImportedPreset>
+        hiddenPresetIds: ReadonlyArray<string>
+        deletedAutoPaletteColors: ReadonlyArray<string>
+        autoOverrides: EditorCommittedState<
+            TPixel,
+            FixedPaletteAutoSwatch,
+            TImportedPreset
+        >["autoOverrides"]
+    }
+): AutoPaletteReferenceProjectApplicationResult<
+    TProfile,
+    TPixel,
+    TImportedPreset
+> {
+    const world = prepareAutoPaletteWorldFromReference(input)
+    if (!world) {
+        return {
+            kind: "ignored",
+            reason: "missing-reference",
+        }
+    }
+
+    return {
+        kind: "applied",
+        world,
+        projectState: prepareProjectStateFromPaletteWorld({
+            world,
+            activePaletteTab: "size",
+            gridSize: input.gridSize,
+            paletteCount: input.projectPaletteCount,
+            brushSize: input.brushSize,
+            showImage: input.showImage,
+            hasOriginalImageData: input.hasOriginalImageData,
+            referenceSnapshot: input.referenceSnapshot,
+            userSwatches: input.userSwatches,
+            selectedSwatch: input.selectedSwatch,
+            preferredSwatch: input.preferredSwatch,
+            importedPalettePresets: input.importedPalettePresets,
+            hiddenPresetIds: input.hiddenPresetIds,
+            deletedAutoPaletteColors: input.deletedAutoPaletteColors,
+            autoOverrides: input.autoOverrides,
+        }),
+    }
 }
 
 export function makeEditableFixedPresetProfile<
