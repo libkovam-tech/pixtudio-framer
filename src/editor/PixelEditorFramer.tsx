@@ -76,6 +76,8 @@ import {
     appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
+    isPaletteWorldCompatibleWithReferenceGrid,
+    prepareCurrentPaletteWorldSnapshot,
     prepareProjectStateFromPaletteWorld,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotProjectApplication,
@@ -5452,14 +5454,14 @@ function PixelEditorFramer({
     }
 
     function makeCurrentDerivedWorldSnapshot(): DerivedWorld<PixelValue> {
-        return {
+        return prepareCurrentPaletteWorldSnapshot({
             profile: quantizationProfile,
             referenceSignature: imageDataSampleSignature(originalImageData),
-            autoSwatches: cloneSwatches(autoSwatches),
-            imagePixels: clonePixelsGrid(imagePixels),
-            overlayPixels: clonePixelsGrid(overlayPixels),
-            canvasPixels: clonePixelsGrid(canvasPixels),
-        }
+            autoSwatches,
+            imagePixels,
+            overlayPixels,
+            canvasPixels,
+        })
     }
 
     function shareOverlayWithDerivedWorld(
@@ -5474,24 +5476,14 @@ function PixelEditorFramer({
         })
     }
 
-    function isPixelGridCompatibleWithCurrentGrid(
-        pixels: PixelValue[][]
-    ): boolean {
-        if (pixels.length !== gridSize) return false
-        return pixels.every((row) => row.length === gridSize)
-    }
-
     function isDerivedWorldCompatibleWithCurrentGrid(
         world: DerivedWorld<PixelValue>
     ): boolean {
-        const currentReferenceSignature = imageDataSampleSignature(originalImageData)
-        const worldReferenceSignature = world.referenceSignature ?? null
-        return (
-            worldReferenceSignature === currentReferenceSignature &&
-            isPixelGridCompatibleWithCurrentGrid(world.imagePixels) &&
-            isPixelGridCompatibleWithCurrentGrid(world.overlayPixels) &&
-            isPixelGridCompatibleWithCurrentGrid(world.canvasPixels)
-        )
+        return isPaletteWorldCompatibleWithReferenceGrid({
+            world,
+            currentReferenceSignature: imageDataSampleSignature(originalImageData),
+            gridSize,
+        })
     }
 
     function buildPaletteWorldForTab(

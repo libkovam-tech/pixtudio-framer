@@ -40,6 +40,18 @@ export type PaletteTabWorldState<TWorld> = {
     presetsWorld: TWorld | null
 }
 
+export type PaletteCurrentWorldSnapshot<
+    TSwatch extends EditorHistorySwatch,
+    TPixel extends string | null,
+> = {
+    profile: QuantizationProfile
+    referenceSignature?: string | null
+    autoSwatches: TSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    canvasPixels: TPixel[][]
+}
+
 export type PaletteWorldSnapshotLike<
     TSwatch extends PaletteSwatchLike & { id: string },
     TPixel extends string | null,
@@ -84,6 +96,61 @@ export type PaletteProjectStateWorldLike<
     autoSwatches: ReadonlyArray<TSwatch>
     imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>
     overlayPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+}
+
+export function prepareCurrentPaletteWorldSnapshot<
+    TPixel extends string | null,
+    TSwatch extends EditorHistorySwatch,
+>(input: {
+    profile: QuantizationProfile
+    referenceSignature?: string | null
+    autoSwatches: ReadonlyArray<TSwatch>
+    imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>
+    overlayPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+    canvasPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+}): PaletteCurrentWorldSnapshot<TSwatch, TPixel> {
+    return {
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        autoSwatches: cloneSwatches(input.autoSwatches),
+        imagePixels: clonePixelsGrid(input.imagePixels),
+        overlayPixels: clonePixelsGrid(input.overlayPixels),
+        canvasPixels: clonePixelsGrid(input.canvasPixels),
+    }
+}
+
+function isPaletteGridCompatibleWithSize<TPixel>(
+    pixels: ReadonlyArray<ReadonlyArray<TPixel>>,
+    gridSize: number
+): boolean {
+    if (pixels.length !== gridSize) return false
+    return pixels.every((row) => row.length === gridSize)
+}
+
+export function isPaletteWorldCompatibleWithReferenceGrid<
+    TPixel extends string | null,
+>(input: {
+    world: {
+        referenceSignature?: string | null
+        imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>
+        overlayPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+        canvasPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+    }
+    currentReferenceSignature?: string | null
+    gridSize: number
+}): boolean {
+    const worldReferenceSignature = input.world.referenceSignature ?? null
+    const currentReferenceSignature = input.currentReferenceSignature ?? null
+
+    return (
+        worldReferenceSignature === currentReferenceSignature &&
+        isPaletteGridCompatibleWithSize(input.world.imagePixels, input.gridSize) &&
+        isPaletteGridCompatibleWithSize(
+            input.world.overlayPixels,
+            input.gridSize
+        ) &&
+        isPaletteGridCompatibleWithSize(input.world.canvasPixels, input.gridSize)
+    )
 }
 
 function buildProjectStateFromPaletteParts<

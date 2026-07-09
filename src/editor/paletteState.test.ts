@@ -5,7 +5,9 @@ import {
     collapseDuplicateSwatchesAndRemapPixels,
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
+    isPaletteWorldCompatibleWithReferenceGrid,
     prepareAutoOverridesForSwatchEdit,
+    prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotApplication,
     preparePaletteWorldSnapshotProjectApplication,
@@ -253,6 +255,91 @@ describe("palette state", () => {
             sizeWorld: null,
             presetsWorld: "current-preset",
         })
+    })
+
+    it("prepares the current palette world snapshot without sharing mutable grids", () => {
+        const profile = { kind: "extract" as const }
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#111111",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+        const imagePixels = [["auto-0"]]
+        const overlayPixels = [[null]]
+        const canvasPixels = [["auto-0"]]
+
+        const result = prepareCurrentPaletteWorldSnapshot({
+            profile,
+            referenceSignature: "ref-1",
+            autoSwatches,
+            imagePixels,
+            overlayPixels,
+            canvasPixels,
+        })
+
+        expect(result).toEqual({
+            profile,
+            referenceSignature: "ref-1",
+            autoSwatches,
+            imagePixels,
+            overlayPixels,
+            canvasPixels,
+        })
+        expect(result.profile).toBe(profile)
+        expect(result.autoSwatches).not.toBe(autoSwatches)
+        expect(result.autoSwatches[0]).not.toBe(autoSwatches[0])
+        expect(result.imagePixels).not.toBe(imagePixels)
+        expect(result.imagePixels[0]).not.toBe(imagePixels[0])
+        expect(result.overlayPixels).not.toBe(overlayPixels)
+        expect(result.canvasPixels).not.toBe(canvasPixels)
+    })
+
+    it("checks palette world compatibility against reference signature and grid size", () => {
+        const compatibleWorld = {
+            referenceSignature: "ref-1",
+            imagePixels: [
+                ["auto-0", null],
+                [null, "auto-1"],
+            ],
+            overlayPixels: [
+                [null, null],
+                ["auto-0", null],
+            ],
+            canvasPixels: [
+                ["auto-0", null],
+                ["auto-0", "auto-1"],
+            ],
+        }
+
+        expect(
+            isPaletteWorldCompatibleWithReferenceGrid({
+                world: compatibleWorld,
+                currentReferenceSignature: "ref-1",
+                gridSize: 2,
+            })
+        ).toBe(true)
+
+        expect(
+            isPaletteWorldCompatibleWithReferenceGrid({
+                world: compatibleWorld,
+                currentReferenceSignature: "ref-2",
+                gridSize: 2,
+            })
+        ).toBe(false)
+
+        expect(
+            isPaletteWorldCompatibleWithReferenceGrid({
+                world: {
+                    ...compatibleWorld,
+                    overlayPixels: [[null]],
+                },
+                currentReferenceSignature: "ref-1",
+                gridSize: 2,
+            })
+        ).toBe(false)
     })
 
     it("keeps auto palette strokes bound to quantization swatches", () => {
