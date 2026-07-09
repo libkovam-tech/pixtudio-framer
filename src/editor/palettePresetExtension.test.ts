@@ -17,6 +17,7 @@ import {
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
+    prepareFixedPaletteVocabularyExtensionProjectApplication,
     prepareFixedPaletteVocabularyExtensionWorld,
     prepareFixedPaletteWorldFromReference,
     prepareSharedOverlayPaletteWorld,
@@ -1064,6 +1065,119 @@ describe("palette preset extension", () => {
         expect(result.overlayPixels).not.toBe(result.world.overlayPixels)
         expect(result.canvasPixels).not.toBe(result.world.canvasPixels)
         expect(result.autoSwatches).not.toBe(result.world.autoSwatches)
+    })
+
+    it("prepares vocabulary extension applications with committed project state", () => {
+        const nextProfile = {
+            ...profile,
+            colors: ["#000000", "#E9D8A6", "#FFFFFF"],
+        }
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#000000",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-3",
+                color: "#E9D8A6",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-4",
+                color: "#FFFFFF",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF0000",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [
+            {
+                id: nextProfile.id,
+                name: nextProfile.name,
+                profile: nextProfile,
+            },
+        ]
+        const autoOverrides = {
+            "auto-0": { hex: "#111111", isTransparent: false },
+        }
+
+        const result = prepareFixedPaletteVocabularyExtensionProjectApplication({
+            profile: nextProfile,
+            referenceSignature: "ref-3",
+            autoSwatches,
+            candidateAutoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#000000",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#E9D8A6",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-2",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            candidateImagePixels: [["auto-2"]],
+            imagePixels: [["auto-3"]],
+            overlayPixels: [[null]],
+            selectedSwatch: "auto-4",
+            gridSize: 1,
+            paletteCount: 3,
+            brushSize: 2,
+            showImage: true,
+            hasOriginalImageData: true,
+            referenceSnapshot: { width: 1, height: 1, data: [0, 0, 0, 255] },
+            userSwatches,
+            importedPalettePresets,
+            hiddenPresetIds: ["hidden"],
+            deletedAutoPaletteColors: ["#000000"],
+            autoOverrides,
+        })
+
+        expect(result.application.imagePixels).toEqual([["auto-4"]])
+        expect(result.projectState).toMatchObject({
+            gridSize: 1,
+            paletteCount: 3,
+            brushSize: 2,
+            imagePixels: result.application.imagePixels,
+            overlayPixels: result.application.overlayPixels,
+            showImage: true,
+            hasOriginalImageData: true,
+            autoSwatches: result.application.autoSwatches,
+            selectedSwatch: "auto-4",
+            quantizationProfile: nextProfile,
+            hiddenPresetIds: ["hidden"],
+            activePaletteTab: "presets",
+            deletedAutoPaletteColors: ["#000000"],
+            autoOverrides,
+        })
+        expect(result.projectState.userSwatches).toEqual(userSwatches)
+        expect(result.projectState.userSwatches).not.toBe(userSwatches)
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
+        expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
+            importedPalettePresets[0]
+        )
+        expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
     })
 
     it("prepares fixed palette swatch deletion with an active fallback selection", () => {

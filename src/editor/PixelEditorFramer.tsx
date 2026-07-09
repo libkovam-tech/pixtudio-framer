@@ -67,7 +67,7 @@ import {
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
-    prepareFixedPaletteVocabularyExtensionApplication,
+    prepareFixedPaletteVocabularyExtensionProjectApplication,
     prepareFixedPaletteWorldFromReference,
     prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
@@ -5877,8 +5877,8 @@ function PixelEditorFramer({
             profile,
             referenceSnapshot
         )
-        const preparedApplication =
-            prepareFixedPaletteVocabularyExtensionApplication({
+        const prepared =
+            prepareFixedPaletteVocabularyExtensionProjectApplication({
                 profile,
                 referenceSignature: imageDataSampleSignature(referenceSnapshot),
                 autoSwatches: nextAuto,
@@ -5887,28 +5887,21 @@ function PixelEditorFramer({
                 imagePixels,
                 overlayPixels,
                 selectedSwatch: selectedPresetSwatch,
+                gridSize,
+                paletteCount,
+                brushSize,
+                showImage,
+                hasOriginalImageData: hasImportContext,
+                referenceSnapshot,
+                userSwatches,
+                importedPalettePresets: importedPresetRegistry,
+                hiddenPresetIds,
+                deletedAutoPaletteColors,
+                autoOverrides,
             })
+        const preparedApplication = prepared.application
         const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
-        const afterState: ProjectState = {
-            gridSize,
-            paletteCount,
-            brushSize,
-            imagePixels: preparedApplication.imagePixels,
-            overlayPixels: preparedApplication.overlayPixels,
-            showImage,
-            hasOriginalImageData: hasImportContext,
-            referenceSnapshot,
-            autoSwatches: preparedApplication.autoSwatches,
-            userSwatches: cloneSwatches(userSwatches),
-            selectedSwatch: preparedApplication.selectedSwatch as SwatchId,
-            quantizationProfile: cloneQuantizationProfileForHistory(profile),
-            importedPalettePresets:
-                cloneImportedPalettePresetsForHistory(importedPresetRegistry),
-            hiddenPresetIds: hiddenPresetIds.slice(),
-            activePaletteTab: "presets",
-            deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
-            autoOverrides: { ...autoOverrides },
-        }
+        const afterState: ProjectState = prepared.projectState
 
         beginEditorActionTransaction("editor-action", before)
         setQuantizationProfile(profile)
