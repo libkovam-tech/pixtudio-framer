@@ -533,6 +533,43 @@ test("quantization recorder number inputs keep focus during mobile keyboard resi
     expect(errors.flush()).toEqual([])
 })
 
+test("palette tab world switches are undoable when they change the canvas", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await bumpPaletteSize(page)
+    const autoCanvas = await readEditorCanvasSignature(page)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.locator('button[title="SUNSET"]').click()
+    await settle(page)
+    const presetCanvas = await readEditorCanvasSignature(page)
+    expect(presetCanvas).not.toBe(autoCanvas)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+    await expect
+        .poll(() => readEditorCanvasSignature(page))
+        .toBe(autoCanvas)
+
+    await page.getByRole("button", { name: "Undo" }).click()
+    await settle(page)
+    await expect
+        .poll(() => readEditorCanvasSignature(page))
+        .toBe(presetCanvas)
+    await expect(page.getByRole("button", { name: "Load Palette" })).toBeVisible()
+
+    await page.getByRole("button", { name: "Redo" }).click()
+    await settle(page)
+    await expect
+        .poll(() => readEditorCanvasSignature(page))
+        .toBe(autoCanvas)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("promo navigation links reach their primary destinations", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
@@ -913,6 +950,20 @@ async function readEditorCanvasPixel(page: Page, x: number, y: number) {
         },
         { x, y }
     )
+}
+
+async function readEditorCanvasSignature(page: Page) {
+    return page.locator("canvas").first().evaluate((canvas) => {
+        const context = canvas.getContext("2d")
+        if (!context) return ""
+
+        const data = context.getImageData(0, 0, canvas.width, canvas.height).data
+        let hash = 2166136261
+        for (let i = 0; i < data.length; i += 1) {
+            hash = Math.imul(hash ^ data[i], 16777619) >>> 0
+        }
+        return hash.toString(16)
+    })
 }
 
 async function findEditorCanvasPixel(

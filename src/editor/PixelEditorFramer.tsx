@@ -5486,14 +5486,15 @@ function PixelEditorFramer({
         world: DerivedWorld<PixelValue>,
         preferredSwatch?: SwatchId | "transparent" | null,
         importedPresetRegistry = importedPalettePresets,
-        hiddenPresetRegistry = hiddenPresetIds
-    ) {
+        hiddenPresetRegistry = hiddenPresetIds,
+        activeTab = paletteTabsState.activeTab
+    ): ProjectState {
         const preparedSnapshot = preparePaletteWorldSnapshotProjectApplication({
             world,
             userSwatches,
             selectedSwatch,
             preferredSwatch,
-            activeTab: paletteTabsState.activeTab,
+            activeTab,
             gridSize,
             paletteCount,
             brushSize,
@@ -5535,6 +5536,7 @@ function PixelEditorFramer({
             `palette-world:${world.profile.kind}`
         )
         setSelectedSwatch(preparedApplication.selectedSwatch)
+        return preparedSnapshot.projectState
     }
 
     function switchDeletedActivePresetToAutoPalette(
@@ -5671,10 +5673,16 @@ function PixelEditorFramer({
         setPaletteTabsState(applicationPlan.nextState)
 
         if (applicationPlan.worldToApply) {
-            applyDerivedWorldSnapshot(
+            const before = latestProjectStateRef.current ?? makeProjectState()
+            beginEditorActionTransaction("editor-action", before)
+            const afterState = applyDerivedWorldSnapshot(
                 applicationPlan.worldToApply,
-                applicationPlan.selectedSwatch
+                applicationPlan.selectedSwatch,
+                importedPalettePresets,
+                hiddenPresetIds,
+                applicationPlan.nextState.activeTab
             )
+            pushCommit(before, { afterState })
             if (
                 ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS &&
                 applicationPlan.traceLabel
