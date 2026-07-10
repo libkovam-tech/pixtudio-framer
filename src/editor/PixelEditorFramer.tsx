@@ -80,10 +80,13 @@ import {
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
     prepareLoadedPaletteProjectTabs,
+    preparePaletteAutoSessionReset,
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteProjectStateRestoreTabs,
+    preparePalettePresetSessionReset,
     preparePaletteSwatchEditApplication,
     preparePaletteTabWorldCommit,
+    preparePaletteWorldInvalidation,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
@@ -3546,20 +3549,22 @@ function PixelEditorFramer({
         React.useState<string[]>([])
 
     function resetAutoOverridesForNewImport() {
-        setAutoOverrides({})
-        setDeletedAutoPaletteColors([])
+        const reset = preparePaletteAutoSessionReset<AutoSwatchOverridesMap>()
+        setAutoOverrides(reset.autoOverrides)
+        setDeletedAutoPaletteColors(reset.deletedAutoPaletteColors)
     }
 
     function resetPalettePresetsForNewImport() {
-        setQuantizationProfile(EXTRACT_QUANTIZATION_PROFILE)
-        setPaletteTabsState({
-            activeTab: "size",
-            sizeWorld: null,
-            presetsWorld: null,
+        const reset = preparePalettePresetSessionReset<
+            DerivedWorld<PixelValue>
+        >({
+            defaultProfile: EXTRACT_QUANTIZATION_PROFILE,
         })
-        setActivePresetButton(null)
-        setHiddenPresetIds([])
-        setImportedPalettePresets([])
+        setQuantizationProfile(reset.quantizationProfile)
+        setPaletteTabsState(reset.tabsState)
+        setActivePresetButton(reset.activePresetButton)
+        setHiddenPresetIds(reset.hiddenPresetIds)
+        setImportedPalettePresets(reset.importedPalettePresets)
     }
 
     function quantizePixelsForActiveProfile(
@@ -5268,7 +5273,8 @@ function PixelEditorFramer({
         }
     }, [initialImageData, initialImageRouteKind])
 
-    // ✅ Авто-свотчи (квантование/дефолт) + пользовательские (не трогаются при изменениях paletteCount)
+    // Auto swatches belong to quantization/defaults; user swatches stay stable
+    // when paletteCount changes.
     const [autoSwatches, setAutoSwatches] = React.useState<Swatch[]>(() =>
         generatePalette(16).map((c, i) => ({
             id: `auto-${i}`,
@@ -5289,7 +5295,7 @@ function PixelEditorFramer({
         const reason = pendingBlankCheckReasonRef.current
         if (!reason) return
 
-        // S4: во время STREAM никаких grid-мутаций (setGridSuppressed и т.п.)
+        // S4: no grid mutations during STREAM (setGridSuppressed, etc.).
         if (busyKindRef.current === "stream") {
             pendingRef.current.gridPolicyBlankCheck = true
             return
@@ -5301,7 +5307,7 @@ function PixelEditorFramer({
         )
     }, [imagePixels, overlayPixels, autoSwatches, userSwatches])
 
-    // ✅ Активный свотч: по ID, либо "transparent" (инструмент стирания)
+    // Active swatch is tracked by id, or "transparent" for the eraser tool.
     const [selectedSwatch, setSelectedSwatch] = React.useState<
         SwatchId | "transparent"
     >("auto-0")
@@ -5725,11 +5731,7 @@ function PixelEditorFramer({
         paletteWorldReferenceSignatureRef.current = nextSignature
         if (prevSignature === null || prevSignature === nextSignature) return
 
-        setPaletteTabsState((prev) => ({
-            activeTab: prev.activeTab,
-            sizeWorld: null,
-            presetsWorld: null,
-        }))
+        setPaletteTabsState((prev) => preparePaletteWorldInvalidation(prev))
 
         if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
             console.info("[PaletteTabs][CHECK] worlds invalidated", {

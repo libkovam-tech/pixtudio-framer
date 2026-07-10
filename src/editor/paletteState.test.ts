@@ -7,11 +7,14 @@ import {
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
     prepareLoadedPaletteProjectTabs,
+    preparePaletteAutoSessionReset,
     prepareAutoOverridesForSwatchEdit,
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
     preparePaletteProjectStateRestoreTabs,
+    preparePalettePresetSessionReset,
     preparePaletteTabWorldCommit,
+    preparePaletteWorldInvalidation,
     preparePaletteWorldSnapshotApplication,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
@@ -621,6 +624,57 @@ describe("palette state", () => {
             activeTab: "size",
             sizeWorld,
             presetsWorld,
+        })
+    })
+
+    it("prepares auto palette session reset state", () => {
+        const result =
+            preparePaletteAutoSessionReset<Record<string, { hex: string }>>()
+
+        expect(result).toEqual({
+            autoOverrides: {},
+            deletedAutoPaletteColors: [],
+        })
+    })
+
+    it("prepares preset palette session reset state", () => {
+        const result = preparePalettePresetSessionReset<TestPaletteTabWorld>({
+            defaultProfile: { kind: "extract" },
+        })
+
+        expect(result).toEqual({
+            quantizationProfile: { kind: "extract" },
+            tabsState: {
+                activeTab: "size",
+                sizeWorld: null,
+                presetsWorld: null,
+            },
+            activePresetButton: null,
+            hiddenPresetIds: [],
+            importedPalettePresets: [],
+        })
+    })
+
+    it("invalidates cached palette worlds while keeping the active tab", () => {
+        const sizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" },
+            autoSwatches: [{ id: "auto-size" }],
+        }
+        const presetsWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed", id: "sunset" },
+            autoSwatches: [{ id: "auto-preset" }],
+        }
+
+        expect(
+            preparePaletteWorldInvalidation({
+                activeTab: "presets",
+                sizeWorld,
+                presetsWorld,
+            })
+        ).toEqual({
+            activeTab: "presets",
+            sizeWorld: null,
+            presetsWorld: null,
         })
     })
 

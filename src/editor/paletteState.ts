@@ -59,6 +59,19 @@ export type PaletteProjectStateRestoreTabsResult<TWorld> =
 
 export type PaletteTabWorldCommitResult<TWorld> = PaletteTabWorldState<TWorld>
 
+export type PaletteAutoSessionResetResult<TAutoOverrides> = {
+    autoOverrides: TAutoOverrides
+    deletedAutoPaletteColors: string[]
+}
+
+export type PalettePresetSessionResetResult<TWorld> = {
+    quantizationProfile: QuantizationProfile
+    tabsState: PaletteTabWorldState<TWorld>
+    activePresetButton: string | null
+    hiddenPresetIds: string[]
+    importedPalettePresets: ImportedPalettePresetForHistory[]
+}
+
 export type PaletteCurrentWorldSnapshot<
     TSwatch extends EditorHistorySwatch,
     TPixel extends string | null,
@@ -346,6 +359,41 @@ export function preparePaletteTabWorldCommit<TWorld>(input: {
         activeTab: "size",
         sizeWorld: input.world,
         presetsWorld: input.state.presetsWorld,
+    }
+}
+
+export function preparePaletteAutoSessionReset<
+    TAutoOverrides extends PaletteAutoOverridesMap = PaletteAutoOverridesMap,
+>(): PaletteAutoSessionResetResult<TAutoOverrides> {
+    return {
+        autoOverrides: {} as TAutoOverrides,
+        deletedAutoPaletteColors: [],
+    }
+}
+
+export function preparePalettePresetSessionReset<TWorld>(input: {
+    defaultProfile: QuantizationProfile
+}): PalettePresetSessionResetResult<TWorld> {
+    return {
+        quantizationProfile: input.defaultProfile,
+        tabsState: {
+            activeTab: "size",
+            sizeWorld: null,
+            presetsWorld: null,
+        },
+        activePresetButton: null,
+        hiddenPresetIds: [],
+        importedPalettePresets: [],
+    }
+}
+
+export function preparePaletteWorldInvalidation<TWorld>(
+    state: PaletteTabWorldState<TWorld>
+): PaletteTabWorldState<TWorld> {
+    return {
+        activeTab: state.activeTab,
+        sizeWorld: null,
+        presetsWorld: null,
     }
 }
 
