@@ -54,6 +54,9 @@ export type PaletteTabSwitchApplicationPlan<TWorld> = {
     traceLabel?: string
 }
 
+export type PaletteProjectStateRestoreTabsResult<TWorld> =
+    PaletteTabWorldState<TWorld>
+
 export type PaletteCurrentWorldSnapshot<
     TSwatch extends EditorHistorySwatch,
     TPixel extends string | null,
@@ -278,6 +281,38 @@ export function prepareProjectStateFromPaletteWorld<
         deletedAutoPaletteColors: input.deletedAutoPaletteColors,
         autoOverrides: input.autoOverrides,
     })
+}
+
+export function preparePaletteProjectStateRestoreTabs<
+    TWorld extends {
+        profile: {
+            kind: "extract" | "fixed"
+        }
+    },
+>(input: {
+    state: PaletteTabWorldState<TWorld>
+    world: TWorld
+    activePaletteTab?: PaletteTabKey | null
+    fallbackActiveTab?: PaletteTabKey | null
+}): PaletteProjectStateRestoreTabsResult<TWorld> {
+    const nextActiveTab =
+        input.world.profile.kind === "fixed"
+            ? "presets"
+            : input.activePaletteTab ?? input.fallbackActiveTab ?? "size"
+
+    if (nextActiveTab === "presets") {
+        return {
+            activeTab: "presets",
+            sizeWorld: input.state.sizeWorld,
+            presetsWorld: input.world,
+        }
+    }
+
+    return {
+        activeTab: "size",
+        sizeWorld: input.world,
+        presetsWorld: input.state.presetsWorld,
+    }
 }
 
 function clampInt(value: number, min: number, max: number): number {

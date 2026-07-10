@@ -80,6 +80,7 @@ import {
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
     prepareCurrentPaletteWorldSnapshot,
+    preparePaletteProjectStateRestoreTabs,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
@@ -6534,68 +6535,40 @@ function PixelEditorFramer({
             cloneImportedPalettePresetsForHistory(restoredImportedPresets)
         )
         setHiddenPresetIds((state.hiddenPresetIds ?? []).slice())
-        const nextActivePaletteTab: PaletteTab =
-            nextProfile.kind === "fixed"
-                ? "presets"
-                : state.activePaletteTab ?? paletteTabsState.activeTab ?? "size"
         setQuantizationProfile(nextProfile)
         setActivePresetButton(
             nextProfile.kind === "fixed" ? nextProfile.id : null
         )
+        const restoredCanvas =
+            overlayOverBaseGrid(state.imagePixels, state.overlayPixels) ??
+            clonePixelsGrid(state.imagePixels)
+        const restoredWorld: DerivedWorld<PixelValue> = {
+            profile: nextProfile,
+            referenceSignature: imageDataSampleSignature(
+                state.referenceSnapshot ?? originalImageData
+            ),
+            autoSwatches: cloneSwatches(autoEffective),
+            imagePixels: clonePixelsGrid(state.imagePixels),
+            overlayPixels: clonePixelsGrid(state.overlayPixels),
+            canvasPixels: restoredCanvas,
+        }
         setPaletteTabsState((prev) => {
-            const restoredCanvas =
-                overlayOverBaseGrid(state.imagePixels, state.overlayPixels) ??
-                clonePixelsGrid(state.imagePixels)
-            const restoredWorld: DerivedWorld<PixelValue> = {
-                profile: nextProfile,
-                referenceSignature: imageDataSampleSignature(
-                    state.referenceSnapshot ?? originalImageData
-                ),
-                autoSwatches: cloneSwatches(autoEffective),
-                imagePixels: clonePixelsGrid(state.imagePixels),
-                overlayPixels: clonePixelsGrid(state.overlayPixels),
-                canvasPixels: restoredCanvas,
-            }
-
-            if (nextProfile.kind === "fixed") {
-                paletteUndoTrace("applyProjectState:tabs-restore", {
-                    to: "presets",
-                    profile: quantizationProfileTraceSummary(nextProfile),
-                    previousActiveTab: prev.activeTab,
-                })
-                return {
-                    activeTab: "presets",
-                    sizeWorld: prev.sizeWorld,
-                    presetsWorld: restoredWorld,
-                }
-            }
-
-            if (nextActivePaletteTab === "presets") {
-                paletteUndoTrace("applyProjectState:tabs-restore", {
-                    to: "presets",
-                    profile: quantizationProfileTraceSummary(nextProfile),
-                    previousActiveTab: prev.activeTab,
-                })
-                return {
-                    activeTab: "presets",
-                    sizeWorld: prev.sizeWorld,
-                    presetsWorld: restoredWorld,
-                }
-            }
-
+            const nextTabsState = preparePaletteProjectStateRestoreTabs({
+                state: prev,
+                world: restoredWorld,
+                activePaletteTab: state.activePaletteTab,
+                fallbackActiveTab: paletteTabsState.activeTab,
+            })
             paletteUndoTrace("applyProjectState:tabs-restore", {
-                to: "size",
+                to: nextTabsState.activeTab,
                 profile: quantizationProfileTraceSummary(nextProfile),
                 previousActiveTab: prev.activeTab,
             })
-            return {
-                activeTab: "size",
-                sizeWorld: restoredWorld,
-                presetsWorld: prev.presetsWorld,
-            }
+            return nextTabsState
         })
 
-        // Важно: флаги истории не меняем здесь — их меняют undo/redo/pushCommit
+        // Important: history flags are not changed here; undo/redo/pushCommit
+        // own them.
     }
 
     function applyLoadedQuantizationState(

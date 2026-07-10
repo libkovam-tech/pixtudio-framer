@@ -9,6 +9,7 @@ import {
     prepareAutoOverridesForSwatchEdit,
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
+    preparePaletteProjectStateRestoreTabs,
     preparePaletteWorldSnapshotApplication,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
@@ -482,6 +483,88 @@ describe("palette state", () => {
             },
             worldToApply: null,
             activePresetButton: null,
+        })
+    })
+
+    it("restores fixed project states into the presets tab", () => {
+        const sizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" },
+            autoSwatches: [{ id: "auto-size" }],
+        }
+        const restoredWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed", id: "sunset" },
+            autoSwatches: [{ id: "auto-fixed" }],
+        }
+
+        const result = preparePaletteProjectStateRestoreTabs({
+            state: {
+                activeTab: "size",
+                sizeWorld,
+                presetsWorld: null,
+            },
+            world: restoredWorld,
+            activePaletteTab: "size",
+            fallbackActiveTab: "size",
+        })
+
+        expect(result).toEqual({
+            activeTab: "presets",
+            sizeWorld,
+            presetsWorld: restoredWorld,
+        })
+    })
+
+    it("restores extract project states into the stored active tab", () => {
+        const restoredWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" },
+            autoSwatches: [{ id: "auto-restored" }],
+        }
+        const presetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed", id: "gray" },
+            autoSwatches: [{ id: "auto-preset" }],
+        }
+
+        const result = preparePaletteProjectStateRestoreTabs({
+            state: {
+                activeTab: "size",
+                sizeWorld: null,
+                presetsWorld: presetWorld,
+            },
+            world: restoredWorld,
+            activePaletteTab: "presets",
+            fallbackActiveTab: "size",
+        })
+
+        expect(result).toEqual({
+            activeTab: "presets",
+            sizeWorld: null,
+            presetsWorld: restoredWorld,
+        })
+    })
+
+    it("restores extract project states into size by default", () => {
+        const restoredWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" },
+            autoSwatches: [{ id: "auto-restored" }],
+        }
+        const presetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed", id: "gray" },
+            autoSwatches: [{ id: "auto-preset" }],
+        }
+
+        const result = preparePaletteProjectStateRestoreTabs({
+            state: {
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld: presetWorld,
+            },
+            world: restoredWorld,
+        })
+
+        expect(result).toEqual({
+            activeTab: "size",
+            sizeWorld: restoredWorld,
+            presetsWorld: presetWorld,
         })
     })
 
