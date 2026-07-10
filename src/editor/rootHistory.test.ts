@@ -185,4 +185,39 @@ describe("root history coordinator", () => {
         const redoEntry = rootHistoryRedo(history)
         expect(redoEntry?.editorAfter?.userSwatches).toEqual(["user-1"])
     })
+
+    it("coalesces a restored palette tab world into the next preset apply", () => {
+        const history = createRootHistoryState<EditorState, SmartState>()
+
+        rootHistoryBegin(history, {
+            kind: "palette-tab-switch",
+            editorBefore: editor("auto"),
+            smartBefore: smart(1),
+        })
+        rootHistoryFinalize(history, smart(1))
+        rootHistoryCommit(history, editor("sunset"), {
+            isEditorEqual: (a, b) => a?.label === b?.label,
+            isSmartEqual: (a, b) => a?.revision === b?.revision,
+        })
+
+        rootHistoryBegin(history, {
+            kind: "palette-preset-apply",
+            editorBefore: editor("sunset"),
+            smartBefore: smart(1),
+        })
+        rootHistoryFinalize(history, smart(1))
+        const entry = rootHistoryCommit(history, editor("gray"), {
+            isEditorEqual: (a, b) => a?.label === b?.label,
+            isSmartEqual: (a, b) => a?.revision === b?.revision,
+        })
+
+        expect(history.committed).toHaveLength(1)
+        expect(entry).toEqual({
+            kind: "palette-preset-apply",
+            editorBefore: editor("auto"),
+            editorAfter: editor("gray"),
+            smartBefore: smart(1),
+            smartAfter: smart(1),
+        })
+    })
 })

@@ -1,5 +1,7 @@
 export type RootHistoryEntryKind =
     | "editor-action"
+    | "palette-preset-apply"
+    | "palette-tab-switch"
     | "smart-object-apply"
     | "unknown"
 
@@ -105,6 +107,29 @@ export function rootHistoryCommit<TEditor, TSmart>(
         editorAfter,
         smartBefore: pending.smartBefore,
         smartAfter: pending.smartAfter,
+    }
+
+    const previous = state.committed[state.committed.length - 1]
+    if (
+        previous &&
+        previous.kind === "palette-tab-switch" &&
+        pending.kind === "palette-preset-apply"
+    ) {
+        const previousMatchesPendingEditor = options?.isEditorEqual
+            ? options.isEditorEqual(previous.editorAfter, pending.editorBefore)
+            : Object.is(previous.editorAfter, pending.editorBefore)
+        const previousMatchesPendingSmart = options?.isSmartEqual
+            ? options.isSmartEqual(previous.smartAfter, pending.smartBefore)
+            : Object.is(previous.smartAfter, pending.smartBefore)
+
+        if (previousMatchesPendingEditor && previousMatchesPendingSmart) {
+            entry.editorBefore = previous.editorBefore
+            entry.smartBefore = previous.smartBefore
+            state.committed[state.committed.length - 1] = entry
+            state.redo = []
+            state.pending = null
+            return entry
+        }
     }
 
     state.committed.push(entry)

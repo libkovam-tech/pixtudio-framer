@@ -543,7 +543,7 @@ test("palette tab world switches are undoable when they change the canvas", asyn
     const autoCanvas = await readEditorCanvasSignature(page)
 
     await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
-    await page.locator('button[title="SUNSET"]').click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
     await settle(page)
     const presetCanvas = await readEditorCanvasSignature(page)
     expect(presetCanvas).not.toBe(autoCanvas)
@@ -566,6 +566,61 @@ test("palette tab world switches are undoable when they change the canvas", asyn
     await expect
         .poll(() => readEditorCanvasSignature(page))
         .toBe(autoCanvas)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("new preset choices coalesce restored palette tab worlds in undo history", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await bumpPaletteSize(page)
+    const autoCanvas = await readEditorCanvasSignature(page)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+    const sunsetCanvas = await readEditorCanvasSignature(page)
+    expect(sunsetCanvas).not.toBe(autoCanvas)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await expectEditorCanvasSignature(page, autoCanvas)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^GRAY\b/ }).click()
+    await settle(page)
+    const grayCanvas = await readEditorCanvasSignature(page)
+    expect(grayCanvas).not.toBe(autoCanvas)
+    expect(grayCanvas).not.toBe(sunsetCanvas)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await expectEditorCanvasSignature(page, autoCanvas)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^BLACK\/WHITE\b/ }).click()
+    await settle(page)
+    const blackWhiteCanvas = await readEditorCanvasSignature(page)
+    expect(blackWhiteCanvas).not.toBe(autoCanvas)
+    expect(blackWhiteCanvas).not.toBe(grayCanvas)
+    expect(blackWhiteCanvas).not.toBe(sunsetCanvas)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await expectEditorCanvasSignature(page, autoCanvas)
+
+    await page.getByRole("button", { name: "Undo" }).click()
+    await expectEditorCanvasSignature(page, blackWhiteCanvas)
+    await page.getByRole("button", { name: "Undo" }).click()
+    await expectEditorCanvasSignature(page, autoCanvas)
+    await page.getByRole("button", { name: "Undo" }).click()
+    await expectEditorCanvasSignature(page, grayCanvas)
+    await page.getByRole("button", { name: "Undo" }).click()
+    await expectEditorCanvasSignature(page, autoCanvas)
+    await page.getByRole("button", { name: "Undo" }).click()
+    await expectEditorCanvasSignature(page, sunsetCanvas)
+    await page.getByRole("button", { name: "Undo" }).click()
+    await expectEditorCanvasSignature(page, autoCanvas)
 
     expect(errors.flush()).toEqual([])
 })
@@ -964,6 +1019,11 @@ async function readEditorCanvasSignature(page: Page) {
         }
         return hash.toString(16)
     })
+}
+
+async function expectEditorCanvasSignature(page: Page, signature: string) {
+    await settle(page)
+    await expect.poll(() => readEditorCanvasSignature(page)).toBe(signature)
 }
 
 async function findEditorCanvasPixel(

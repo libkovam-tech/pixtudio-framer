@@ -3080,8 +3080,13 @@ type UserActionCommitInput = {
     smartAfter?: SmartObjectCommittedState | null
 }
 
+type EditorActionTransactionKind =
+    | "editor-action"
+    | "palette-preset-apply"
+    | "palette-tab-switch"
+
 type EditorActionTransaction = {
-    kind: "editor-action"
+    kind: EditorActionTransactionKind
     before: EditorCommittedState
 }
 
@@ -5674,7 +5679,7 @@ function PixelEditorFramer({
 
         if (applicationPlan.worldToApply) {
             const before = latestProjectStateRef.current ?? makeProjectState()
-            beginEditorActionTransaction("editor-action", before)
+            beginEditorActionTransaction("palette-tab-switch", before)
             const afterState = applyDerivedWorldSnapshot(
                 applicationPlan.worldToApply,
                 applicationPlan.selectedSwatch,
@@ -5778,7 +5783,7 @@ function PixelEditorFramer({
         const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
         const afterState: ProjectState = prepared.projectState
 
-        beginEditorActionTransaction("editor-action", before)
+        beginEditorActionTransaction("palette-preset-apply", before)
         setQuantizationProfile(profile)
         setActivePresetButton(profile.id)
         setPaletteTabsState((prev) => ({
@@ -5844,7 +5849,7 @@ function PixelEditorFramer({
         const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
         const afterState: ProjectState = prepared.projectState
 
-        beginEditorActionTransaction("editor-action", before)
+        beginEditorActionTransaction("palette-preset-apply", before)
         setQuantizationProfile(profile)
         setImportedPalettePresets(importedPresetRegistry)
         setActivePresetButton(profile.id)
@@ -5933,7 +5938,7 @@ function PixelEditorFramer({
 
         const world = preparedReference.world
         const afterState = preparedReference.projectState
-        beginEditorActionTransaction("editor-action", before)
+        beginEditorActionTransaction("palette-preset-apply", before)
         setActivePresetButton(profile.id)
         setPaletteTabsState((prev) => ({
             ...prev,
@@ -6965,7 +6970,7 @@ function PixelEditorFramer({
     }
 
     function beginEditorActionTransaction(
-        kind: "editor-action",
+        kind: EditorActionTransactionKind,
         beforeState?: ProjectState
     ) {
         const before = beforeState ?? makeProjectState()
