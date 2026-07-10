@@ -60,7 +60,7 @@ import {
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
     prepareImportedPalettePresetFromColors,
-    prepareAutoPaletteDrawingProjectApplication,
+    prepareActivePresetFallbackToAuto,
     prepareAutoPaletteReferenceProjectApplication,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPaletteReferenceProjectApplication,
@@ -5560,69 +5560,38 @@ function PixelEditorFramer({
         // Deleting the active preset must leave the canvas in a real palette
         // world, not in an invisible fixed profile that would still save later.
         const before = latestProjectStateRef.current ?? makeProjectState()
-        const preparedReference =
-            prepareAutoPaletteReferenceProjectApplication({
-                profile: EXTRACT_QUANTIZATION_PROFILE,
-                referenceSnapshot: originalImageData,
-                gridSize,
-                overlayPixels,
-                previousSwatches: autoSwatches,
-                userSwatches,
-                paletteCountTarget: clamp(
-                    paletteCount,
-                    PALETTE_MIN,
-                    PALETTE_MAX
-                ),
-                excludedColors: deletedAutoPaletteColors,
-                pixelizeReference: (snapshot, nextGridSize) =>
-                    pixelizeFromImageDominant(snapshot, nextGridSize, 16),
-                referenceSignature: imageDataSampleSignature,
-                selectedSwatch,
-                preferredSwatch: null,
-                projectPaletteCount: paletteCount,
-                brushSize,
-                showImage,
-                hasOriginalImageData: hasImportContext,
-                importedPalettePresets: nextImportedPalettePresets,
-                hiddenPresetIds: nextHiddenPresetIds,
-                deletedAutoPaletteColors,
-                autoOverrides,
-            })
-        let world: DerivedWorld<PixelValue>
-        let afterState: ProjectState
-        if (preparedReference.kind === "applied") {
-            world = preparedReference.world
-            afterState = preparedReference.projectState
-        } else {
-            const preparedDrawing = prepareAutoPaletteDrawingProjectApplication({
-                profile: EXTRACT_QUANTIZATION_PROFILE,
-                referenceSignature: imageDataSampleSignature(originalImageData),
-                palette: generatePalette(
-                    clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
-                ),
-                imagePixels,
-                overlayPixels,
-                selectedSwatch,
-                preferredSwatch: null,
-                gridSize,
-                projectPaletteCount: paletteCount,
-                brushSize,
-                showImage,
-                hasOriginalImageData: hasImportContext,
-                referenceSnapshot: originalImageData,
-                userSwatches,
-                importedPalettePresets: nextImportedPalettePresets,
-                hiddenPresetIds: nextHiddenPresetIds,
-                deletedAutoPaletteColors,
-                autoOverrides,
-            })
-            world = preparedDrawing.world
-            afterState = preparedDrawing.projectState
-        }
+        const preparedFallback = prepareActivePresetFallbackToAuto({
+            profile: EXTRACT_QUANTIZATION_PROFILE,
+            referenceSnapshot: originalImageData,
+            gridSize,
+            overlayPixels,
+            previousSwatches: autoSwatches,
+            userSwatches,
+            paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            excludedColors: deletedAutoPaletteColors,
+            pixelizeReference: (snapshot, nextGridSize) =>
+                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+            referenceSignature: imageDataSampleSignature,
+            fallbackPalette: generatePalette(
+                clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
+            ),
+            imagePixels,
+            selectedSwatch,
+            projectPaletteCount: paletteCount,
+            brushSize,
+            showImage,
+            hasOriginalImageData: hasImportContext,
+            importedPalettePresets: nextImportedPalettePresets,
+            hiddenPresetIds: nextHiddenPresetIds,
+            deletedAutoPaletteColors,
+            autoOverrides,
+        })
+        const world: DerivedWorld<PixelValue> = preparedFallback.world
+        const afterState: ProjectState = preparedFallback.projectState
 
         beginEditorActionTransaction("editor-action", before)
-        setHiddenPresetIds(nextHiddenPresetIds)
-        setImportedPalettePresets(nextImportedPalettePresets)
+        setHiddenPresetIds(preparedFallback.hiddenPresetIds)
+        setImportedPalettePresets(preparedFallback.importedPalettePresets)
         setActivePresetButton(null)
         setPaletteTabsState((prev) => ({
             ...preparePaletteTabWorldCommit({
@@ -5635,8 +5604,8 @@ function PixelEditorFramer({
         applyDerivedWorldSnapshot(
             world,
             null,
-            nextImportedPalettePresets,
-            nextHiddenPresetIds
+            preparedFallback.importedPalettePresets,
+            preparedFallback.hiddenPresetIds
         )
         latestProjectStateRef.current = afterState
         pushCommit(before, { afterState })

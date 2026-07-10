@@ -8,6 +8,7 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareImportedPalettePresetFromColors,
+    prepareActivePresetFallbackToAuto,
     prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteReferenceProjectApplication,
@@ -479,6 +480,132 @@ describe("palette preset extension", () => {
             importedPalettePresets[0]
         )
         expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
+    })
+
+    it("prepares active preset fallback to auto from the reference", () => {
+        const referenceSnapshot = {
+            width: 2,
+            height: 2,
+            data: new Uint8ClampedArray(16),
+        }
+        const importedPalettePresets = [makeImportedPalettePreset(profile)]
+        const result = prepareActivePresetFallbackToAuto({
+            profile: { kind: "extract" },
+            referenceSnapshot,
+            gridSize: 2,
+            overlayPixels: [
+                [null, null],
+                [null, "user-0"],
+            ],
+            previousSwatches: [],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#FF00FF",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            paletteCountTarget: 2,
+            excludedColors: [],
+            pixelizeReference: () => [
+                ["#000000", "#FFFFFF"],
+                ["#000000", "#FFFFFF"],
+            ],
+            referenceSignature: () => "reference-1",
+            fallbackPalette: ["#112233", "#445566"],
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-0", "auto-1"],
+            ],
+            selectedSwatch: "auto-0",
+            projectPaletteCount: 7,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets,
+            hiddenPresetIds: ["sunset"],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("reference")
+        expect(result.hiddenPresetIds).toEqual(["sunset"])
+        expect(result.importedPalettePresets).toEqual(importedPalettePresets)
+        expect(result.importedPalettePresets).not.toBe(importedPalettePresets)
+        expect(result.world.referenceSignature).toBe("reference-1")
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 7,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            activePaletteTab: "size",
+            hiddenPresetIds: ["sunset"],
+            selectedSwatch: "auto-0",
+            quantizationProfile: { kind: "extract" },
+        })
+    })
+
+    it("prepares active preset fallback to auto from the drawing palette", () => {
+        const importedPalettePresets = [makeImportedPalettePreset(profile)]
+        const result = prepareActivePresetFallbackToAuto({
+            profile: { kind: "extract" },
+            referenceSnapshot: null,
+            gridSize: 2,
+            overlayPixels: [
+                [null, "user-0"],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches: [
+                {
+                    id: "user-0",
+                    color: "#FF00FF",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            paletteCountTarget: 2,
+            excludedColors: [],
+            pixelizeReference: () => [],
+            referenceSignature: () => null,
+            fallbackPalette: ["#112233", "#445566"],
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-0", "auto-1"],
+            ],
+            selectedSwatch: "auto-1",
+            projectPaletteCount: 9,
+            brushSize: 5,
+            showImage: false,
+            hasOriginalImageData: false,
+            importedPalettePresets,
+            hiddenPresetIds: ["gray"],
+            deletedAutoPaletteColors: ["#FFFFFF"],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("drawing")
+        expect(result.hiddenPresetIds).toEqual(["gray"])
+        expect(result.importedPalettePresets).toEqual(importedPalettePresets)
+        expect(result.world.referenceSignature).toBeNull()
+        expect(result.world.canvasPixels).toEqual([
+            ["auto-0", "user-0"],
+            ["auto-0", "auto-1"],
+        ])
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 9,
+            brushSize: 5,
+            showImage: false,
+            hasOriginalImageData: false,
+            activePaletteTab: "size",
+            hiddenPresetIds: ["gray"],
+            deletedAutoPaletteColors: ["#FFFFFF"],
+            selectedSwatch: "auto-1",
+            quantizationProfile: { kind: "extract" },
+        })
     })
 
     it("prepares palette worlds with shared overlay remapping", () => {
