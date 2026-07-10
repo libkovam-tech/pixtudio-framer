@@ -6426,8 +6426,6 @@ function PixelEditorFramer({
             state: editorCommittedStateTraceSummary(
                 latestProjectStateRef.current
             ),
-            activeTab: paletteTabsState.activeTab,
-            activePresetButton,
         })
     }, [
         gridSize,
@@ -6445,8 +6443,6 @@ function PixelEditorFramer({
         quantizationProfile,
         importedPalettePresets,
         hiddenPresetIds,
-        paletteTabsState.activeTab,
-        activePresetButton,
     ])
 
     function makeProjectStateWithOverlay(

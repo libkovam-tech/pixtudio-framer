@@ -539,7 +539,6 @@ test("palette tab world switches are undoable when they change the canvas", asyn
     const errors = collectBrowserErrors(page)
 
     await openBearProject(page)
-    await bumpPaletteSize(page)
     const autoCanvas = await readEditorCanvasSignature(page)
 
     await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
@@ -576,7 +575,6 @@ test("new preset choices coalesce restored palette tab worlds in undo history", 
     const errors = collectBrowserErrors(page)
 
     await openBearProject(page)
-    await bumpPaletteSize(page)
     const autoCanvas = await readEditorCanvasSignature(page)
 
     await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
@@ -621,6 +619,7 @@ test("new preset choices coalesce restored palette tab worlds in undo history", 
     await expectEditorCanvasSignature(page, sunsetCanvas)
     await page.getByRole("button", { name: "Undo" }).click()
     await expectEditorCanvasSignature(page, autoCanvas)
+    await expect(page.locator('input[type="range"][max="32"]').first()).toBeVisible()
 
     expect(errors.flush()).toEqual([])
 })
