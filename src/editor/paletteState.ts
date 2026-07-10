@@ -40,6 +40,20 @@ export type PaletteTabWorldState<TWorld> = {
     presetsWorld: TWorld | null
 }
 
+export type PaletteTabSwitchApplicationPlan<TWorld> = {
+    kind:
+        | "restore"
+        | "lazy-size"
+        | "lazy-presets"
+        | "empty-size"
+        | "empty-presets"
+    nextState: PaletteTabWorldState<TWorld>
+    worldToApply: TWorld | null
+    selectedSwatch?: PaletteSelection
+    activePresetButton: string | null
+    traceLabel?: string
+}
+
 export type PaletteCurrentWorldSnapshot<
     TSwatch extends EditorHistorySwatch,
     TPixel extends string | null,
@@ -1217,5 +1231,119 @@ export function preparePaletteTabSwitch<TWorld>(input: {
                 ? { presetsWorld: null }
                 : {}),
         },
+    }
+}
+
+function getPaletteWorldActivePresetButton(input: {
+    profile: {
+        kind: "extract" | "fixed"
+        id?: string | null
+    }
+}): string | null {
+    return input.profile.kind === "fixed" ? input.profile.id ?? null : null
+}
+
+function preparePaletteTabStateWithWorld<TWorld>(
+    state: PaletteTabWorldState<TWorld>,
+    tab: PaletteTabKey,
+    world: TWorld
+): PaletteTabWorldState<TWorld> {
+    return {
+        ...state,
+        activeTab: tab,
+        ...(tab === "size" ? { sizeWorld: world } : { presetsWorld: world }),
+    }
+}
+
+export function preparePaletteTabSwitchApplication<
+    TWorld extends {
+        profile: {
+            kind: "extract" | "fixed"
+            id?: string | null
+        }
+        autoSwatches:
+            | ReadonlyArray<PaletteSwatchLike | null | undefined>
+            | null
+            | undefined
+    },
+>(input: {
+    nextTab: PaletteTabKey
+    nextState: PaletteTabWorldState<TWorld>
+    restoredWorld?: TWorld | null
+    lazyWorld?: TWorld | null
+    userSwatches:
+        | ReadonlyArray<PaletteSwatchLike | null | undefined>
+        | null
+        | undefined
+    preferredSwatch?: PaletteSelection | null
+}): PaletteTabSwitchApplicationPlan<TWorld> {
+    if (input.restoredWorld) {
+        return {
+            kind: "restore",
+            nextState: preparePaletteTabStateWithWorld(
+                input.nextState,
+                input.nextTab,
+                input.restoredWorld
+            ),
+            worldToApply: input.restoredWorld,
+            selectedSwatch: resolvePaletteTabTargetSelection({
+                targetWorld: input.restoredWorld,
+                userSwatches: input.userSwatches,
+                preferredSwatch: input.preferredSwatch,
+            }),
+            activePresetButton: getPaletteWorldActivePresetButton(
+                input.restoredWorld
+            ),
+            traceLabel: "world restored",
+        }
+    }
+
+    if (input.lazyWorld) {
+        const kind = input.nextTab === "size" ? "lazy-size" : "lazy-presets"
+        return {
+            kind,
+            nextState: preparePaletteTabStateWithWorld(
+                input.nextState,
+                input.nextTab,
+                input.lazyWorld
+            ),
+            worldToApply: input.lazyWorld,
+            selectedSwatch: resolvePaletteTabTargetSelection({
+                targetWorld: input.lazyWorld,
+                userSwatches: input.userSwatches,
+                preferredSwatch: input.preferredSwatch,
+            }),
+            activePresetButton: getPaletteWorldActivePresetButton(
+                input.lazyWorld
+            ),
+            traceLabel:
+                input.nextTab === "size"
+                    ? "size rebuilt lazily"
+                    : "presets rebuilt lazily",
+        }
+    }
+
+    if (input.nextTab === "size") {
+        return {
+            kind: "empty-size",
+            nextState: {
+                ...input.nextState,
+                activeTab: "size",
+                sizeWorld: null,
+            },
+            worldToApply: null,
+            activePresetButton: null,
+        }
+    }
+
+    return {
+        kind: "empty-presets",
+        nextState: {
+            ...input.nextState,
+            activeTab: "presets",
+            presetsWorld: null,
+        },
+        worldToApply: null,
+        activePresetButton: null,
     }
 }

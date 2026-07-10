@@ -82,10 +82,10 @@ import {
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotProjectApplication,
+    preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
     prepareSwatchDelete,
-    resolvePaletteTabTargetSelection,
 } from "./paletteState.ts"
 import {
     areEditorCommittedStatesEqual,
@@ -5646,115 +5646,56 @@ function PixelEditorFramer({
             targetWorld &&
             targetWorldIsCompatible &&
             (nextTab === "size" || targetWorld.profile.kind === "fixed")
+        const restoredWorld = shouldRestoreTargetWorld
+            ? shareOverlayWithDerivedWorld(targetWorld, overlayPixels)
+            : null
+        const lazyWorld = restoredWorld
+            ? null
+            : buildPaletteWorldForTab(nextTab, targetWorld)
+        const applicationPlan = preparePaletteTabSwitchApplication({
+            nextTab,
+            nextState: switchState.nextState,
+            restoredWorld,
+            lazyWorld,
+            userSwatches,
+            preferredSwatch: preferredSwatchForNextTab,
+        })
 
-        if (shouldRestoreTargetWorld) {
-            const sharedTargetWorld = shareOverlayWithDerivedWorld(
-                targetWorld,
-                overlayPixels
-            )
-            const targetSelectedSwatch = resolvePaletteTabTargetSelection({
-                targetWorld: sharedTargetWorld,
-                userSwatches,
-                preferredSwatch: preferredSwatchForNextTab,
-            })
-            setPaletteTabsState({
-                ...switchState.nextState,
-                ...(nextTab === "size"
-                    ? { sizeWorld: sharedTargetWorld }
-                    : { presetsWorld: sharedTargetWorld }),
-            })
-            setActivePresetButton(
-                nextTab === "presets" &&
-                    sharedTargetWorld.profile.kind === "fixed"
-                    ? sharedTargetWorld.profile.id
-                    : null
-            )
-            applyDerivedWorldSnapshot(
-                sharedTargetWorld,
-                targetSelectedSwatch
-            )
-            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                console.info("[PaletteTabs][CHECK] world restored", {
-                    from: currentTab,
-                    to: nextTab,
-                    profile: sharedTargetWorld.profile.kind,
-                    autoSwatches: sharedTargetWorld.autoSwatches.length,
-                    imageNonNull: countNonNullCells(
-                        sharedTargetWorld.imagePixels
-                    ),
-                    overlayNonNull: countNonNullCells(
-                        sharedTargetWorld.overlayPixels
-                    ),
-                })
-            }
-            return
-        }
-
-        setPaletteTabsState(switchState.nextState)
-
-        const lazyWorld = buildPaletteWorldForTab(nextTab, targetWorld)
-        if (nextTab === "size") {
+        if (
+            applicationPlan.kind === "lazy-size" ||
+            applicationPlan.kind === "empty-size"
+        ) {
             setQuantizationProfile(EXTRACT_QUANTIZATION_PROFILE)
-            setActivePresetButton(null)
+        }
+        setActivePresetButton(applicationPlan.activePresetButton)
+        setPaletteTabsState(applicationPlan.nextState)
 
-            if (lazyWorld) {
-                const targetSelectedSwatch = resolvePaletteTabTargetSelection({
-                    targetWorld: lazyWorld,
-                    userSwatches,
-                    preferredSwatch: preferredSwatchForNextTab,
-                })
-                setPaletteTabsState((prev) => ({
-                    ...prev,
-                    activeTab: "size",
-                    sizeWorld: lazyWorld,
-                }))
-                applyDerivedWorldSnapshot(lazyWorld, targetSelectedSwatch)
-                if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                    console.info("[PaletteTabs][CHECK] size rebuilt lazily", {
-                        profile: lazyWorld.profile.kind,
-                        autoSwatches: lazyWorld.autoSwatches.length,
-                        imageNonNull: countNonNullCells(lazyWorld.imagePixels),
-                        overlayNonNull: countNonNullCells(
-                            lazyWorld.overlayPixels
+        if (applicationPlan.worldToApply) {
+            applyDerivedWorldSnapshot(
+                applicationPlan.worldToApply,
+                applicationPlan.selectedSwatch
+            )
+            if (
+                ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS &&
+                applicationPlan.traceLabel
+            ) {
+                console.info(
+                    `[PaletteTabs][CHECK] ${applicationPlan.traceLabel}`,
+                    {
+                        ...(applicationPlan.kind === "restore"
+                            ? { from: currentTab, to: nextTab }
+                            : {}),
+                        profile: applicationPlan.worldToApply.profile.kind,
+                        autoSwatches:
+                            applicationPlan.worldToApply.autoSwatches.length,
+                        imageNonNull: countNonNullCells(
+                            applicationPlan.worldToApply.imagePixels
                         ),
-                    })
-                }
-            }
-        } else {
-            if (lazyWorld) {
-                const targetSelectedSwatch = resolvePaletteTabTargetSelection({
-                    targetWorld: lazyWorld,
-                    userSwatches,
-                    preferredSwatch: preferredSwatchForNextTab,
-                })
-                setActivePresetButton(
-                    lazyWorld.profile.kind === "fixed"
-                        ? lazyWorld.profile.id
-                        : null
+                        overlayNonNull: countNonNullCells(
+                            applicationPlan.worldToApply.overlayPixels
+                        ),
+                    }
                 )
-                setPaletteTabsState((prev) => ({
-                    ...prev,
-                    activeTab: "presets",
-                    presetsWorld: lazyWorld,
-                }))
-                applyDerivedWorldSnapshot(lazyWorld, targetSelectedSwatch)
-                if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                    console.info("[PaletteTabs][CHECK] presets rebuilt lazily", {
-                        profile: lazyWorld.profile.kind,
-                        autoSwatches: lazyWorld.autoSwatches.length,
-                        imageNonNull: countNonNullCells(lazyWorld.imagePixels),
-                        overlayNonNull: countNonNullCells(
-                            lazyWorld.overlayPixels
-                        ),
-                    })
-                }
-            } else {
-                setActivePresetButton(null)
-                setPaletteTabsState((prev) => ({
-                    ...prev,
-                    activeTab: "presets",
-                    presetsWorld: null,
-                }))
             }
         }
     }

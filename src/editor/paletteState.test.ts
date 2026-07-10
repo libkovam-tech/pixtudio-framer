@@ -11,6 +11,7 @@ import {
     preparePaletteSwatchEditApplication,
     preparePaletteWorldSnapshotApplication,
     preparePaletteWorldSnapshotProjectApplication,
+    preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
     prepareProjectStateFromPaletteWorld,
     prepareStrokePaintSwatch,
@@ -21,6 +22,14 @@ import {
     resolvePaletteWorldSelection,
     resolveSelectedSwatchAfterAutoChange,
 } from "./paletteState.ts"
+
+type TestPaletteTabWorld = {
+    profile: {
+        kind: "extract" | "fixed"
+        id?: string
+    }
+    autoSwatches: { id: string }[]
+}
 
 describe("palette state", () => {
     it("appends deleted auto palette colors without source pixels", () => {
@@ -303,6 +312,176 @@ describe("palette state", () => {
             activeTab: "size",
             sizeWorld: null,
             presetsWorld: "current-preset",
+        })
+    })
+
+    it("plans restored palette tab world applications", () => {
+        const restoredWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+        }
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "presets",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld: null,
+            },
+            restoredWorld,
+            lazyWorld: null,
+            userSwatches: [],
+            preferredSwatch: "auto-1",
+        })
+
+        expect(result).toEqual({
+            kind: "restore",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld: restoredWorld,
+            },
+            worldToApply: restoredWorld,
+            selectedSwatch: "auto-1",
+            activePresetButton: "fixed-preset",
+            traceLabel: "world restored",
+        })
+    })
+
+    it("plans lazy size palette tab world applications", () => {
+        const lazyWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" as const },
+            autoSwatches: [{ id: "auto-0" }],
+        }
+        const presetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-1" }],
+        }
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "size",
+            nextState: {
+                activeTab: "size",
+                sizeWorld: null,
+                presetsWorld: presetWorld,
+            },
+            restoredWorld: null,
+            lazyWorld,
+            userSwatches: [],
+            preferredSwatch: "auto-missing",
+        })
+
+        expect(result).toEqual({
+            kind: "lazy-size",
+            nextState: {
+                activeTab: "size",
+                sizeWorld: lazyWorld,
+                presetsWorld: presetWorld,
+            },
+            worldToApply: lazyWorld,
+            selectedSwatch: "auto-0",
+            activePresetButton: null,
+            traceLabel: "size rebuilt lazily",
+        })
+    })
+
+    it("plans lazy presets palette tab world applications", () => {
+        const lazyWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-0" }],
+        }
+        const sizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" as const },
+            autoSwatches: [{ id: "auto-1" }],
+        }
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "presets",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld,
+                presetsWorld: null,
+            },
+            restoredWorld: null,
+            lazyWorld,
+            userSwatches: [{ id: "user-0" }],
+            preferredSwatch: "user-0",
+        })
+
+        expect(result).toEqual({
+            kind: "lazy-presets",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld,
+                presetsWorld: lazyWorld,
+            },
+            worldToApply: lazyWorld,
+            selectedSwatch: "user-0",
+            activePresetButton: "fixed-preset",
+            traceLabel: "presets rebuilt lazily",
+        })
+    })
+
+    it("plans empty presets palette tab applications", () => {
+        const sizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" as const },
+            autoSwatches: [{ id: "auto-0" }],
+        }
+        const stalePresetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-1" }],
+        }
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "presets",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld,
+                presetsWorld: stalePresetWorld,
+            },
+            restoredWorld: null,
+            lazyWorld: null,
+            userSwatches: [],
+        })
+
+        expect(result).toEqual({
+            kind: "empty-presets",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld,
+                presetsWorld: null,
+            },
+            worldToApply: null,
+            activePresetButton: null,
+        })
+    })
+
+    it("plans empty size palette tab applications", () => {
+        const staleSizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" as const },
+            autoSwatches: [{ id: "auto-0" }],
+        }
+        const presetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-1" }],
+        }
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "size",
+            nextState: {
+                activeTab: "size",
+                sizeWorld: staleSizeWorld,
+                presetsWorld: presetWorld,
+            },
+            restoredWorld: null,
+            lazyWorld: null,
+            userSwatches: [],
+        })
+
+        expect(result).toEqual({
+            kind: "empty-size",
+            nextState: {
+                activeTab: "size",
+                sizeWorld: null,
+                presetsWorld: presetWorld,
+            },
+            worldToApply: null,
+            activePresetButton: null,
         })
     })
 
