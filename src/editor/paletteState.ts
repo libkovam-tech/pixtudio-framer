@@ -71,6 +71,18 @@ export type PaletteCurrentWorldSnapshot<
     canvasPixels: TPixel[][]
 }
 
+export type LoadedPaletteProjectTabsResult<
+    TSwatch extends EditorHistorySwatch,
+    TPixel extends string | null,
+> = {
+    world: PaletteCurrentWorldSnapshot<TSwatch, TPixel>
+    tabsState: PaletteTabWorldState<
+        PaletteCurrentWorldSnapshot<TSwatch, TPixel>
+    >
+    activePresetButton: string | null
+    importedPalettePresets: ImportedPalettePresetForHistory[]
+}
+
 export type PaletteWorldSnapshotLike<
     TSwatch extends PaletteSwatchLike & { id: string },
     TPixel extends string | null,
@@ -334,6 +346,63 @@ export function preparePaletteTabWorldCommit<TWorld>(input: {
         activeTab: "size",
         sizeWorld: input.world,
         presetsWorld: input.state.presetsWorld,
+    }
+}
+
+export function prepareLoadedPaletteProjectTabs<
+    TSwatch extends EditorHistorySwatch,
+    TPixel extends string | null,
+>(input: {
+    profile: QuantizationProfile
+    referenceSignature?: string | null
+    autoSwatches: ReadonlyArray<TSwatch>
+    imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>
+    overlayPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+    canvasPixels: ReadonlyArray<ReadonlyArray<TPixel>>
+}): LoadedPaletteProjectTabsResult<TSwatch, TPixel> {
+    const world = prepareCurrentPaletteWorldSnapshot({
+        profile: input.profile,
+        referenceSignature: input.referenceSignature,
+        autoSwatches: input.autoSwatches,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        canvasPixels: input.canvasPixels,
+    })
+
+    if (input.profile.kind === "fixed") {
+        return {
+            world,
+            tabsState: {
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld: world,
+            },
+            activePresetButton: input.profile.id,
+            importedPalettePresets:
+                input.profile.source === "imported"
+                    ? [
+                          {
+                              id: input.profile.id,
+                              name: input.profile.name,
+                              profile: {
+                                  ...input.profile,
+                                  colors: input.profile.colors.slice(),
+                              },
+                          },
+                      ]
+                    : [],
+        }
+    }
+
+    return {
+        world,
+        tabsState: {
+            activeTab: "size",
+            sizeWorld: world,
+            presetsWorld: null,
+        },
+        activePresetButton: null,
+        importedPalettePresets: [],
     }
 }
 

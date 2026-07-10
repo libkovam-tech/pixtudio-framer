@@ -79,6 +79,7 @@ import {
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
+    prepareLoadedPaletteProjectTabs,
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteProjectStateRestoreTabs,
     preparePaletteSwatchEditApplication,
@@ -6590,39 +6591,19 @@ function PixelEditorFramer({
         const canvas =
             overlayOverBaseGrid(project.imagePixels, project.overlayPixels) ??
             clonePixelsGrid(project.imagePixels)
-        const loadedWorld: DerivedWorld<PixelValue> = {
+        const preparedTabs = prepareLoadedPaletteProjectTabs({
             profile,
             referenceSignature: imageDataSampleSignature(
                 project.referenceSnapshot ?? originalImageData
             ),
-            autoSwatches: cloneSwatches(project.autoSwatches),
-            imagePixels: clonePixelsGrid(project.imagePixels),
-            overlayPixels: clonePixelsGrid(project.overlayPixels),
+            autoSwatches: project.autoSwatches,
+            imagePixels: project.imagePixels,
+            overlayPixels: project.overlayPixels,
             canvasPixels: canvas,
-        }
-
-        if (profile.kind === "fixed") {
-            setActivePresetButton(profile.id)
-            setPaletteTabsState({
-                activeTab: "presets",
-                sizeWorld: null,
-                presetsWorld: loadedWorld,
-            })
-            setImportedPalettePresets(
-                profile.source === "imported"
-                    ? [{ id: profile.id, name: profile.name, profile }]
-                    : []
-            )
-            return
-        }
-
-        setActivePresetButton(null)
-        setImportedPalettePresets([])
-        setPaletteTabsState({
-            activeTab: "size",
-            sizeWorld: loadedWorld,
-            presetsWorld: null,
         })
+        setActivePresetButton(preparedTabs.activePresetButton)
+        setImportedPalettePresets(preparedTabs.importedPalettePresets)
+        setPaletteTabsState(preparedTabs.tabsState)
     }
 
     function prepareLoadedProjectForCommit(project: ProjectState): ProjectState {

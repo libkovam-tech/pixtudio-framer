@@ -6,6 +6,7 @@ import {
     collapseDuplicateSwatchesByScope,
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
+    prepareLoadedPaletteProjectTabs,
     prepareAutoOverridesForSwatchEdit,
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
@@ -620,6 +621,121 @@ describe("palette state", () => {
             activeTab: "size",
             sizeWorld,
             presetsWorld,
+        })
+    })
+
+    it("prepares loaded extract project tabs", () => {
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#111111",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+
+        const result = prepareLoadedPaletteProjectTabs({
+            profile: { kind: "extract" },
+            referenceSignature: "ref-extract",
+            autoSwatches,
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-0"]],
+        })
+
+        expect(result.activePresetButton).toBeNull()
+        expect(result.importedPalettePresets).toEqual([])
+        expect(result.tabsState).toEqual({
+            activeTab: "size",
+            sizeWorld: result.world,
+            presetsWorld: null,
+        })
+        expect(result.world).toEqual({
+            profile: { kind: "extract" },
+            referenceSignature: "ref-extract",
+            autoSwatches,
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-0"]],
+        })
+        expect(result.world.autoSwatches).not.toBe(autoSwatches)
+    })
+
+    it("prepares loaded builtin fixed project tabs", () => {
+        const profile = {
+            kind: "fixed" as const,
+            id: "sunset",
+            name: "Sunset",
+            source: "builtin" as const,
+            colors: ["#111111", "#222222"],
+        }
+
+        const result = prepareLoadedPaletteProjectTabs({
+            profile,
+            referenceSignature: "ref-fixed",
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#111111",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-0"]],
+        })
+
+        expect(result.activePresetButton).toBe("sunset")
+        expect(result.importedPalettePresets).toEqual([])
+        expect(result.tabsState).toEqual({
+            activeTab: "presets",
+            sizeWorld: null,
+            presetsWorld: result.world,
+        })
+        expect(result.world.profile).toEqual(profile)
+    })
+
+    it("prepares loaded imported fixed project tabs", () => {
+        const profile = {
+            kind: "fixed" as const,
+            id: "imported-1",
+            name: "Imported Palette",
+            source: "imported" as const,
+            colors: ["#111111", "#222222"],
+        }
+
+        const result = prepareLoadedPaletteProjectTabs({
+            profile,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#111111",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            canvasPixels: [["auto-0"]],
+        })
+
+        expect(result.activePresetButton).toBe("imported-1")
+        expect(result.importedPalettePresets).toEqual([
+            {
+                id: "imported-1",
+                name: "Imported Palette",
+                profile,
+            },
+        ])
+        expect(result.importedPalettePresets[0]?.profile).not.toBe(profile)
+        expect(result.importedPalettePresets[0]?.profile.colors).not.toBe(
+            profile.colors
+        )
+        expect(result.tabsState).toEqual({
+            activeTab: "presets",
+            sizeWorld: null,
+            presetsWorld: result.world,
         })
     })
 
