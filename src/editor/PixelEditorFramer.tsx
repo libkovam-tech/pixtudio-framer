@@ -5531,13 +5531,7 @@ function PixelEditorFramer({
             ),
         })
         enforceGridRuleAfterRestore(
-            {
-                imagePixels: preparedApplication.imagePixels,
-                overlayPixels: preparedApplication.overlayPixels,
-                autoSwatches: preparedApplication.autoSwatches,
-                userSwatches,
-                hasOriginalImageData: hasImportContext,
-            },
+            preparedSnapshot.gridRuleState,
             `palette-world:${world.profile.kind}`
         )
         setSelectedSwatch(preparedApplication.selectedSwatch)

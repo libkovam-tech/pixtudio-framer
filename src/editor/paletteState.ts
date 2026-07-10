@@ -86,6 +86,13 @@ export type PaletteWorldSnapshotProjectApplication<
 > = {
     application: PaletteWorldSnapshotApplication<TSwatch, TPixel>
     projectState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+    gridRuleState: {
+        imagePixels: TPixel[][]
+        overlayPixels: TPixel[][]
+        autoSwatches: TSwatch[]
+        userSwatches: TSwatch[]
+        hasOriginalImageData: boolean
+    }
 }
 
 export type PaletteProjectStateWorldLike<
@@ -1070,7 +1077,17 @@ export function preparePaletteWorldSnapshotProjectApplication<
         autoOverrides: input.autoOverrides,
     })
 
-    return { application, projectState }
+    return {
+        application,
+        projectState,
+        gridRuleState: {
+            imagePixels: application.imagePixels,
+            overlayPixels: application.overlayPixels,
+            autoSwatches: application.autoSwatches,
+            userSwatches: projectState.userSwatches,
+            hasOriginalImageData: input.hasOriginalImageData,
+        },
+    }
 }
 
 export function resolveSelectedSwatchAfterAutoChange(input: {

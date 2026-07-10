@@ -948,6 +948,25 @@ describe("palette state", () => {
         expect(result.projectState.overlayPixels).toBe(
             result.application.overlayPixels
         )
+        expect(result.gridRuleState).toEqual({
+            imagePixels: result.application.imagePixels,
+            overlayPixels: result.application.overlayPixels,
+            autoSwatches: result.application.autoSwatches,
+            userSwatches: result.projectState.userSwatches,
+            hasOriginalImageData: true,
+        })
+        expect(result.gridRuleState.imagePixels).toBe(
+            result.application.imagePixels
+        )
+        expect(result.gridRuleState.overlayPixels).toBe(
+            result.application.overlayPixels
+        )
+        expect(result.gridRuleState.autoSwatches).toBe(
+            result.application.autoSwatches
+        )
+        expect(result.gridRuleState.userSwatches).toBe(
+            result.projectState.userSwatches
+        )
         expect(result.projectState.userSwatches).not.toBe(userSwatches)
         expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
             importedPalettePresets[0]
