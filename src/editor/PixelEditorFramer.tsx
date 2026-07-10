@@ -82,6 +82,7 @@ import {
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteProjectStateRestoreTabs,
     preparePaletteSwatchEditApplication,
+    preparePaletteTabWorldCommit,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
@@ -5787,11 +5788,13 @@ function PixelEditorFramer({
         beginEditorActionTransaction("palette-preset-apply", before)
         setQuantizationProfile(profile)
         setActivePresetButton(profile.id)
-        setPaletteTabsState((prev) => ({
-            ...prev,
-            activeTab: "presets",
-            presetsWorld: nextWorld,
-        }))
+        setPaletteTabsState((prev) =>
+            preparePaletteTabWorldCommit({
+                state: prev,
+                activeTab: "presets",
+                world: nextWorld,
+            })
+        )
         setAutoOverrides(preparedApplication.autoOverrides)
         setAutoSwatches(preparedApplication.autoSwatches)
         setSelectedSwatch(preparedApplication.selectedSwatch)
@@ -5854,11 +5857,13 @@ function PixelEditorFramer({
         setQuantizationProfile(profile)
         setImportedPalettePresets(importedPresetRegistry)
         setActivePresetButton(profile.id)
-        setPaletteTabsState((prev) => ({
-            ...prev,
-            activeTab: "presets",
-            presetsWorld: nextWorld,
-        }))
+        setPaletteTabsState((prev) =>
+            preparePaletteTabWorldCommit({
+                state: prev,
+                activeTab: "presets",
+                world: nextWorld,
+            })
+        )
         setAutoSwatches(preparedApplication.autoSwatches as Swatch[])
         setImagePixels(preparedApplication.imagePixels)
         setOverlayPixels(preparedApplication.overlayPixels)
@@ -5941,11 +5946,13 @@ function PixelEditorFramer({
         const afterState = preparedReference.projectState
         beginEditorActionTransaction("palette-preset-apply", before)
         setActivePresetButton(profile.id)
-        setPaletteTabsState((prev) => ({
-            ...prev,
-            activeTab: "presets",
-            presetsWorld: world,
-        }))
+        setPaletteTabsState((prev) =>
+            preparePaletteTabWorldCommit({
+                state: prev,
+                activeTab: "presets",
+                world,
+            })
+        )
         paletteUndoTrace("applyFixedPalettePreset:world-built", {
             profile: quantizationProfileTraceSummary(world.profile),
             imageNonNull: countNonNullCells(world.imagePixels),

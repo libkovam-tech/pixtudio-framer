@@ -10,6 +10,7 @@ import {
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
     preparePaletteProjectStateRestoreTabs,
+    preparePaletteTabWorldCommit,
     preparePaletteWorldSnapshotApplication,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
@@ -565,6 +566,60 @@ describe("palette state", () => {
             activeTab: "size",
             sizeWorld: restoredWorld,
             presetsWorld: presetWorld,
+        })
+    })
+
+    it("commits a palette world into the presets tab", () => {
+        const sizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" },
+            autoSwatches: [{ id: "auto-size" }],
+        }
+        const presetsWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed", id: "sunset" },
+            autoSwatches: [{ id: "auto-preset" }],
+        }
+
+        const result = preparePaletteTabWorldCommit({
+            state: {
+                activeTab: "size",
+                sizeWorld,
+                presetsWorld: null,
+            },
+            activeTab: "presets",
+            world: presetsWorld,
+        })
+
+        expect(result).toEqual({
+            activeTab: "presets",
+            sizeWorld,
+            presetsWorld,
+        })
+    })
+
+    it("commits a palette world into the size tab", () => {
+        const sizeWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" },
+            autoSwatches: [{ id: "auto-size" }],
+        }
+        const presetsWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed", id: "gray" },
+            autoSwatches: [{ id: "auto-preset" }],
+        }
+
+        const result = preparePaletteTabWorldCommit({
+            state: {
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld,
+            },
+            activeTab: "size",
+            world: sizeWorld,
+        })
+
+        expect(result).toEqual({
+            activeTab: "size",
+            sizeWorld,
+            presetsWorld,
         })
     })
 

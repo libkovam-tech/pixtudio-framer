@@ -57,6 +57,8 @@ export type PaletteTabSwitchApplicationPlan<TWorld> = {
 export type PaletteProjectStateRestoreTabsResult<TWorld> =
     PaletteTabWorldState<TWorld>
 
+export type PaletteTabWorldCommitResult<TWorld> = PaletteTabWorldState<TWorld>
+
 export type PaletteCurrentWorldSnapshot<
     TSwatch extends EditorHistorySwatch,
     TPixel extends string | null,
@@ -301,6 +303,26 @@ export function preparePaletteProjectStateRestoreTabs<
             : input.activePaletteTab ?? input.fallbackActiveTab ?? "size"
 
     if (nextActiveTab === "presets") {
+        return {
+            activeTab: "presets",
+            sizeWorld: input.state.sizeWorld,
+            presetsWorld: input.world,
+        }
+    }
+
+    return {
+        activeTab: "size",
+        sizeWorld: input.world,
+        presetsWorld: input.state.presetsWorld,
+    }
+}
+
+export function preparePaletteTabWorldCommit<TWorld>(input: {
+    state: PaletteTabWorldState<TWorld>
+    activeTab: PaletteTabKey
+    world: TWorld | null
+}): PaletteTabWorldCommitResult<TWorld> {
+    if (input.activeTab === "presets") {
         return {
             activeTab: "presets",
             sizeWorld: input.state.sizeWorld,
