@@ -59,8 +59,7 @@ import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
-    makeImportedPalettePreset,
-    makeImportedPalettePresetName,
+    prepareImportedPalettePresetFromColors,
     prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteReferenceProjectApplication,
     prepareFixedPaletteDrawingProjectApplication,
@@ -69,6 +68,7 @@ import {
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteVocabularyExtensionProjectApplication,
+    preparePalettePresetDeleteDecision,
     preparePaletteTabReferenceWorld,
     prepareFixedPaletteWorldFromReference,
     prepareSharedOverlayPaletteWorld,
@@ -6023,16 +6023,13 @@ function PixelEditorFramer({
                 return
             }
 
-            const name = makeImportedPalettePresetName(file.name)
-            const profile: FixedQuantizationProfile = {
-                kind: "fixed",
-                source: "imported",
-                id: makeImportedPalettePresetId(),
-                name,
+            const preparedPreset = prepareImportedPalettePresetFromColors({
+                fileName: file.name,
                 colors,
-            }
-            const preset: ImportedPalettePreset =
-                makeImportedPalettePreset(profile)
+                makeImportedId: makeImportedPalettePresetId,
+            })
+            const profile: FixedQuantizationProfile = preparedPreset.profile
+            const preset: ImportedPalettePreset = preparedPreset.preset
 
             setImportedPalettePresets((prev) => [...prev, preset])
             applyFixedPalettePreset(profile)
@@ -6065,16 +6062,13 @@ function PixelEditorFramer({
                 return
             }
 
-            const name = makeImportedPalettePresetName(file.name)
-            const profile: FixedQuantizationProfile = {
-                kind: "fixed",
-                source: "imported",
-                id: makeImportedPalettePresetId(),
-                name,
+            const preparedPreset = prepareImportedPalettePresetFromColors({
+                fileName: file.name,
                 colors,
-            }
-            const preset: ImportedPalettePreset =
-                makeImportedPalettePreset(profile)
+                makeImportedId: makeImportedPalettePresetId,
+            })
+            const profile: FixedQuantizationProfile = preparedPreset.profile
+            const preset: ImportedPalettePreset = preparedPreset.preset
 
             setImportedPalettePresets((prev) => [...prev, preset])
             applyFixedPalettePreset(profile)
@@ -6118,23 +6112,23 @@ function PixelEditorFramer({
     }
 
     function deletePalettePreset(profileId: string) {
-        const nextHiddenPresetIds = hiddenPresetIds.includes(profileId)
-            ? hiddenPresetIds.slice()
-            : [...hiddenPresetIds, profileId]
-        const nextImportedPalettePresets = importedPalettePresets.filter(
-            (preset) => preset.id !== profileId
-        )
+        const decision = preparePalettePresetDeleteDecision({
+            profileId,
+            activePresetButton,
+            hiddenPresetIds,
+            importedPalettePresets,
+        })
 
-        if (activePresetButton === profileId) {
+        if (decision.requiresActivePresetFallback) {
             switchDeletedActivePresetToAutoPalette(
-                nextHiddenPresetIds,
-                nextImportedPalettePresets
+                decision.hiddenPresetIds,
+                decision.importedPalettePresets
             )
             return
         }
 
-        setHiddenPresetIds(nextHiddenPresetIds)
-        setImportedPalettePresets(nextImportedPalettePresets)
+        setHiddenPresetIds(decision.hiddenPresetIds)
+        setImportedPalettePresets(decision.importedPalettePresets)
     }
 
     // H0:

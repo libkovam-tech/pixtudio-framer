@@ -7,6 +7,7 @@ import {
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
+    prepareImportedPalettePresetFromColors,
     prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteReferenceProjectApplication,
@@ -24,6 +25,7 @@ import {
     prepareFixedPaletteVocabularyExtensionWorld,
     preparePaletteTabReferenceWorld,
     prepareFixedPaletteWorldFromReference,
+    preparePalettePresetDeleteDecision,
     prepareSharedOverlayPaletteWorld,
     prepareFixedPaletteSwatchDelete,
     removeFixedPaletteProfileColor,
@@ -56,6 +58,88 @@ describe("palette preset extension", () => {
             id: profile.id,
             name: profile.name,
             profile,
+        })
+    })
+
+    it("prepares imported palette presets from color lists", () => {
+        const result = prepareImportedPalettePresetFromColors({
+            fileName: "  portrait.palette.PNG  ",
+            colors: ["#001219", "#E9D8A6"],
+            makeImportedId: () => "imported-fixed-id",
+        })
+
+        expect(result).toEqual({
+            profile: {
+                kind: "fixed",
+                source: "imported",
+                id: "imported-fixed-id",
+                name: "portrait.palette",
+                colors: ["#001219", "#E9D8A6"],
+            },
+            preset: {
+                id: "imported-fixed-id",
+                name: "portrait.palette",
+                profile: {
+                    kind: "fixed",
+                    source: "imported",
+                    id: "imported-fixed-id",
+                    name: "portrait.palette",
+                    colors: ["#001219", "#E9D8A6"],
+                },
+            },
+        })
+    })
+
+    it("prepares builtin preset deletion without duplicating hidden ids", () => {
+        const result = preparePalettePresetDeleteDecision({
+            profileId: "sunset",
+            activePresetButton: null,
+            hiddenPresetIds: ["sunset"],
+            importedPalettePresets: [makeImportedPalettePreset(profile)],
+        })
+
+        expect(result).toEqual({
+            hiddenPresetIds: ["sunset"],
+            importedPalettePresets: [makeImportedPalettePreset(profile)],
+            requiresActivePresetFallback: false,
+        })
+    })
+
+    it("prepares imported preset deletion from the registry", () => {
+        const otherProfile = {
+            ...profile,
+            id: "imported-other",
+            name: "Other",
+        }
+        const result = preparePalettePresetDeleteDecision({
+            profileId: profile.id,
+            activePresetButton: null,
+            hiddenPresetIds: [],
+            importedPalettePresets: [
+                makeImportedPalettePreset(profile),
+                makeImportedPalettePreset(otherProfile),
+            ],
+        })
+
+        expect(result).toEqual({
+            hiddenPresetIds: [profile.id],
+            importedPalettePresets: [makeImportedPalettePreset(otherProfile)],
+            requiresActivePresetFallback: false,
+        })
+    })
+
+    it("marks active preset deletion for canvas fallback", () => {
+        const result = preparePalettePresetDeleteDecision({
+            profileId: profile.id,
+            activePresetButton: profile.id,
+            hiddenPresetIds: [],
+            importedPalettePresets: [makeImportedPalettePreset(profile)],
+        })
+
+        expect(result).toEqual({
+            hiddenPresetIds: [profile.id],
+            importedPalettePresets: [],
+            requiresActivePresetFallback: true,
         })
     })
 

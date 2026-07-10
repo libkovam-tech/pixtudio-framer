@@ -336,6 +336,21 @@ export type ImportedPalettePresetRecord<
     profile: T
 }
 
+export type PalettePresetDeleteDecisionResult<
+    TPreset extends ImportedPalettePresetRecord,
+> = {
+    hiddenPresetIds: string[]
+    importedPalettePresets: TPreset[]
+    requiresActivePresetFallback: boolean
+}
+
+export type ImportedPalettePresetFromColorsResult = {
+    profile: EditableFixedPaletteProfile & { source: "imported" }
+    preset: ImportedPalettePresetRecord<
+        EditableFixedPaletteProfile & { source: "imported" }
+    >
+}
+
 export type FixedPaletteAutoSwatch = {
     id: string
     color: string
@@ -1043,6 +1058,45 @@ export function makeImportedPalettePreset<
         id: profile.id,
         name: profile.name,
         profile,
+    }
+}
+
+export function prepareImportedPalettePresetFromColors(input: {
+    fileName: string
+    colors: ReadonlyArray<string>
+    makeImportedId: () => string
+}): ImportedPalettePresetFromColorsResult {
+    const profile: EditableFixedPaletteProfile & { source: "imported" } = {
+        kind: "fixed",
+        source: "imported",
+        id: input.makeImportedId(),
+        name: makeImportedPalettePresetName(input.fileName),
+        colors: input.colors.slice(),
+    }
+
+    return {
+        profile,
+        preset: makeImportedPalettePreset(profile),
+    }
+}
+
+export function preparePalettePresetDeleteDecision<
+    TPreset extends ImportedPalettePresetRecord,
+>(input: {
+    profileId: string
+    activePresetButton: string | null
+    hiddenPresetIds: ReadonlyArray<string>
+    importedPalettePresets: ReadonlyArray<TPreset>
+}): PalettePresetDeleteDecisionResult<TPreset> {
+    return {
+        hiddenPresetIds: input.hiddenPresetIds.includes(input.profileId)
+            ? input.hiddenPresetIds.slice()
+            : [...input.hiddenPresetIds, input.profileId],
+        importedPalettePresets: input.importedPalettePresets.filter(
+            (preset) => preset.id !== input.profileId
+        ),
+        requiresActivePresetFallback:
+            input.activePresetButton === input.profileId,
     }
 }
 
