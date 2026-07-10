@@ -5618,9 +5618,11 @@ function PixelEditorFramer({
         setImportedPalettePresets(nextImportedPalettePresets)
         setActivePresetButton(null)
         setPaletteTabsState((prev) => ({
-            ...prev,
-            activeTab: "size",
-            sizeWorld: world,
+            ...preparePaletteTabWorldCommit({
+                state: prev,
+                activeTab: "size",
+                world,
+            }),
             presetsWorld: null,
         }))
         applyDerivedWorldSnapshot(
@@ -9872,11 +9874,13 @@ function PixelEditorFramer({
 
             beginEditorActionTransaction("editor-action", before)
             setDeletedAutoPaletteColors(nextDeletedColors)
-            setPaletteTabsState((prev) => ({
-                ...prev,
-                activeTab: "size",
-                sizeWorld: world,
-            }))
+            setPaletteTabsState((prev) =>
+                preparePaletteTabWorldCommit({
+                    state: prev,
+                    activeTab: "size",
+                    world,
+                })
+            )
             applyDerivedWorldSnapshot(world, preferred)
             latestProjectStateRef.current = afterState
             pushCommit(before, { afterState })
