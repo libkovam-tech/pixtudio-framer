@@ -60,17 +60,16 @@ import {
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
     prepareImportedPalettePresetFromColors,
+    prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
     prepareAutoPaletteReferenceProjectApplication,
     prepareFixedPaletteDrawingProjectApplication,
-    prepareFixedPaletteReferenceProjectApplication,
-    prepareFixedPalettePresetSwatchCreate,
+    prepareFixedPalettePresetProjectApplication,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchEditApplication,
-    prepareFixedPaletteVocabularyExtensionProjectApplication,
+    prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference,
     preparePalettePresetDeleteDecision,
     preparePaletteTabReferenceWorld,
-    prepareFixedPaletteWorldFromReference,
     prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
 import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
@@ -5710,23 +5709,6 @@ function PixelEditorFramer({
         }
     }, [originalImageData])
 
-    function buildFixedPresetWorldFromReference(
-        profile: FixedQuantizationProfile,
-        referenceSnapshot: ImageDataSampleSource | null = originalImageData
-    ): DerivedWorld<PixelValue> | null {
-        return prepareFixedPaletteWorldFromReference({
-            profile,
-            referenceSnapshot,
-            gridSize,
-            overlayPixels,
-            previousSwatches: autoSwatches,
-            userSwatches,
-            pixelizeReference: (snapshot, nextGridSize) =>
-                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
-            referenceSignature: imageDataSampleSignature,
-        })
-    }
-
     function applyFixedPaletteAsDrawingPalette(
         profile: FixedQuantizationProfile,
         before: ProjectState,
@@ -5797,27 +5779,24 @@ function PixelEditorFramer({
     ) {
         const referenceSnapshot =
             originalImageData ?? before.referenceSnapshot ?? null
-        const candidateWorld = buildFixedPresetWorldFromReference(
-            profile,
-            referenceSnapshot
-        )
         const prepared =
-            prepareFixedPaletteVocabularyExtensionProjectApplication({
+            prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference({
                 profile,
-                referenceSignature: imageDataSampleSignature(referenceSnapshot),
-                autoSwatches: nextAuto,
-                candidateAutoSwatches: candidateWorld?.autoSwatches ?? null,
-                candidateImagePixels: candidateWorld?.imagePixels ?? null,
-                imagePixels,
-                overlayPixels,
-                selectedSwatch: selectedPresetSwatch,
+                referenceSnapshot,
+                referenceSignature: imageDataSampleSignature,
                 gridSize,
-                paletteCount,
+                overlayPixels,
+                previousSwatches: autoSwatches,
+                userSwatches,
+                pixelizeReference: (snapshot, nextGridSize) =>
+                    pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+                autoSwatches: nextAuto,
+                imagePixels,
+                selectedSwatch: selectedPresetSwatch,
+                projectPaletteCount: paletteCount,
                 brushSize,
                 showImage,
                 hasOriginalImageData: hasImportContext,
-                referenceSnapshot,
-                userSwatches,
                 importedPalettePresets: importedPresetRegistry,
                 hiddenPresetIds,
                 deletedAutoPaletteColors,
@@ -5863,23 +5842,21 @@ function PixelEditorFramer({
         })
         const beforeReferenceSignature =
             imageDataSampleSignature(originalImageData)
-        const preparedReference =
-            prepareFixedPaletteReferenceProjectApplication({
+        const prepared =
+            prepareFixedPalettePresetProjectApplication({
                 profile,
                 referenceSnapshot: originalImageData,
                 gridSize,
                 overlayPixels,
                 previousSwatches: autoSwatches,
                 userSwatches,
-                pixelizeReference: (referenceSnapshot, nextGridSize) =>
-                    pixelizeFromImageDominant(
-                        referenceSnapshot,
-                        nextGridSize,
-                        16
-                    ),
+                pixelizeReference: (snapshot, nextGridSize) =>
+                    pixelizeFromImageDominant(snapshot, nextGridSize, 16),
                 referenceSignature: imageDataSampleSignature,
+                imagePixels,
                 selectedSwatch,
                 preferredSwatch,
+                makeAutoSwatches: makeAutoSwatchesFromFixedProfile,
                 projectPaletteCount: paletteCount,
                 brushSize,
                 showImage,
@@ -5891,33 +5868,60 @@ function PixelEditorFramer({
             })
         const afterReferenceSignature = imageDataSampleSignature(originalImageData)
 
-        if (preparedReference.kind === "ignored") {
-            if (!originalImageData) {
-                applyFixedPaletteAsDrawingPalette(
-                    profile,
-                    before,
-                    preferredSwatch,
-                    importedPresetRegistry
-                )
-                return
-            }
-
+        if (prepared.kind === "ignored") {
             paletteUndoTrace("applyFixedPalettePreset:skipped", {
                 profile: quantizationProfileTraceSummary(profile),
-                reason: "missing-reference",
+                reason: prepared.reason,
             })
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                 console.info("[PaletteTabs][CHECK] fixed preset skipped", {
                     profileId: profile.id,
-                    reason: "missing-reference",
+                    reason: prepared.reason,
                     referenceSignature: beforeReferenceSignature,
                 })
             }
             return
         }
 
-        const world = preparedReference.world
-        const afterState = preparedReference.projectState
+        if (prepared.kind === "drawing") {
+            const preparedApplication = prepared.application
+            const nextWorld: DerivedWorld<PixelValue> = prepared.world
+            const afterState: ProjectState = prepared.projectState
+
+            beginEditorActionTransaction("palette-preset-apply", before)
+            setQuantizationProfile(profile)
+            setActivePresetButton(profile.id)
+            setPaletteTabsState((prev) =>
+                preparePaletteTabWorldCommit({
+                    state: prev,
+                    activeTab: "presets",
+                    world: nextWorld,
+                })
+            )
+            setAutoOverrides(preparedApplication.autoOverrides)
+            setAutoSwatches(preparedApplication.autoSwatches)
+            setSelectedSwatch(preparedApplication.selectedSwatch)
+            latestProjectStateRef.current = afterState
+            pushCommit(before, { afterState })
+
+            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                console.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
+                    profileId: profile.id,
+                    source: profile.source,
+                    autoSwatches: preparedApplication.autoSwatches.length,
+                    imageNonNull: countNonNullCells(
+                        preparedApplication.imagePixels
+                    ),
+                    overlayNonNull: countNonNullCells(
+                        preparedApplication.overlayPixels
+                    ),
+                })
+            }
+            return
+        }
+
+        const world = prepared.world
+        const afterState = prepared.projectState
         beginEditorActionTransaction("palette-preset-apply", before)
         setActivePresetButton(profile.id)
         setPaletteTabsState((prev) =>
@@ -10119,21 +10123,12 @@ function PixelEditorFramer({
     }
 
     function createImportedPresetSwatchFromModal(colorUpper: string) {
-        if (quantizationProfile.kind !== "fixed") {
-            closeColorModalAfterCreate()
-            return
-        }
-
-        const editableProfile =
-            makeEditableFixedPresetProfile(
-                quantizationProfile,
-                makeImportedPalettePresetId
-            )
-        const preparedCreate = prepareFixedPalettePresetSwatchCreate({
-            profile: editableProfile,
+        const preparedCreate = prepareImportedPresetSwatchCreateDecision({
+            profile: quantizationProfile,
             color: colorUpper,
             autoSwatches,
             importedPalettePresets,
+            makeImportedId: makeImportedPalettePresetId,
             makeSwatch: (id, color) => ({
                 id,
                 color,

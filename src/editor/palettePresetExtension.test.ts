@@ -8,6 +8,7 @@ import {
     makeImportedPalettePreset,
     makeImportedPalettePresetName,
     prepareImportedPalettePresetFromColors,
+    prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
     prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteDrawingWorld,
@@ -15,6 +16,7 @@ import {
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPaletteDrawingProjectApplication,
+    prepareFixedPalettePresetProjectApplication,
     prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
@@ -23,6 +25,7 @@ import {
     prepareFixedPaletteSwatchExtension,
     prepareFixedPaletteVocabularyExtensionApplication,
     prepareFixedPaletteVocabularyExtensionProjectApplication,
+    prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference,
     prepareFixedPaletteVocabularyExtensionWorld,
     preparePaletteTabReferenceWorld,
     prepareFixedPaletteWorldFromReference,
@@ -352,6 +355,139 @@ describe("palette preset extension", () => {
         )
         expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
             importedPalettePresets[0]
+        )
+    })
+
+    it("prepares fixed preset project applications from references", () => {
+        const referenceSnapshot = {
+            width: 2,
+            height: 2,
+            data: new Uint8ClampedArray(16),
+        }
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF00FF",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [makeImportedPalettePreset(profile)]
+
+        const result = prepareFixedPalettePresetProjectApplication({
+            profile,
+            referenceSnapshot,
+            gridSize: 2,
+            overlayPixels: [
+                [null, "user-0"],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches,
+            pixelizeReference: () => [
+                ["#001219", "#E9D8A6"],
+                ["#001219", "#E9D8A6"],
+            ],
+            referenceSignature: () => "reference-fixed",
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-0", "auto-1"],
+            ],
+            selectedSwatch: "auto-0",
+            preferredSwatch: "auto-1",
+            projectPaletteCount: 8,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets,
+            hiddenPresetIds: ["gray"],
+            deletedAutoPaletteColors: ["#FFFFFF"],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("reference")
+        if (result.kind !== "reference") throw new Error("expected reference")
+
+        expect(result.world.referenceSignature).toBe("reference-fixed")
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 8,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            selectedSwatch: "auto-1",
+            quantizationProfile: profile,
+            hiddenPresetIds: ["gray"],
+            deletedAutoPaletteColors: ["#FFFFFF"],
+            activePaletteTab: "presets",
+            autoOverrides: {},
+        })
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
+        expect(result.projectState.importedPalettePresets).not.toBe(
+            importedPalettePresets
+        )
+    })
+
+    it("prepares fixed preset project applications from drawing state", () => {
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF00FF",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [makeImportedPalettePreset(profile)]
+
+        const result = prepareFixedPalettePresetProjectApplication({
+            profile,
+            referenceSnapshot: null,
+            gridSize: 2,
+            overlayPixels: [
+                [null, "user-0"],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches,
+            pixelizeReference: () => [],
+            referenceSignature: () => null,
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-1", "auto-0"],
+            ],
+            selectedSwatch: "auto-0",
+            preferredSwatch: "auto-1",
+            projectPaletteCount: 6,
+            brushSize: 5,
+            showImage: false,
+            hasOriginalImageData: false,
+            importedPalettePresets,
+            hiddenPresetIds: ["sunset"],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("drawing")
+        if (result.kind !== "drawing") throw new Error("expected drawing")
+
+        expect(result.application.selectedSwatch).toBe("auto-1")
+        expect(result.world.referenceSignature).toBeNull()
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 6,
+            brushSize: 5,
+            showImage: false,
+            hasOriginalImageData: false,
+            selectedSwatch: "auto-1",
+            quantizationProfile: profile,
+            hiddenPresetIds: ["sunset"],
+            activePaletteTab: "presets",
+            autoOverrides: {},
+        })
+        expect(result.projectState.imagePixels).toEqual(
+            result.application.imagePixels
         )
     })
 
@@ -1630,6 +1766,67 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("prepares imported preset swatch create decisions", () => {
+        const makeSwatch = (id: string, color: string) => ({
+            id,
+            color,
+            isTransparent: false,
+        })
+
+        expect(
+            prepareImportedPresetSwatchCreateDecision({
+                profile: { kind: "extract" },
+                color: "#FFFFFF",
+                autoSwatches: [],
+                importedPalettePresets: [],
+                makeImportedId: () => "ignored",
+                makeSwatch,
+            })
+        ).toEqual({ kind: "ignored" })
+
+        expect(
+            prepareImportedPresetSwatchCreateDecision({
+                profile,
+                color: "#001219",
+                autoSwatches: [
+                    { id: "auto-5", color: "#001219", isTransparent: false },
+                ],
+                importedPalettePresets: [],
+                makeImportedId: () => "existing",
+                makeSwatch,
+            })
+        ).toMatchObject({
+            kind: "existing",
+            selectedSwatch: "auto-5",
+            importedPalettePresets: [],
+        })
+
+        const added = prepareImportedPresetSwatchCreateDecision({
+            profile,
+            color: "#FFFFFF",
+            autoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+            ],
+            importedPalettePresets: [],
+            makeImportedId: () => "imported-copy",
+            makeSwatch,
+        })
+
+        expect(added).toMatchObject({
+            kind: "added",
+            profile: {
+                id: profile.id,
+                source: "imported",
+                colors: ["#001219", "#E9D8A6", "#FFFFFF"],
+            },
+            selectedSwatch: "auto-1",
+            autoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#FFFFFF", isTransparent: false },
+            ],
+        })
+    })
+
     it("prepares vocabulary extension worlds without rebuilding pixel assignments", () => {
         const autoSwatches = [
             { id: "auto-0", color: "#001219" },
@@ -1853,6 +2050,105 @@ describe("palette preset extension", () => {
             importedPalettePresets[0]
         )
         expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
+    })
+
+    it("prepares vocabulary extension project applications from references", () => {
+        const nextProfile = {
+            ...profile,
+            colors: ["#000000", "#E9D8A6", "#FFFFFF"],
+        }
+        const referenceSnapshot = {
+            width: 2,
+            height: 2,
+            data: new Uint8ClampedArray(16),
+        }
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#000000",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-3",
+                color: "#E9D8A6",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-4",
+                color: "#FFFFFF",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF0000",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const importedPalettePresets = [makeImportedPalettePreset(nextProfile)]
+
+        const result =
+            prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference(
+                {
+                    profile: nextProfile,
+                    referenceSnapshot,
+                    referenceSignature: () => "reference-vocabulary",
+                    gridSize: 2,
+                    overlayPixels: [
+                        [null, null],
+                        [null, "user-0"],
+                    ],
+                    previousSwatches: [],
+                    userSwatches,
+                    pixelizeReference: () => [
+                        ["#FFFFFF", "#000000"],
+                        ["#E9D8A6", "#FFFFFF"],
+                    ],
+                    autoSwatches,
+                    imagePixels: [
+                        ["auto-3", "auto-0"],
+                        ["auto-3", "auto-0"],
+                    ],
+                    selectedSwatch: "auto-4",
+                    projectPaletteCount: 10,
+                    brushSize: 4,
+                    showImage: true,
+                    hasOriginalImageData: true,
+                    importedPalettePresets,
+                    hiddenPresetIds: ["hidden"],
+                    deletedAutoPaletteColors: ["#111111"],
+                    autoOverrides: {},
+                }
+            )
+
+        expect(result.application.imagePixels).toEqual([
+            ["auto-4", "auto-0"],
+            ["auto-3", "auto-4"],
+        ])
+        expect(result.application.world.referenceSignature).toBe(
+            "reference-vocabulary"
+        )
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 10,
+            brushSize: 4,
+            showImage: true,
+            hasOriginalImageData: true,
+            selectedSwatch: "auto-4",
+            quantizationProfile: nextProfile,
+            hiddenPresetIds: ["hidden"],
+            deletedAutoPaletteColors: ["#111111"],
+            activePaletteTab: "presets",
+            autoOverrides: {},
+        })
+        expect(result.projectState.importedPalettePresets).toEqual(
+            importedPalettePresets
+        )
     })
 
     it("prepares fixed palette swatch deletion with an active fallback selection", () => {

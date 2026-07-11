@@ -56,6 +56,10 @@ export type FixedPaletteEditSwatchLike = {
     isTransparent?: boolean
 }
 
+type FixedPaletteCandidateSwatchLike = FixedPaletteEditSwatchLike & {
+    [key: string]: unknown
+}
+
 export type FixedPaletteSwatchEditResult<
     TProfile extends EditableFixedPaletteProfile,
     TSwatch extends FixedPaletteEditSwatchLike,
@@ -153,7 +157,7 @@ export type FixedPaletteVocabularyExtensionWorldInput<
     profile: TProfile
     referenceSignature?: string | null
     autoSwatches: ReadonlyArray<TSwatch>
-    candidateAutoSwatches?: ReadonlyArray<TSwatch> | null
+    candidateAutoSwatches?: ReadonlyArray<FixedPaletteCandidateSwatchLike> | null
     candidateImagePixels?: TPixel[][] | null
     imagePixels: TPixel[][]
     overlayPixels: TPixel[][]
@@ -271,6 +275,47 @@ export type FixedPaletteReferenceProjectApplicationResult<
           >
       }
 
+export type FixedPalettePresetProjectApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteAutoSwatch & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+> =
+    | {
+          kind: "ignored"
+          reason: "missing-palette"
+      }
+    | {
+          kind: "reference"
+          world: FixedPaletteReferenceWorld<TProfile, TPixel>
+          projectState: EditorCommittedState<
+              TPixel,
+              FixedPaletteAutoSwatch,
+              TImportedPreset
+          >
+      }
+    | {
+          kind: "drawing"
+          application: Extract<
+              FixedPaletteDrawingApplicationResult<
+                  TProfile,
+                  TSwatch,
+                  TPixel
+              >,
+              { kind: "applied" }
+          >
+          world: FixedPaletteDrawingApplicationWorld<
+              TProfile,
+              TSwatch,
+              TPixel
+          >
+          projectState: EditorCommittedState<
+              TPixel,
+              TSwatch,
+              TImportedPreset
+          >
+      }
+
 export type AutoPaletteReferenceWorld<
     TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
     TPixel extends string | null,
@@ -367,6 +412,15 @@ export type ImportedPalettePresetFromColorsResult = {
     >
 }
 
+export type ImportedPresetSwatchCreateDecisionResult<
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+> = FixedPalettePresetSwatchCreateResult<
+    EditableFixedPaletteProfile & { source: "imported" },
+    TPreset,
+    TSwatch
+>
+
 export type FixedPaletteAutoSwatch = {
     id: string
     color: string
@@ -417,7 +471,7 @@ function assignNewVocabularySwatchCells<
     TPixel extends string | null,
 >(input: {
     autoSwatches: ReadonlyArray<TSwatch>
-    candidateAutoSwatches?: ReadonlyArray<TSwatch> | null
+    candidateAutoSwatches?: ReadonlyArray<FixedPaletteCandidateSwatchLike> | null
     candidateImagePixels?: TPixel[][] | null
     imagePixels: TPixel[][]
     selectedSwatch: string
@@ -966,6 +1020,115 @@ export function prepareFixedPaletteReferenceProjectApplication<
     }
 }
 
+export function prepareFixedPalettePresetProjectApplication<
+    TProfile extends EditableFixedPaletteProfile,
+    TReference extends ImageDataSampleSource,
+    TSwatch extends FixedPaletteAutoSwatch & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    profile: TProfile
+    referenceSnapshot: TReference | null | undefined
+    gridSize: number
+    overlayPixels: TPixel[][]
+    previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    pixelizeReference: (
+        referenceSnapshot: TReference,
+        gridSize: number
+    ) => (string | null)[][]
+    referenceSignature?: (
+        referenceSnapshot: TReference | null
+    ) => string | null
+    imagePixels: TPixel[][]
+    selectedSwatch: PaletteSelection
+    preferredSwatch?: PaletteSelection | null
+    autoSwatchesOverride?: ReadonlyArray<TSwatch> | null
+    makeAutoSwatches?: (profile: TProfile) => TSwatch[]
+    projectPaletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        FixedPaletteAutoSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): FixedPalettePresetProjectApplicationResult<
+    TProfile,
+    TSwatch,
+    TPixel,
+    TImportedPreset
+> {
+    const referenceApplication = prepareFixedPaletteReferenceProjectApplication({
+        profile: input.profile,
+        referenceSnapshot: input.referenceSnapshot,
+        gridSize: input.gridSize,
+        overlayPixels: input.overlayPixels,
+        previousSwatches: input.previousSwatches,
+        userSwatches: input.userSwatches,
+        pixelizeReference: input.pixelizeReference,
+        referenceSignature: input.referenceSignature,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+        projectPaletteCount: input.projectPaletteCount,
+        brushSize: input.brushSize,
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        importedPalettePresets: input.importedPalettePresets,
+        hiddenPresetIds: input.hiddenPresetIds,
+        deletedAutoPaletteColors: input.deletedAutoPaletteColors,
+        autoOverrides: input.autoOverrides,
+    })
+
+    if (referenceApplication.kind === "applied") {
+        return {
+            kind: "reference",
+            world: referenceApplication.world,
+            projectState: referenceApplication.projectState,
+        }
+    }
+
+    const drawingApplication = prepareFixedPaletteDrawingProjectApplication({
+        profile: input.profile,
+        referenceSignature: input.referenceSnapshot
+            ? input.referenceSignature?.(input.referenceSnapshot) ?? null
+            : null,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch: input.preferredSwatch,
+        userSwatches: input.userSwatches,
+        autoSwatchesOverride: input.autoSwatchesOverride,
+        makeAutoSwatches: input.makeAutoSwatches,
+        gridSize: input.gridSize,
+        paletteCount: input.projectPaletteCount,
+        brushSize: input.brushSize,
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        referenceSnapshot: input.referenceSnapshot,
+        importedPalettePresets: input.importedPalettePresets,
+        hiddenPresetIds: input.hiddenPresetIds,
+    })
+
+    if (drawingApplication.kind === "ignored") {
+        return {
+            kind: "ignored",
+            reason: "missing-palette",
+        }
+    }
+
+    return {
+        kind: "drawing",
+        application: drawingApplication.application,
+        world: drawingApplication.application.world,
+        projectState: drawingApplication.projectState,
+    }
+}
+
 export function prepareAutoPaletteWorldFromReference<
     TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
     TReference,
@@ -1489,6 +1652,31 @@ export function prepareFixedPalettePresetSwatchCreate<
     }
 }
 
+export function prepareImportedPresetSwatchCreateDecision<
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    profile: QuantizationProfile
+    color: string
+    autoSwatches: ReadonlyArray<TSwatch>
+    importedPalettePresets: ReadonlyArray<TPreset>
+    makeImportedId: () => string
+    makeSwatch: (id: string, color: string) => TSwatch
+}): ImportedPresetSwatchCreateDecisionResult<TPreset, TSwatch> {
+    if (input.profile.kind !== "fixed") return { kind: "ignored" }
+
+    return prepareFixedPalettePresetSwatchCreate({
+        profile: makeEditableFixedPresetProfile(
+            input.profile,
+            input.makeImportedId
+        ),
+        color: input.color,
+        autoSwatches: input.autoSwatches,
+        importedPalettePresets: input.importedPalettePresets,
+        makeSwatch: input.makeSwatch,
+    })
+}
+
 export function prepareFixedPaletteVocabularyExtensionWorld<
     TProfile extends EditableFixedPaletteProfile,
     TSwatch extends FixedPaletteEditSwatchLike,
@@ -1614,6 +1802,83 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplication<
             autoOverrides: { ...input.autoOverrides },
         },
     }
+}
+
+export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference<
+    TProfile extends EditableFixedPaletteProfile,
+    TReference extends ImageDataSampleSource,
+    TSwatch extends FixedPaletteAutoSwatch & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    profile: TProfile
+    referenceSnapshot: TReference | null | undefined
+    referenceSignature?: (
+        referenceSnapshot: TReference | null
+    ) => string | null
+    gridSize: number
+    overlayPixels: TPixel[][]
+    previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    pixelizeReference: (
+        referenceSnapshot: TReference,
+        gridSize: number
+    ) => (string | null)[][]
+    autoSwatches: ReadonlyArray<TSwatch>
+    imagePixels: TPixel[][]
+    selectedSwatch: string
+    projectPaletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): FixedPaletteVocabularyExtensionProjectApplicationResult<
+    TProfile,
+    TSwatch,
+    TPixel,
+    TImportedPreset
+> {
+    const candidateWorld = prepareFixedPaletteWorldFromReference({
+        profile: input.profile,
+        referenceSnapshot: input.referenceSnapshot,
+        gridSize: input.gridSize,
+        overlayPixels: input.overlayPixels,
+        previousSwatches: input.previousSwatches,
+        userSwatches: input.userSwatches,
+        pixelizeReference: input.pixelizeReference,
+        referenceSignature: input.referenceSignature,
+    })
+
+    return prepareFixedPaletteVocabularyExtensionProjectApplication({
+        profile: input.profile,
+        referenceSignature: input.referenceSnapshot
+            ? input.referenceSignature?.(input.referenceSnapshot) ?? null
+            : null,
+        autoSwatches: input.autoSwatches,
+        candidateAutoSwatches: candidateWorld?.autoSwatches ?? null,
+        candidateImagePixels: candidateWorld?.imagePixels ?? null,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        selectedSwatch: input.selectedSwatch,
+        gridSize: input.gridSize,
+        paletteCount: input.projectPaletteCount,
+        brushSize: input.brushSize,
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        referenceSnapshot: input.referenceSnapshot,
+        userSwatches: input.userSwatches,
+        importedPalettePresets: input.importedPalettePresets,
+        hiddenPresetIds: input.hiddenPresetIds,
+        deletedAutoPaletteColors: input.deletedAutoPaletteColors,
+        autoOverrides: input.autoOverrides,
+    })
 }
 
 export function prepareFixedPaletteSwatchDelete<
