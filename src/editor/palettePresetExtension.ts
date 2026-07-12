@@ -9,6 +9,7 @@ import {
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
 import {
+    appendDeletedAutoPaletteColor,
     prepareProjectStateFromPaletteWorld,
     resolveSelectedSwatchAfterAutoChange,
     type PaletteAutoOverrideLike,
@@ -373,6 +374,27 @@ export type ActivePresetFallbackToAutoResult<
     hiddenPresetIds: string[]
     importedPalettePresets: TImportedPreset[]
 }
+
+export type AutoSwatchExclusionReferenceApplicationResult<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+> =
+    | {
+          kind: "ignored"
+          reason: "missing-reference"
+      }
+    | {
+          kind: "applied"
+          world: AutoPaletteReferenceWorld<TProfile, TPixel>
+          preferredSwatch: PaletteSelection | null
+          deletedAutoPaletteColors: string[]
+          projectState: EditorCommittedState<
+              TPixel,
+              FixedPaletteAutoSwatch,
+              TImportedPreset
+          >
+      }
 
 export type PaletteTabReferenceWorld<TPixel extends string | null> =
     PaletteReferenceWorld<QuantizationProfile, TPixel>
@@ -1194,6 +1216,79 @@ export function prepareAutoPaletteReferenceProjectApplication<
             deletedAutoPaletteColors: input.deletedAutoPaletteColors,
             autoOverrides: input.autoOverrides,
         }),
+    }
+}
+
+export function prepareAutoSwatchExclusionReferenceApplication<
+    TProfile extends Extract<QuantizationProfile, { kind: "extract" }>,
+    TReference extends ImageDataSampleSource,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: Omit<
+    PaletteReferenceWorldInput<TProfile, TReference, TPixel>,
+    "excludedColors" | "pixelizeReference"
+> & {
+    sourcePixels: (string | null)[][]
+    swatchId: string
+    swatchColor: string
+    selectedSwatch: PaletteSelection
+    projectPaletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        FixedPaletteAutoSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): AutoSwatchExclusionReferenceApplicationResult<
+    TProfile,
+    TPixel,
+    TImportedPreset
+> {
+    const deletedAutoPaletteColors = appendDeletedAutoPaletteColor({
+        color: input.swatchColor,
+        currentDeletedColors: input.deletedAutoPaletteColors.slice(),
+        sourcePixels: input.sourcePixels,
+    })
+    const preferredSwatch =
+        input.selectedSwatch === input.swatchId ? null : input.selectedSwatch
+    const preparedReference = prepareAutoPaletteReferenceProjectApplication({
+        profile: input.profile,
+        referenceSnapshot: input.referenceSnapshot,
+        gridSize: input.gridSize,
+        overlayPixels: input.overlayPixels,
+        previousSwatches: input.previousSwatches,
+        userSwatches: input.userSwatches,
+        paletteCountTarget: input.paletteCountTarget,
+        excludedColors: deletedAutoPaletteColors,
+        pixelizeReference: () => input.sourcePixels,
+        referenceSignature: input.referenceSignature,
+        selectedSwatch: input.selectedSwatch,
+        preferredSwatch,
+        projectPaletteCount: input.projectPaletteCount,
+        brushSize: input.brushSize,
+        showImage: input.showImage,
+        hasOriginalImageData: input.hasOriginalImageData,
+        importedPalettePresets: input.importedPalettePresets,
+        hiddenPresetIds: input.hiddenPresetIds,
+        deletedAutoPaletteColors,
+        autoOverrides: input.autoOverrides,
+    })
+
+    if (preparedReference.kind === "ignored") {
+        return preparedReference
+    }
+
+    return {
+        kind: "applied",
+        world: preparedReference.world,
+        preferredSwatch,
+        deletedAutoPaletteColors,
+        projectState: preparedReference.projectState,
     }
 }
 

@@ -1027,6 +1027,90 @@ export function prepareSwatchDelete<
     }
 }
 
+export function preparePaletteSwatchDeleteProjectApplication<
+    TSwatch extends PaletteSwatchLike & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    swatchId: string
+    swatchColor: string
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    selectedSwatch: PaletteSelection
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    sourcePixels?: (string | null)[][]
+    baseState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+    pruneAutoOverrides?: (
+        currentAuto: TSwatch[],
+        overrides: EditorCommittedState<
+            TPixel,
+            TSwatch,
+            TImportedPreset
+        >["autoOverrides"]
+    ) => EditorCommittedState<TPixel, TSwatch, TImportedPreset>["autoOverrides"]
+}): {
+    removed: boolean
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: TSwatch[]
+    userSwatches: TSwatch[]
+    selectedSwatch: PaletteSelection
+    deletedAutoPaletteColors: string[]
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+    projectState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+} {
+    const preparedDelete = prepareSwatchDelete({
+        swatchId: input.swatchId,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        autoSwatches: input.autoSwatches,
+        userSwatches: input.userSwatches,
+        selectedSwatch: input.selectedSwatch,
+        autoOverrides: input.autoOverrides,
+        pruneAutoOverrides: input.pruneAutoOverrides,
+    })
+    const deletedAutoPaletteColors = input.swatchId.startsWith("auto-")
+        ? appendDeletedAutoPaletteColor({
+              color: input.swatchColor,
+              currentDeletedColors: input.deletedAutoPaletteColors.slice(),
+              sourcePixels: input.sourcePixels,
+          })
+        : input.deletedAutoPaletteColors.slice()
+    const projectState = {
+        ...input.baseState,
+        imagePixels: clonePixelsGrid(preparedDelete.imagePixels),
+        overlayPixels: clonePixelsGrid(preparedDelete.overlayPixels),
+        autoSwatches: cloneSwatches(preparedDelete.autoSwatches),
+        userSwatches: cloneSwatches(preparedDelete.userSwatches),
+        selectedSwatch: preparedDelete.selectedSwatch,
+        deletedAutoPaletteColors,
+        autoOverrides: { ...preparedDelete.autoOverrides },
+    }
+
+    return {
+        removed: preparedDelete.removed,
+        imagePixels: preparedDelete.imagePixels,
+        overlayPixels: preparedDelete.overlayPixels,
+        autoSwatches: preparedDelete.autoSwatches,
+        userSwatches: preparedDelete.userSwatches,
+        selectedSwatch: preparedDelete.selectedSwatch,
+        deletedAutoPaletteColors,
+        autoOverrides: preparedDelete.autoOverrides,
+        projectState,
+    }
+}
+
 function moveCollapsedAutoOverrides<TOverride>(
     overrides: PaletteAutoOverridesMap<TOverride>,
     remap: Record<string, string>
@@ -1168,6 +1252,65 @@ export function preparePaletteSwatchEditApplication<
         selectedSwatch: input.swatchId,
         pruneAutoOverrides: input.pruneAutoOverrides,
     })
+}
+
+export function preparePaletteSwatchEditProjectApplication<
+    TSwatch extends PalettePaintSwatchLike & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    swatchId: string
+    newColorUpper: string
+    makeTransparent: boolean
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    selectedSwatch: PaletteSelection
+    autoOverrides?: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"] | null
+    baseState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+    pruneAutoOverrides?: (
+        currentAuto: TSwatch[],
+        overrides: EditorCommittedState<
+            TPixel,
+            TSwatch,
+            TImportedPreset
+        >["autoOverrides"]
+    ) => EditorCommittedState<TPixel, TSwatch, TImportedPreset>["autoOverrides"]
+}): ReturnType<
+    typeof preparePaletteSwatchEditApplication<TSwatch, TPixel>
+> & {
+    projectState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+} {
+    const application = preparePaletteSwatchEditApplication({
+        swatchId: input.swatchId,
+        newColorUpper: input.newColorUpper,
+        makeTransparent: input.makeTransparent,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        autoSwatches: input.autoSwatches,
+        userSwatches: input.userSwatches,
+        selectedSwatch: input.selectedSwatch,
+        autoOverrides: input.autoOverrides,
+        pruneAutoOverrides: input.pruneAutoOverrides,
+    })
+
+    return {
+        ...application,
+        projectState: {
+            ...input.baseState,
+            imagePixels: clonePixelsGrid(application.imagePixels),
+            overlayPixels: clonePixelsGrid(application.overlayPixels),
+            autoSwatches: cloneSwatches(application.autoSwatches),
+            userSwatches: cloneSwatches(application.userSwatches),
+            selectedSwatch: application.selectedSwatch,
+            autoOverrides: { ...application.autoOverrides },
+        },
+    }
 }
 
 export function preparePaletteWorldSnapshotApplication<

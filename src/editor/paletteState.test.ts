@@ -13,6 +13,7 @@ import {
     preparePaletteSwatchEditApplication,
     preparePaletteProjectStateRestoreTabs,
     preparePalettePresetSessionReset,
+    preparePaletteSwatchDeleteProjectApplication,
     preparePaletteTabWorldCommit,
     preparePaletteWorldInvalidation,
     preparePaletteWorldSnapshotApplication,
@@ -20,6 +21,7 @@ import {
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
     prepareProjectStateFromPaletteWorld,
+    preparePaletteSwatchEditProjectApplication,
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
     prepareSwatchDelete,
@@ -1262,6 +1264,62 @@ describe("palette state", () => {
         })
     })
 
+    it("prepares swatch edit project applications with committed state", () => {
+        const baseState = {
+            gridSize: 2,
+            paletteCount: 3,
+            brushSize: 1,
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            showImage: true,
+            hasOriginalImageData: true,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#112233",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            autoOverrides: {},
+        }
+
+        const result = preparePaletteSwatchEditProjectApplication({
+            swatchId: "auto-0",
+            newColorUpper: "#AABBCC",
+            makeTransparent: false,
+            imagePixels: baseState.imagePixels,
+            overlayPixels: baseState.overlayPixels,
+            autoSwatches: baseState.autoSwatches,
+            userSwatches: baseState.userSwatches,
+            selectedSwatch: baseState.selectedSwatch,
+            autoOverrides: baseState.autoOverrides,
+            baseState,
+        })
+
+        expect(result.projectState).toMatchObject({
+            ...baseState,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#AABBCC",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            selectedSwatch: "auto-0",
+            autoOverrides: {
+                "auto-0": { hex: "#AABBCC", isTransparent: false },
+            },
+        })
+        expect(result.projectState.imagePixels).not.toBe(baseState.imagePixels)
+        expect(result.projectState.autoSwatches).not.toBe(
+            baseState.autoSwatches
+        )
+    })
+
     it("prepares fixed palette world snapshot applications for presets", () => {
         const world = {
             profile: {
@@ -1603,6 +1661,80 @@ describe("palette state", () => {
         expect(result.autoOverrides).toEqual({
             "auto-0": { hex: "#000000" },
         })
+    })
+
+    it("prepares swatch delete project applications with committed state", () => {
+        const baseState = {
+            gridSize: 2,
+            paletteCount: 2,
+            brushSize: 1,
+            imagePixels: [["auto-1", "auto-0"]],
+            overlayPixels: [[null, "auto-1"]],
+            showImage: true,
+            hasOriginalImageData: true,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#000000",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [],
+            selectedSwatch: "auto-1",
+            deletedAutoPaletteColors: [],
+            autoOverrides: {
+                "auto-1": { hex: "#FFFFFF" },
+            },
+        }
+
+        const result = preparePaletteSwatchDeleteProjectApplication({
+            swatchId: "auto-1",
+            swatchColor: "#FFFFFF",
+            imagePixels: baseState.imagePixels,
+            overlayPixels: baseState.overlayPixels,
+            autoSwatches: baseState.autoSwatches,
+            userSwatches: baseState.userSwatches,
+            selectedSwatch: baseState.selectedSwatch,
+            autoOverrides: baseState.autoOverrides,
+            deletedAutoPaletteColors: baseState.deletedAutoPaletteColors,
+            baseState,
+            pruneAutoOverrides: (autoSwatches, overrides) => {
+                const keep = new Set(autoSwatches.map((swatch) => swatch.id))
+                return Object.fromEntries(
+                    Object.entries(overrides).filter(([id]) => keep.has(id))
+                )
+            },
+        })
+
+        expect(result.removed).toBe(true)
+        expect(result.deletedAutoPaletteColors).toEqual(["#FFFFFF"])
+        expect(result.projectState).toMatchObject({
+            ...baseState,
+            imagePixels: [[null, "auto-0"]],
+            overlayPixels: [[null, null]],
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#000000",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            selectedSwatch: "auto-0",
+            deletedAutoPaletteColors: ["#FFFFFF"],
+            autoOverrides: {},
+        })
+        expect(result.projectState.imagePixels).not.toBe(baseState.imagePixels)
+        expect(result.projectState.autoSwatches).not.toBe(
+            baseState.autoSwatches
+        )
     })
 
     it("keeps delete preparation unchanged when swatch id is absent", () => {

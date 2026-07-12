@@ -62,7 +62,7 @@ import {
     prepareImportedPalettePresetFromColors,
     prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
-    prepareAutoPaletteReferenceProjectApplication,
+    prepareAutoSwatchExclusionReferenceApplication,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPalettePresetSwatchDeleteApplication,
@@ -74,7 +74,6 @@ import {
 } from "./palettePresetExtension.ts"
 import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
 import {
-    appendDeletedAutoPaletteColor,
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
     isPaletteWorldCompatibleWithReferenceGrid,
@@ -83,14 +82,14 @@ import {
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteProjectStateRestoreTabs,
     preparePalettePresetSessionReset,
-    preparePaletteSwatchEditApplication,
+    preparePaletteSwatchDeleteProjectApplication,
+    preparePaletteSwatchEditProjectApplication,
     preparePaletteTabWorldCommit,
     preparePaletteWorldInvalidation,
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
-    prepareSwatchDelete,
 } from "./paletteState.ts"
 import {
     areEditorCommittedStatesEqual,
@@ -9779,13 +9778,8 @@ function PixelEditorFramer({
                 gridSize,
                 16
             )
-            const nextDeletedColors = appendDeletedAutoPaletteColor({
-                color: swatch.color,
-                currentDeletedColors: deletedAutoPaletteColors,
-                sourcePixels,
-            })
             const preparedReference =
-                prepareAutoPaletteReferenceProjectApplication({
+                prepareAutoSwatchExclusionReferenceApplication({
                     profile: EXTRACT_QUANTIZATION_PROFILE,
                     referenceSnapshot: originalImageData,
                     gridSize,
@@ -9797,21 +9791,18 @@ function PixelEditorFramer({
                         PALETTE_MIN,
                         PALETTE_MAX
                     ),
-                    excludedColors: nextDeletedColors,
-                    pixelizeReference: () => sourcePixels,
+                    sourcePixels,
                     referenceSignature: imageDataSampleSignature,
+                    swatchId: editingSwatchId,
+                    swatchColor: swatch.color,
                     selectedSwatch,
-                    preferredSwatch:
-                        selectedSwatch === editingSwatchId
-                            ? null
-                            : selectedSwatch,
                     projectPaletteCount: paletteCount,
                     brushSize,
                     showImage,
                     hasOriginalImageData: hasImportContext,
                     importedPalettePresets,
                     hiddenPresetIds,
-                    deletedAutoPaletteColors: nextDeletedColors,
+                    deletedAutoPaletteColors,
                     autoOverrides,
                 })
             if (preparedReference.kind === "ignored") {
@@ -9819,12 +9810,12 @@ function PixelEditorFramer({
                 return
             }
             const world = preparedReference.world
-            const preferred =
-                selectedSwatch === editingSwatchId ? null : selectedSwatch
             const afterState: ProjectState = preparedReference.projectState
 
             beginEditorActionTransaction("editor-action", before)
-            setDeletedAutoPaletteColors(nextDeletedColors)
+            setDeletedAutoPaletteColors(
+                preparedReference.deletedAutoPaletteColors
+            )
             setPaletteTabsState((prev) =>
                 preparePaletteTabWorldCommit({
                     state: prev,
@@ -9832,21 +9823,28 @@ function PixelEditorFramer({
                     world,
                 })
             )
-            applyDerivedWorldSnapshot(world, preferred)
+            applyDerivedWorldSnapshot(world, preparedReference.preferredSwatch)
             latestProjectStateRef.current = afterState
             pushCommit(before, { afterState })
             closeColorModalAfterCreate()
             return
         }
 
-        const preparedDelete = prepareSwatchDelete({
+        const preparedDelete = preparePaletteSwatchDeleteProjectApplication({
             swatchId: editingSwatchId,
+            swatchColor: swatch.color,
             imagePixels,
             overlayPixels,
             autoSwatches,
             userSwatches,
             selectedSwatch,
             autoOverrides,
+            deletedAutoPaletteColors,
+            sourcePixels:
+                editingSwatchId.startsWith("auto-") && originalImageData
+                    ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
+                    : undefined,
+            baseState: latestProjectStateRef.current ?? makeProjectState(),
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
         })
         if (!preparedDelete.removed) {
@@ -9859,25 +9857,7 @@ function PixelEditorFramer({
         const nextImage = preparedDelete.imagePixels
         const nextOverlay = preparedDelete.overlayPixels
         const nextSelected = preparedDelete.selectedSwatch
-        const nextDeletedColors = editingSwatchId.startsWith("auto-")
-            ? appendDeletedAutoPaletteColor({
-                  color: swatch.color,
-                  currentDeletedColors: deletedAutoPaletteColors,
-                  sourcePixels: originalImageData
-                      ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
-                      : undefined,
-              })
-            : deletedAutoPaletteColors.slice()
-        const afterState: ProjectState = {
-            ...(latestProjectStateRef.current ?? makeProjectState()),
-            imagePixels: clonePixelsGrid(nextImage),
-            overlayPixels: clonePixelsGrid(nextOverlay),
-            autoSwatches: cloneSwatches(nextAuto),
-            userSwatches: cloneSwatches(nextUser),
-            selectedSwatch: nextSelected,
-            deletedAutoPaletteColors: nextDeletedColors,
-            autoOverrides: preparedDelete.autoOverrides,
-        }
+        const afterState: ProjectState = preparedDelete.projectState
 
         beginEditorActionTransaction("editor-action", before)
         setImagePixels(nextImage)
@@ -9885,7 +9865,7 @@ function PixelEditorFramer({
         setAutoSwatches(nextAuto)
         setUserSwatches(nextUser)
         setSelectedSwatch(nextSelected)
-        setDeletedAutoPaletteColors(nextDeletedColors)
+        setDeletedAutoPaletteColors(preparedDelete.deletedAutoPaletteColors)
         setAutoOverrides(afterState.autoOverrides)
         syncPaintRefToOverlay({
             overlay: afterState.overlayPixels,
@@ -10000,7 +9980,7 @@ function PixelEditorFramer({
             }
         }
 
-        const preparedEdit = preparePaletteSwatchEditApplication({
+        const preparedEdit = preparePaletteSwatchEditProjectApplication({
             swatchId: editingSwatchId,
             newColorUpper: colorUpper,
             makeTransparent: pendingTransparent,
@@ -10010,18 +9990,11 @@ function PixelEditorFramer({
             userSwatches,
             selectedSwatch,
             autoOverrides,
+            baseState: latestProjectStateRef.current ?? makeProjectState(),
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
         })
 
-        const afterState: ProjectState = {
-            ...(latestProjectStateRef.current ?? makeProjectState()),
-            imagePixels: clonePixelsGrid(preparedEdit.imagePixels),
-            overlayPixels: clonePixelsGrid(preparedEdit.overlayPixels),
-            autoSwatches: cloneSwatches(preparedEdit.autoSwatches),
-            userSwatches: cloneSwatches(preparedEdit.userSwatches),
-            selectedSwatch: preparedEdit.selectedSwatch as any,
-            autoOverrides: { ...preparedEdit.autoOverrides },
-        }
+        const afterState: ProjectState = preparedEdit.projectState
 
         if (isSameProjectState(before, afterState)) {
             setIsColorModalOpen(false)

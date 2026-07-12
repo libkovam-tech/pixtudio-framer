@@ -13,6 +13,7 @@ import {
     prepareAutoPaletteDrawingProjectApplication,
     prepareAutoPaletteDrawingWorld,
     prepareAutoPaletteReferenceProjectApplication,
+    prepareAutoSwatchExclusionReferenceApplication,
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPaletteDrawingProjectApplication,
@@ -1169,6 +1170,57 @@ describe("palette preset extension", () => {
             importedPalettePresets[0]
         )
         expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
+    })
+
+    it("prepares auto swatch exclusion rebuilds from reference snapshots", () => {
+        const referenceSnapshot = {
+            width: 1,
+            height: 1,
+            data: [0, 0, 0, 255],
+        }
+
+        const result = prepareAutoSwatchExclusionReferenceApplication({
+            profile: { kind: "extract" },
+            referenceSnapshot,
+            gridSize: 2,
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: 2,
+            sourcePixels: [
+                ["#001219", "#E9D8A6"],
+                ["#E9D8A6", "#005F73"],
+            ],
+            referenceSignature: () => "ref-auto-exclusion",
+            swatchId: "auto-0",
+            swatchColor: "#001219",
+            selectedSwatch: "auto-0",
+            projectPaletteCount: 11,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets: [],
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("applied")
+        if (result.kind !== "applied") return
+        expect(result.preferredSwatch).toBeNull()
+        expect(result.deletedAutoPaletteColors).toContain("#001219")
+        expect(
+            result.world.autoSwatches.map((swatch) => swatch.color)
+        ).not.toContain("#001219")
+        expect(result.projectState).toMatchObject({
+            activePaletteTab: "size",
+            selectedSwatch: result.world.autoSwatches[0]?.id,
+            deletedAutoPaletteColors: result.deletedAutoPaletteColors,
+            referenceSnapshot,
+        })
     })
 
     it("ignores auto palette reference application preparation without a reference snapshot", () => {
