@@ -7100,7 +7100,7 @@ function PixelEditorFramer({
             const preparedCleanup = preparePaletteSliderCommitCleanup({
                 autoSwatches,
                 autoOverrides,
-                baseState: latestProjectStateRef.current ?? makeProjectState(),
+                baseState: makeProjectState(),
                 pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
             })
 
@@ -7108,6 +7108,7 @@ function PixelEditorFramer({
                 setAutoOverrides(preparedCleanup.autoOverrides)
             }
 
+            latestProjectStateRef.current = preparedCleanup.projectState
             pushCommit(before, {
                 afterState: preparedCleanup.projectState,
             })
@@ -10075,6 +10076,7 @@ function PixelEditorFramer({
         setUserSwatches(preparedCreate.userSwatches)
         setSelectedSwatch(preparedCreate.selectedSwatch)
 
+        latestProjectStateRef.current = preparedCreate.projectState
         pushCommit(before, {
             afterState: preparedCreate.projectState,
         })

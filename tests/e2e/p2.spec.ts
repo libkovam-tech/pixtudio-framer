@@ -332,6 +332,48 @@ test("clicked palette swatch uses the active lifted selection style", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("user swatch creation stays separate from palette size undo", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+
+    await page.locator('button[title="Add swatch"]').first().click()
+    await page.getByLabel("HEX input").fill("#FF00FF")
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+
+    await setPaletteSizeWithPointerCommit(page, 3)
+    await expect(page.locator('input[type="range"][max="32"]').first()).toHaveValue(
+        "3"
+    )
+
+    const reducedSnapshot = JSON.parse(
+        await readFile((await downloadProjectSave(page)).path, "utf8")
+    )
+    expect(reducedSnapshot.paletteCount).toBe(3)
+    expect(hasPaletteSwatch(reducedSnapshot, "#FF00FF")).toBe(true)
+
+    await page.getByRole("button", { name: "Undo" }).click()
+    await settle(page)
+    const undoSnapshot = JSON.parse(
+        await readFile((await downloadProjectSave(page)).path, "utf8")
+    )
+    expect(undoSnapshot.paletteCount).not.toBe(3)
+    expect(hasPaletteSwatch(undoSnapshot, "#FF00FF")).toBe(true)
+
+    await page.getByRole("button", { name: "Redo" }).click()
+    await settle(page)
+    const redoSnapshot = JSON.parse(
+        await readFile((await downloadProjectSave(page)).path, "utf8")
+    )
+    expect(redoSnapshot.paletteCount).toBe(3)
+    expect(hasPaletteSwatch(redoSnapshot, "#FF00FF")).toBe(true)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("palette tabs keep independent selected swatches", async ({ page }) => {
     const errors = collectBrowserErrors(page)
 
@@ -930,6 +972,27 @@ async function downloadProjectSave(page: Page) {
     }
 }
 
+async function setPaletteSizeWithPointerCommit(page: Page, value: number) {
+    const paletteSlider = page.locator('input[type="range"][max="32"]').first()
+    await expect(paletteSlider).toBeVisible()
+    await paletteSlider.dispatchEvent("pointerdown")
+    await paletteSlider.dispatchEvent("touchstart")
+    await paletteSlider.evaluate((element, nextValue) => {
+        const input = element as HTMLInputElement
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value"
+        )?.set
+        valueSetter?.call(input, String(nextValue))
+        input.dispatchEvent(new Event("input", { bubbles: true }))
+        input.dispatchEvent(new Event("change", { bubbles: true }))
+    }, value)
+    await settle(page)
+    await paletteSlider.dispatchEvent("pointerup")
+    await paletteSlider.dispatchEvent("touchend")
+    await settle(page)
+}
+
 async function bumpPaletteSize(page: Page) {
     const paletteSlider = page.locator('input[type="range"][max="32"]').first()
     await expect(paletteSlider).toBeVisible()
@@ -951,6 +1014,16 @@ async function bumpPaletteSize(page: Page) {
     })
     await settle(page)
     return nextValue
+}
+
+function hasPaletteSwatch(snapshot: { palette?: { swatches?: unknown[] } }, hex: string) {
+    return (snapshot.palette?.swatches ?? []).some(
+        (swatch) =>
+            typeof swatch === "object" &&
+            swatch != null &&
+            "hex" in swatch &&
+            String(swatch.hex).toUpperCase() === hex
+    )
 }
 
 async function bumpGridSize(page: Page) {
