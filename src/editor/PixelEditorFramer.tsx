@@ -7094,25 +7094,56 @@ function PixelEditorFramer({
         before: null,
         keyboardActive: false,
     })
+    const pendingPaletteSliderCommitRef = React.useRef<{
+        before: ProjectState
+        raf: number | null
+    } | null>(null)
+
+    function pushPaletteSliderCommitFromBefore(before: ProjectState) {
+        const preparedCleanup = preparePaletteSliderCommitCleanup({
+            autoSwatches,
+            autoOverrides,
+            baseState: makeProjectState(),
+            pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
+        })
+
+        if (preparedCleanup.autoOverridesChanged) {
+            setAutoOverrides(preparedCleanup.autoOverrides)
+        }
+
+        latestProjectStateRef.current = preparedCleanup.projectState
+        pushCommit(before, {
+            afterState: preparedCleanup.projectState,
+        })
+    }
 
     function commitPruneAutoOverridesAndPush(before: ProjectState) {
-        requestAnimationFrame(() => {
-            const preparedCleanup = preparePaletteSliderCommitCleanup({
-                autoSwatches,
-                autoOverrides,
-                baseState: makeProjectState(),
-                pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
-            })
+        const existing = pendingPaletteSliderCommitRef.current
+        if (existing?.raf != null) {
+            cancelAnimationFrame(existing.raf)
+        }
 
-            if (preparedCleanup.autoOverridesChanged) {
-                setAutoOverrides(preparedCleanup.autoOverrides)
-            }
-
-            latestProjectStateRef.current = preparedCleanup.projectState
-            pushCommit(before, {
-                afterState: preparedCleanup.projectState,
-            })
+        const pending = {
+            before,
+            raf: null as number | null,
+        }
+        pending.raf = requestAnimationFrame(() => {
+            if (pendingPaletteSliderCommitRef.current !== pending) return
+            pendingPaletteSliderCommitRef.current = null
+            pushPaletteSliderCommitFromBefore(before)
         })
+        pendingPaletteSliderCommitRef.current = pending
+    }
+
+    function flushPendingPaletteSliderCommit() {
+        const pending = pendingPaletteSliderCommitRef.current
+        if (!pending) return
+
+        if (pending.raf != null) {
+            cancelAnimationFrame(pending.raf)
+        }
+        pendingPaletteSliderCommitRef.current = null
+        pushPaletteSliderCommitFromBefore(pending.before)
     }
 
     // S-MOBILE:
@@ -11300,7 +11331,10 @@ function PixelEditorFramer({
                     <div style={{ display: "contents" }}>
                         <button
                             type="button"
-                            onClick={onCoordinatedUndo}
+                            onClick={() => {
+                                flushPendingPaletteSliderCommit()
+                                onCoordinatedUndo?.()
+                            }}
                             disabled={!coordinatedCanUndo}
                             aria-label="Undo"
                             title="Undo"
@@ -11315,7 +11349,10 @@ function PixelEditorFramer({
 
                         <button
                             type="button"
-                            onClick={onCoordinatedRedo}
+                            onClick={() => {
+                                flushPendingPaletteSliderCommit()
+                                onCoordinatedRedo?.()
+                            }}
                             disabled={!coordinatedCanRedo}
                             aria-label="Redo"
                             title="Redo"

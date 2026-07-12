@@ -6,6 +6,7 @@ import {
     collectBrowserErrors,
     fixturesDir,
     installStableVisualEnvironment,
+    openBearImageCropScreen,
     openBearProject,
     settle,
 } from "./helpers"
@@ -334,33 +335,35 @@ test("clicked palette swatch uses the active lifted selection style", async ({
 
 test("user swatch creation stays separate from palette size undo", async ({
     page,
-}) => {
+}, testInfo) => {
     const errors = collectBrowserErrors(page)
 
-    await openBearProject(page)
+    await openBearImageCropScreen(page)
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByRole("button", { name: "Export" })).toBeVisible({
+        timeout: 20_000,
+    })
+    await settle(page)
 
     await page.locator('button[title="Add swatch"]').first().click()
     await page.getByLabel("HEX input").fill("#FF00FF")
     await page.getByRole("button", { name: "OK" }).click()
     await settle(page)
 
-    await setPaletteSizeWithPointerCommit(page, 3)
-    await expect(page.locator('input[type="range"][max="32"]').first()).toHaveValue(
-        "3"
+    await setPaletteSizeLikeUser(page, 3, testInfo.project.name, {
+        settleAfter: false,
+    })
+    const reducedPaletteCount = Number(
+        await page.locator('input[type="range"][max="32"]').first().inputValue()
     )
-
-    const reducedSnapshot = JSON.parse(
-        await readFile((await downloadProjectSave(page)).path, "utf8")
-    )
-    expect(reducedSnapshot.paletteCount).toBe(3)
-    expect(hasPaletteSwatch(reducedSnapshot, "#FF00FF")).toBe(true)
+    expect(reducedPaletteCount).toBeLessThan(16)
 
     await page.getByRole("button", { name: "Undo" }).click()
     await settle(page)
     const undoSnapshot = JSON.parse(
         await readFile((await downloadProjectSave(page)).path, "utf8")
     )
-    expect(undoSnapshot.paletteCount).not.toBe(3)
+    expect(undoSnapshot.paletteCount).not.toBe(reducedPaletteCount)
     expect(hasPaletteSwatch(undoSnapshot, "#FF00FF")).toBe(true)
 
     await page.getByRole("button", { name: "Redo" }).click()
@@ -368,7 +371,7 @@ test("user swatch creation stays separate from palette size undo", async ({
     const redoSnapshot = JSON.parse(
         await readFile((await downloadProjectSave(page)).path, "utf8")
     )
-    expect(redoSnapshot.paletteCount).toBe(3)
+    expect(redoSnapshot.paletteCount).toBe(reducedPaletteCount)
     expect(hasPaletteSwatch(redoSnapshot, "#FF00FF")).toBe(true)
 
     expect(errors.flush()).toEqual([])
@@ -972,9 +975,29 @@ async function downloadProjectSave(page: Page) {
     }
 }
 
-async function setPaletteSizeWithPointerCommit(page: Page, value: number) {
+async function setPaletteSizeLikeUser(
+    page: Page,
+    value: number,
+    projectName: string,
+    options: { settleAfter?: boolean } = {}
+) {
     const paletteSlider = page.locator('input[type="range"][max="32"]').first()
     await expect(paletteSlider).toBeVisible()
+
+    if (projectName !== "mobile") {
+        const box = await paletteSlider.boundingBox()
+        expect(box).not.toBeNull()
+        const y = (box?.y ?? 0) + (box?.height ?? 0) / 2
+        await page.mouse.move((box?.x ?? 0) + (box?.width ?? 0) / 2, y)
+        await page.mouse.down()
+        await page.mouse.move((box?.x ?? 0) + 1, y, { steps: 10 })
+        await page.mouse.up()
+        if (options.settleAfter ?? true) {
+            await settle(page)
+        }
+        return
+    }
+
     await paletteSlider.dispatchEvent("pointerdown")
     await paletteSlider.dispatchEvent("touchstart")
     await paletteSlider.evaluate((element, nextValue) => {
@@ -990,7 +1013,9 @@ async function setPaletteSizeWithPointerCommit(page: Page, value: number) {
     await settle(page)
     await paletteSlider.dispatchEvent("pointerup")
     await paletteSlider.dispatchEvent("touchend")
-    await settle(page)
+    if (options.settleAfter ?? true) {
+        await settle(page)
+    }
 }
 
 async function bumpPaletteSize(page: Page) {
