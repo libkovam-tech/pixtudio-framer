@@ -7097,15 +7097,20 @@ function PixelEditorFramer({
     const pendingPaletteSliderCommitRef = React.useRef<{
         before: ProjectState
         raf: number | null
+        attempts: number
     } | null>(null)
 
-    function pushPaletteSliderCommitFromBefore(before: ProjectState) {
+    function pushPaletteSliderCommitFromBefore(before: ProjectState): boolean {
+        const baseState = latestProjectStateRef.current ?? makeProjectState()
         const preparedCleanup = preparePaletteSliderCommitCleanup({
-            autoSwatches,
-            autoOverrides,
-            baseState: makeProjectState(),
+            autoSwatches: baseState.autoSwatches,
+            autoOverrides: baseState.autoOverrides,
+            baseState,
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
         })
+        if (isSameProjectState(before, preparedCleanup.projectState)) {
+            return false
+        }
 
         if (preparedCleanup.autoOverridesChanged) {
             setAutoOverrides(preparedCleanup.autoOverrides)
@@ -7114,6 +7119,32 @@ function PixelEditorFramer({
         latestProjectStateRef.current = preparedCleanup.projectState
         pushCommit(before, {
             afterState: preparedCleanup.projectState,
+        })
+        return true
+    }
+
+    function schedulePendingPaletteSliderCommit(pending: {
+        before: ProjectState
+        raf: number | null
+        attempts: number
+    }) {
+        pending.raf = requestAnimationFrame(() => {
+            if (pendingPaletteSliderCommitRef.current !== pending) return
+            pending.raf = null
+
+            if (pushPaletteSliderCommitFromBefore(pending.before)) {
+                pendingPaletteSliderCommitRef.current = null
+                return
+            }
+
+            pending.attempts += 1
+            if (pending.attempts < 12) {
+                schedulePendingPaletteSliderCommit(pending)
+                return
+            }
+
+            pendingPaletteSliderCommitRef.current = null
+            abortEditorActionTransaction()
         })
     }
 
@@ -7126,24 +7157,44 @@ function PixelEditorFramer({
         const pending = {
             before,
             raf: null as number | null,
+            attempts: 0,
         }
-        pending.raf = requestAnimationFrame(() => {
-            if (pendingPaletteSliderCommitRef.current !== pending) return
-            pendingPaletteSliderCommitRef.current = null
-            pushPaletteSliderCommitFromBefore(before)
-        })
         pendingPaletteSliderCommitRef.current = pending
+        schedulePendingPaletteSliderCommit(pending)
     }
 
-    function flushPendingPaletteSliderCommit() {
+    function flushPendingPaletteSliderCommit(): boolean {
         const pending = pendingPaletteSliderCommitRef.current
-        if (!pending) return
+        if (!pending) return true
 
         if (pending.raf != null) {
             cancelAnimationFrame(pending.raf)
         }
-        pendingPaletteSliderCommitRef.current = null
-        pushPaletteSliderCommitFromBefore(pending.before)
+        pending.raf = null
+
+        if (pushPaletteSliderCommitFromBefore(pending.before)) {
+            pendingPaletteSliderCommitRef.current = null
+            return true
+        }
+
+        pending.attempts += 1
+        if (pending.attempts >= 12) {
+            pendingPaletteSliderCommitRef.current = null
+            abortEditorActionTransaction()
+            return true
+        }
+
+        schedulePendingPaletteSliderCommit(pending)
+        return false
+    }
+
+    function runAfterPendingPaletteSliderCommit(action?: () => void) {
+        if (flushPendingPaletteSliderCommit()) {
+            action?.()
+            return
+        }
+
+        requestAnimationFrame(() => runAfterPendingPaletteSliderCommit(action))
     }
 
     // S-MOBILE:
@@ -11332,8 +11383,9 @@ function PixelEditorFramer({
                         <button
                             type="button"
                             onClick={() => {
-                                flushPendingPaletteSliderCommit()
-                                onCoordinatedUndo?.()
+                                runAfterPendingPaletteSliderCommit(
+                                    onCoordinatedUndo
+                                )
                             }}
                             disabled={!coordinatedCanUndo}
                             aria-label="Undo"
@@ -11350,8 +11402,9 @@ function PixelEditorFramer({
                         <button
                             type="button"
                             onClick={() => {
-                                flushPendingPaletteSliderCommit()
-                                onCoordinatedRedo?.()
+                                runAfterPendingPaletteSliderCommit(
+                                    onCoordinatedRedo
+                                )
                             }}
                             disabled={!coordinatedCanRedo}
                             aria-label="Redo"
