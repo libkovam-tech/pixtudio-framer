@@ -220,4 +220,46 @@ describe("root history coordinator", () => {
             smartAfter: smart(1),
         })
     })
+
+    it("keeps restored palette tab worlds before vocabulary extensions", () => {
+        const history = createRootHistoryState<EditorState, SmartState>()
+
+        rootHistoryBegin(history, {
+            kind: "palette-tab-switch",
+            editorBefore: editor("auto"),
+            smartBefore: smart(1),
+        })
+        rootHistoryFinalize(history, smart(1))
+        rootHistoryCommit(history, editor("sunset"), {
+            isEditorEqual: (a, b) => a?.label === b?.label,
+            isSmartEqual: (a, b) => a?.revision === b?.revision,
+        })
+
+        rootHistoryBegin(history, {
+            kind: "palette-vocabulary-extension",
+            editorBefore: editor("sunset"),
+            smartBefore: smart(1),
+        })
+        rootHistoryFinalize(history, smart(1))
+        const entry = rootHistoryCommit(history, editor("sunset-plus-white"), {
+            isEditorEqual: (a, b) => a?.label === b?.label,
+            isSmartEqual: (a, b) => a?.revision === b?.revision,
+        })
+
+        expect(history.committed).toHaveLength(2)
+        expect(history.committed[0]).toEqual({
+            kind: "palette-tab-switch",
+            editorBefore: editor("auto"),
+            editorAfter: editor("sunset"),
+            smartBefore: smart(1),
+            smartAfter: smart(1),
+        })
+        expect(entry).toEqual({
+            kind: "palette-vocabulary-extension",
+            editorBefore: editor("sunset"),
+            editorAfter: editor("sunset-plus-white"),
+            smartBefore: smart(1),
+            smartAfter: smart(1),
+        })
+    })
 })

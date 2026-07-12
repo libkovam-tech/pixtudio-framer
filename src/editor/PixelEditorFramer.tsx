@@ -3089,6 +3089,7 @@ type EditorActionTransactionKind =
     | "editor-action"
     | "palette-preset-apply"
     | "palette-tab-switch"
+    | "palette-vocabulary-extension"
 
 type EditorActionTransaction = {
     kind: EditorActionTransactionKind
@@ -5806,7 +5807,7 @@ function PixelEditorFramer({
         const nextWorld: DerivedWorld<PixelValue> = preparedApplication.world
         const afterState: ProjectState = prepared.projectState
 
-        beginEditorActionTransaction("palette-preset-apply", before)
+        beginEditorActionTransaction("palette-vocabulary-extension", before)
         setQuantizationProfile(profile)
         setImportedPalettePresets(importedPresetRegistry)
         setActivePresetButton(profile.id)

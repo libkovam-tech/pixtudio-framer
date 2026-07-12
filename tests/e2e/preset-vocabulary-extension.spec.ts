@@ -50,6 +50,61 @@ test("added preset swatch can claim adjusted image cells regardless of action or
     expect(errors.flush()).toEqual([])
 })
 
+test("added preset swatch keeps restored preset tab world as its own redo step", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openGeneratedPortrait(page)
+    const initialAutoSummary = await summarizeCurrentState(page)
+
+    await applySunsetPreset(page)
+    const appliedPresetSummary = await summarizeCurrentState(page)
+    expect(appliedPresetSummary.canvasSignature).not.toBe(
+        initialAutoSummary.canvasSignature
+    )
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+    const autoSummary = await summarizeCurrentState(page)
+    expect(autoSummary).toMatchObject(initialAutoSummary)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await settle(page)
+    const restoredPresetSummary = await summarizeCurrentState(page)
+    expect(restoredPresetSummary).toMatchObject(appliedPresetSummary)
+
+    await addPresetSwatch(page, "#FFFFFF")
+    const addedSummary = await summarizeCurrentState(page)
+    expect(addedSummary.whiteSwatchExists).toBe(true)
+
+    await page.getByRole("button", { name: "Undo" }).click()
+    await settle(page)
+    await expect
+        .poll(() => summarizeCurrentState(page))
+        .toMatchObject(restoredPresetSummary)
+
+    await page.getByRole("button", { name: "Undo" }).click()
+    await settle(page)
+    await expect
+        .poll(() => summarizeCurrentState(page))
+        .toMatchObject(autoSummary)
+
+    await page.getByRole("button", { name: "Redo" }).click()
+    await settle(page)
+    await expect
+        .poll(() => summarizeCurrentState(page))
+        .toMatchObject(restoredPresetSummary)
+
+    await page.getByRole("button", { name: "Redo" }).click()
+    await settle(page)
+    await expect
+        .poll(() => summarizeCurrentState(page))
+        .toMatchObject(addedSummary)
+
+    expect(errors.flush()).toEqual([])
+})
+
 async function openGeneratedPortrait(page: Page) {
     await page.goto("/editor/")
     const fileChooserPromise = page.waitForEvent("filechooser")
@@ -96,6 +151,7 @@ async function addPresetSwatch(page: Page, hex: string) {
 }
 
 async function summarizeCurrentState(page: Page) {
+    const canvasSignature = await readEditorCanvasSignature(page)
     const canvasWhiteCount = await countEditorCanvasRgb(page, [255, 255, 255])
     const snapshot = await downloadProjectSnapshot(page)
     const whiteSwatch = snapshot.palette.swatches.find(
@@ -109,9 +165,18 @@ async function summarizeCurrentState(page: Page) {
                   .length
 
     return {
+        canvasSignature,
+        paletteColorCount: snapshot.palette.swatches.length,
+        whiteSwatchExists: whiteSwatch != null,
         whiteImportCells,
         canvasWhiteCount,
     }
+}
+
+async function readEditorCanvasSignature(page: Page): Promise<string> {
+    return page.locator("canvas").first().evaluate((canvas) => {
+        return (canvas as HTMLCanvasElement).toDataURL("image/png")
+    })
 }
 
 async function downloadProjectSnapshot(page: Page) {
