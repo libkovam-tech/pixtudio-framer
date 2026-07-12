@@ -13,6 +13,7 @@ import {
     preparePaletteSwatchEditApplication,
     preparePaletteProjectStateRestoreTabs,
     preparePalettePresetSessionReset,
+    preparePaletteSliderCommitCleanup,
     preparePaletteSwatchDeleteProjectApplication,
     preparePaletteTabWorldCommit,
     preparePaletteWorldInvalidation,
@@ -25,6 +26,7 @@ import {
     prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
     prepareSwatchDelete,
+    prepareUserSwatchCreateProjectApplication,
     removePalettePixelValueFromGrid,
     resolvePaletteTabTargetSelection,
     resolvePaletteWorldSelection,
@@ -961,6 +963,119 @@ describe("palette state", () => {
         expect(result.paintSwatch).toBe("transparent")
         expect(result.userSwatches).toEqual([])
         expect(result.createdUserSwatch).toBeNull()
+    })
+
+    it("prepares user swatch creation project applications", () => {
+        const autoSwatch = {
+            id: "auto-0",
+            color: "#112233",
+            isTransparent: false,
+            isUser: false,
+        }
+        const userSwatch = {
+            id: "user-existing",
+            color: "#445566",
+            isTransparent: false,
+            isUser: true,
+        }
+        const newSwatch = {
+            id: "user-new",
+            color: "#AABBCC",
+            isTransparent: true,
+            isUser: true,
+        }
+        const baseState = {
+            gridSize: 2,
+            paletteCount: 3,
+            brushSize: 1,
+            imagePixels: [["auto-0", null]],
+            overlayPixels: [[null, "user-existing"]],
+            showImage: true,
+            hasOriginalImageData: false,
+            autoSwatches: [autoSwatch],
+            userSwatches: [userSwatch],
+            selectedSwatch: "auto-0",
+            autoOverrides: {
+                "auto-0": { hex: "#112233", isTransparent: false },
+            },
+        }
+
+        const result = prepareUserSwatchCreateProjectApplication({
+            swatch: newSwatch,
+            imagePixels: baseState.imagePixels,
+            overlayPixels: baseState.overlayPixels,
+            autoSwatches: baseState.autoSwatches,
+            userSwatches: baseState.userSwatches,
+            autoOverrides: baseState.autoOverrides,
+            baseState,
+        })
+
+        expect(result.userSwatches).toEqual([userSwatch, newSwatch])
+        expect(result.selectedSwatch).toBe("user-new")
+        expect(result.projectState).toMatchObject({
+            ...baseState,
+            userSwatches: [userSwatch, newSwatch],
+            selectedSwatch: "user-new",
+        })
+        expect(result.projectState.imagePixels).not.toBe(baseState.imagePixels)
+        expect(result.projectState.userSwatches).not.toBe(
+            result.userSwatches
+        )
+        expect(result.projectState.userSwatches[1]).not.toBe(newSwatch)
+        expect(result.projectState.autoOverrides).not.toBe(
+            baseState.autoOverrides
+        )
+    })
+
+    it("prepares palette slider commit cleanup project applications", () => {
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#112233",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+        const baseState = {
+            gridSize: 2,
+            paletteCount: 8,
+            brushSize: 1,
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            showImage: true,
+            hasOriginalImageData: true,
+            autoSwatches,
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            autoOverrides: {
+                "auto-0": { hex: "#223344", isTransparent: false },
+                "auto-stale": { hex: "#FFFFFF", isTransparent: false },
+            },
+        }
+
+        const result = preparePaletteSliderCommitCleanup({
+            autoSwatches,
+            autoOverrides: baseState.autoOverrides,
+            baseState,
+            pruneAutoOverrides: (currentAuto, overrides) => {
+                const keep = new Set(currentAuto.map((swatch) => swatch.id))
+                return Object.fromEntries(
+                    Object.entries(overrides).filter(([id]) => keep.has(id))
+                )
+            },
+        })
+
+        expect(result.autoOverridesChanged).toBe(true)
+        expect(result.autoOverrides).toEqual({
+            "auto-0": { hex: "#223344", isTransparent: false },
+        })
+        expect(result.projectState).toMatchObject({
+            ...baseState,
+            autoOverrides: result.autoOverrides,
+        })
+        expect(result.projectState.autoOverrides).not.toBe(
+            result.autoOverrides
+        )
     })
 
     it("prepares edited swatches without mutating unrelated entries", () => {

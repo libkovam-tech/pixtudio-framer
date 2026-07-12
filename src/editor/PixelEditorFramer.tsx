@@ -80,6 +80,7 @@ import {
     prepareLoadedPaletteProjectTabs,
     preparePaletteAutoSessionReset,
     prepareCurrentPaletteWorldSnapshot,
+    preparePaletteSliderCommitCleanup,
     preparePaletteProjectStateRestoreTabs,
     preparePalettePresetSessionReset,
     preparePaletteSwatchDeleteProjectApplication,
@@ -90,6 +91,7 @@ import {
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
     prepareStrokePaintSwatch,
+    prepareUserSwatchCreateProjectApplication,
 } from "./paletteState.ts"
 import {
     areEditorCommittedStatesEqual,
@@ -7094,33 +7096,20 @@ function PixelEditorFramer({
     })
 
     function commitPruneAutoOverridesAndPush(before: ProjectState) {
-        const cleaned = pruneAutoOverridesForCurrentAuto(
-            autoSwatches,
-            autoOverrides
-        )
-
-        const prevKeys = Object.keys(autoOverrides || {})
-        const nextKeys = Object.keys(cleaned || {})
-        const changed =
-            prevKeys.length !== nextKeys.length ||
-            prevKeys.some((k) => {
-                const a = (autoOverrides as any)?.[k]
-                const b = (cleaned as any)?.[k]
-                return JSON.stringify(a) !== JSON.stringify(b)
+        requestAnimationFrame(() => {
+            const preparedCleanup = preparePaletteSliderCommitCleanup({
+                autoSwatches,
+                autoOverrides,
+                baseState: latestProjectStateRef.current ?? makeProjectState(),
+                pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
             })
 
-        if (changed) {
-            setAutoOverrides(cleaned)
-        }
-
-        requestAnimationFrame(() => {
-            const afterState = {
-                ...(latestProjectStateRef.current ?? makeProjectState()),
-                autoOverrides: { ...cleaned },
+            if (preparedCleanup.autoOverridesChanged) {
+                setAutoOverrides(preparedCleanup.autoOverrides)
             }
 
             pushCommit(before, {
-                afterState,
+                afterState: preparedCleanup.projectState,
             })
         })
     }
@@ -10073,24 +10062,21 @@ function PixelEditorFramer({
             isTransparent: transparent,
             isUser: true,
         }
+        const preparedCreate = prepareUserSwatchCreateProjectApplication({
+            swatch: newSwatch,
+            imagePixels,
+            overlayPixels,
+            autoSwatches,
+            userSwatches,
+            autoOverrides,
+            baseState: before,
+        })
 
-        const nextUserSwatches = [...userSwatches, newSwatch]
-
-        setUserSwatches(nextUserSwatches)
-        setSelectedSwatch(id)
-
-        const afterState: ProjectState = {
-            ...before,
-            imagePixels: clonePixelsGrid(imagePixels),
-            overlayPixels: clonePixelsGrid(overlayPixels),
-            autoSwatches: cloneSwatches(autoSwatches),
-            userSwatches: cloneSwatches(nextUserSwatches),
-            selectedSwatch: id,
-            autoOverrides: { ...autoOverrides },
-        }
+        setUserSwatches(preparedCreate.userSwatches)
+        setSelectedSwatch(preparedCreate.selectedSwatch)
 
         pushCommit(before, {
-            afterState,
+            afterState: preparedCreate.projectState,
         })
 
         closeColorModalAfterCreate()

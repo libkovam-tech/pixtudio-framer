@@ -850,6 +850,111 @@ export function prepareStrokePaintSwatch<TSwatch extends PalettePaintSwatchLike>
     }
 }
 
+function arePaletteAutoOverridesEqual<TOverride>(
+    current: PaletteAutoOverridesMap<TOverride> | null | undefined,
+    next: PaletteAutoOverridesMap<TOverride> | null | undefined
+): boolean {
+    const currentOverrides = current || {}
+    const nextOverrides = next || {}
+    const currentKeys = Object.keys(currentOverrides)
+    const nextKeys = Object.keys(nextOverrides)
+
+    return (
+        currentKeys.length === nextKeys.length &&
+        currentKeys.every((key) => {
+            const currentValue = currentOverrides[key]
+            const nextValue = nextOverrides[key]
+            return JSON.stringify(currentValue) === JSON.stringify(nextValue)
+        })
+    )
+}
+
+export function prepareUserSwatchCreateProjectApplication<
+    TSwatch extends EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    swatch: TSwatch
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+    baseState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+}): {
+    userSwatches: TSwatch[]
+    selectedSwatch: PaletteSelection
+    projectState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+} {
+    const userSwatches = [...input.userSwatches, input.swatch]
+    const selectedSwatch = input.swatch.id
+
+    return {
+        userSwatches,
+        selectedSwatch,
+        projectState: {
+            ...input.baseState,
+            imagePixels: clonePixelsGrid(input.imagePixels),
+            overlayPixels: clonePixelsGrid(input.overlayPixels),
+            autoSwatches: cloneSwatches(input.autoSwatches),
+            userSwatches: cloneSwatches(userSwatches),
+            selectedSwatch,
+            autoOverrides: { ...input.autoOverrides },
+        },
+    }
+}
+
+export function preparePaletteSliderCommitCleanup<
+    TSwatch extends EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    autoSwatches: ReadonlyArray<TSwatch>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+    baseState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+    pruneAutoOverrides: (
+        currentAuto: ReadonlyArray<TSwatch>,
+        overrides: EditorCommittedState<
+            TPixel,
+            TSwatch,
+            TImportedPreset
+        >["autoOverrides"]
+    ) => EditorCommittedState<TPixel, TSwatch, TImportedPreset>["autoOverrides"]
+}): {
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+    autoOverridesChanged: boolean
+    projectState: EditorCommittedState<TPixel, TSwatch, TImportedPreset>
+} {
+    const autoOverrides = input.pruneAutoOverrides(
+        input.autoSwatches,
+        input.autoOverrides
+    )
+
+    return {
+        autoOverrides,
+        autoOverridesChanged: !arePaletteAutoOverridesEqual(
+            input.autoOverrides,
+            autoOverrides
+        ),
+        projectState: {
+            ...input.baseState,
+            autoOverrides: { ...autoOverrides },
+        },
+    }
+}
+
 function buildScopedDuplicateRemap<TSwatch extends PalettePaintSwatchLike>(
     swatches: ReadonlyArray<TSwatch>,
     remap: Record<string, string>
