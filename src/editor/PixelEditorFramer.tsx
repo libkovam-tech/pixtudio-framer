@@ -62,7 +62,6 @@ import {
     prepareImportedPalettePresetFromColors,
     prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
-    prepareAutoSwatchExclusionReferenceApplication,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPalettePresetSwatchDeleteApplication,
@@ -5332,6 +5331,21 @@ function PixelEditorFramer({
     const DEFAULT_BRUSH_SIZE = 3
 
     const [brushSize, setBrushSize] = React.useState<number>(DEFAULT_BRUSH_SIZE)
+    const gridSizeDraftRef = React.useRef(gridSize)
+    const paletteCountDraftRef = React.useRef(paletteCount)
+    const brushSizeDraftRef = React.useRef(brushSize)
+
+    React.useEffect(() => {
+        gridSizeDraftRef.current = gridSize
+    }, [gridSize])
+
+    React.useEffect(() => {
+        paletteCountDraftRef.current = paletteCount
+    }, [paletteCount])
+
+    React.useEffect(() => {
+        brushSizeDraftRef.current = brushSize
+    }, [brushSize])
     const viewportRef = React.useRef<HTMLDivElement | null>(null)
 
     const [viewportSize, setViewportSize] = React.useState({ w: 0, h: 0 })
@@ -7001,40 +7015,108 @@ function PixelEditorFramer({
         before: null,
         keyboardActive: false,
     })
+    const pendingGridSliderCommitRef = React.useRef<{
+        before: ProjectState
+        targetGridSize: number
+        raf: number | null
+        attempts: number
+    } | null>(null)
 
-    // S-MOBILE:
     const gridTouchActiveRef = React.useRef(false)
+    const SLIDER_COMMIT_MAX_ATTEMPTS = 60
 
-    function commitGridResizeFromBefore(before: ProjectState) {
+    function pushGridSliderCommitFromBefore(
+        before: ProjectState,
+        targetGridSize: number
+    ): boolean {
+        const baseState = latestProjectStateRef.current ?? makeProjectState()
+        if (baseState.gridSize !== targetGridSize) {
+            return false
+        }
+
         const cleaned = pruneAutoOverridesForCurrentAuto(
-            autoSwatches,
-            autoOverrides
+            baseState.autoSwatches,
+            baseState.autoOverrides
         )
 
-        const prevKeys = Object.keys(autoOverrides || {})
+        const prevKeys = Object.keys(baseState.autoOverrides || {})
         const nextKeys = Object.keys(cleaned || {})
         const changed =
             prevKeys.length !== nextKeys.length ||
             prevKeys.some((k) => {
-                const a = (autoOverrides as any)?.[k]
+                const a = (baseState.autoOverrides as any)?.[k]
                 const b = (cleaned as any)?.[k]
                 return JSON.stringify(a) !== JSON.stringify(b)
             })
+
+        const afterState = {
+            ...baseState,
+            autoOverrides: { ...cleaned },
+        }
+
+        if (isSameProjectState(before, afterState)) {
+            return false
+        }
 
         if (changed) {
             setAutoOverrides(cleaned)
         }
 
-        requestAnimationFrame(() => {
-            const afterState = {
-                ...(latestProjectStateRef.current ?? makeProjectState()),
-                autoOverrides: { ...cleaned },
+        latestProjectStateRef.current = afterState
+        pushCommit(before, {
+            afterState,
+        })
+        return true
+    }
+
+    function schedulePendingGridSliderCommit(pending: {
+        before: ProjectState
+        targetGridSize: number
+        raf: number | null
+        attempts: number
+    }) {
+        pending.raf = requestAnimationFrame(() => {
+            if (pendingGridSliderCommitRef.current !== pending) return
+            pending.raf = null
+
+            if (
+                pushGridSliderCommitFromBefore(
+                    pending.before,
+                    pending.targetGridSize
+                )
+            ) {
+                pendingGridSliderCommitRef.current = null
+                return
             }
 
-            pushCommit(before, {
-                afterState,
-            })
+            pending.attempts += 1
+            if (pending.attempts < SLIDER_COMMIT_MAX_ATTEMPTS) {
+                schedulePendingGridSliderCommit(pending)
+                return
+            }
+
+            pendingGridSliderCommitRef.current = null
+            abortEditorActionTransaction()
         })
+    }
+
+    function commitGridResizeFromBefore(
+        before: ProjectState,
+        targetGridSize: number
+    ) {
+        const existing = pendingGridSliderCommitRef.current
+        if (existing?.raf != null) {
+            cancelAnimationFrame(existing.raf)
+        }
+
+        const pending = {
+            before,
+            targetGridSize,
+            raf: null as number | null,
+            attempts: 0,
+        }
+        pendingGridSliderCommitRef.current = pending
+        schedulePendingGridSliderCommit(pending)
     }
 
     function beginGridSliderTransactionIfNeeded(
@@ -7073,7 +7155,7 @@ function PixelEditorFramer({
         tx.keyboardActive = false
 
         enqueueTxn("gridCommit", () => {
-            commitGridResizeFromBefore(before)
+            commitGridResizeFromBefore(before, gridSizeDraftRef.current)
         })
     }
 
@@ -7096,12 +7178,20 @@ function PixelEditorFramer({
     })
     const pendingPaletteSliderCommitRef = React.useRef<{
         before: ProjectState
+        targetPaletteCount: number
         raf: number | null
         attempts: number
     } | null>(null)
 
-    function pushPaletteSliderCommitFromBefore(before: ProjectState): boolean {
+    function pushPaletteSliderCommitFromBefore(
+        before: ProjectState,
+        targetPaletteCount: number
+    ): boolean {
         const baseState = latestProjectStateRef.current ?? makeProjectState()
+        if (baseState.paletteCount !== targetPaletteCount) {
+            return false
+        }
+
         const preparedCleanup = preparePaletteSliderCommitCleanup({
             autoSwatches: baseState.autoSwatches,
             autoOverrides: baseState.autoOverrides,
@@ -7125,6 +7215,7 @@ function PixelEditorFramer({
 
     function schedulePendingPaletteSliderCommit(pending: {
         before: ProjectState
+        targetPaletteCount: number
         raf: number | null
         attempts: number
     }) {
@@ -7132,13 +7223,18 @@ function PixelEditorFramer({
             if (pendingPaletteSliderCommitRef.current !== pending) return
             pending.raf = null
 
-            if (pushPaletteSliderCommitFromBefore(pending.before)) {
+            if (
+                pushPaletteSliderCommitFromBefore(
+                    pending.before,
+                    pending.targetPaletteCount
+                )
+            ) {
                 pendingPaletteSliderCommitRef.current = null
                 return
             }
 
             pending.attempts += 1
-            if (pending.attempts < 12) {
+            if (pending.attempts < SLIDER_COMMIT_MAX_ATTEMPTS) {
                 schedulePendingPaletteSliderCommit(pending)
                 return
             }
@@ -7148,7 +7244,10 @@ function PixelEditorFramer({
         })
     }
 
-    function commitPruneAutoOverridesAndPush(before: ProjectState) {
+    function commitPruneAutoOverridesAndPush(
+        before: ProjectState,
+        targetPaletteCount: number
+    ) {
         const existing = pendingPaletteSliderCommitRef.current
         if (existing?.raf != null) {
             cancelAnimationFrame(existing.raf)
@@ -7156,6 +7255,7 @@ function PixelEditorFramer({
 
         const pending = {
             before,
+            targetPaletteCount,
             raf: null as number | null,
             attempts: 0,
         }
@@ -7172,13 +7272,18 @@ function PixelEditorFramer({
         }
         pending.raf = null
 
-        if (pushPaletteSliderCommitFromBefore(pending.before)) {
+        if (
+            pushPaletteSliderCommitFromBefore(
+                pending.before,
+                pending.targetPaletteCount
+            )
+        ) {
             pendingPaletteSliderCommitRef.current = null
             return true
         }
 
         pending.attempts += 1
-        if (pending.attempts >= 12) {
+        if (pending.attempts >= SLIDER_COMMIT_MAX_ATTEMPTS) {
             pendingPaletteSliderCommitRef.current = null
             abortEditorActionTransaction()
             return true
@@ -7231,7 +7336,7 @@ function PixelEditorFramer({
         tx.before = null
         tx.keyboardActive = false
 
-        commitPruneAutoOverridesAndPush(before)
+        commitPruneAutoOverridesAndPush(before, paletteCountDraftRef.current)
     }
 
     function abortPaletteSliderTransactionIfNeeded() {
@@ -7287,9 +7392,10 @@ function PixelEditorFramer({
 
         const afterState = {
             ...(latestProjectStateRef.current ?? makeProjectState()),
-            brushSize,
+            brushSize: brushSizeDraftRef.current,
         } as ProjectState & { brushSize?: number }
 
+        latestProjectStateRef.current = afterState as ProjectState
         pushCommit(before, {
             afterState: afterState as ProjectState,
         })
@@ -9840,68 +9946,6 @@ function PixelEditorFramer({
 
         const before = latestProjectStateRef.current ?? makeProjectState()
 
-        if (
-            quantizationProfile.kind === "extract" &&
-            editingSwatchId.startsWith("auto-") &&
-            originalImageData
-        ) {
-            const sourcePixels = pixelizeFromImageDominant(
-                originalImageData,
-                gridSize,
-                16
-            )
-            const preparedReference =
-                prepareAutoSwatchExclusionReferenceApplication({
-                    profile: EXTRACT_QUANTIZATION_PROFILE,
-                    referenceSnapshot: originalImageData,
-                    gridSize,
-                    overlayPixels,
-                    previousSwatches: autoSwatches,
-                    userSwatches,
-                    paletteCountTarget: clamp(
-                        paletteCount,
-                        PALETTE_MIN,
-                        PALETTE_MAX
-                    ),
-                    sourcePixels,
-                    referenceSignature: imageDataSampleSignature,
-                    swatchId: editingSwatchId,
-                    swatchColor: swatch.color,
-                    selectedSwatch,
-                    projectPaletteCount: paletteCount,
-                    brushSize,
-                    showImage,
-                    hasOriginalImageData: hasImportContext,
-                    importedPalettePresets,
-                    hiddenPresetIds,
-                    deletedAutoPaletteColors,
-                    autoOverrides,
-                })
-            if (preparedReference.kind === "ignored") {
-                handleModalCancel()
-                return
-            }
-            const world = preparedReference.world
-            const afterState: ProjectState = preparedReference.projectState
-
-            beginEditorActionTransaction("editor-action", before)
-            setDeletedAutoPaletteColors(
-                preparedReference.deletedAutoPaletteColors
-            )
-            setPaletteTabsState((prev) =>
-                preparePaletteTabWorldCommit({
-                    state: prev,
-                    activeTab: "size",
-                    world,
-                })
-            )
-            applyDerivedWorldSnapshot(world, preparedReference.preferredSwatch)
-            latestProjectStateRef.current = afterState
-            pushCommit(before, { afterState })
-            closeColorModalAfterCreate()
-            return
-        }
-
         const preparedDelete = preparePaletteSwatchDeleteProjectApplication({
             swatchId: editingSwatchId,
             swatchColor: swatch.color,
@@ -11863,12 +11907,13 @@ function PixelEditorFramer({
                                         step={BRUSH_STEP}
                                         value={brushSize}
                                         onChange={(e) => {
-                                            setBrushSize(
-                                                parseInt(
-                                                    e.currentTarget.value,
-                                                    10
-                                                )
+                                            const nextBrushSize = parseInt(
+                                                e.currentTarget.value,
+                                                10
                                             )
+                                            brushSizeDraftRef.current =
+                                                nextBrushSize
+                                            setBrushSize(nextBrushSize)
                                         }}
                                         onKeyDown={(e) => {
                                             if (!isSliderKeyboardDragKey(e.key))
@@ -11886,17 +11931,14 @@ function PixelEditorFramer({
                                             commitBrushSliderTransactionIfNeeded()
                                         }}
                                         onPointerDown={() => {
-                                            if (isMobileUI) return
                                             beginBrushSliderTransactionIfNeeded(
                                                 "pointer"
                                             )
                                         }}
                                         onPointerUp={() => {
-                                            if (isMobileUI) return
                                             commitBrushSliderTransactionIfNeeded()
                                         }}
                                         onPointerCancel={() => {
-                                            if (isMobileUI) return
                                             commitBrushSliderTransactionIfNeeded()
                                         }}
                                         onPointerLeave={() => {
@@ -11925,8 +11967,6 @@ function PixelEditorFramer({
                                             commitBrushSliderTransactionIfNeeded()
                                         }}
                                         onBlur={() => {
-                                            if (isMobileUI) return
-
                                             commitBrushSliderTransactionIfNeeded()
                                         }}
                                         style={
@@ -12054,9 +12094,12 @@ function PixelEditorFramer({
                                     step={1}
                                     value={gridSize}
                                     onChange={(e) => {
-                                        setGridSize(
-                                            parseInt(e.currentTarget.value, 10)
+                                        const nextGridSize = parseInt(
+                                            e.currentTarget.value,
+                                            10
                                         )
+                                        gridSizeDraftRef.current = nextGridSize
+                                        setGridSize(nextGridSize)
                                     }}
                                     onKeyDown={(e) => {
                                         if (!isSliderKeyboardDragKey(e.key))
@@ -12074,23 +12117,19 @@ function PixelEditorFramer({
                                         commitGridSliderTransactionIfNeeded()
                                     }}
                                     onPointerDown={() => {
-                                        if (isMobileUI) return
                                         beginGridSliderTransactionIfNeeded(
                                             "pointer"
                                         )
                                     }}
                                     onPointerUp={() => {
-                                        if (isMobileUI) return
                                         commitGridSliderTransactionIfNeeded()
                                     }}
                                     onPointerCancel={() => {
-                                        if (isMobileUI) return
                                         commitGridSliderTransactionIfNeeded()
                                     }}
-                                    // S-MOBILE:
-                                    // mobile slider history is driven ONLY by touch lifecycle:
-                                    // touchstart = begin, touchend/touchcancel = commit.
-                                    // Pointer and blur paths must stay desktop-only.
+                                    // Touch handlers are a fallback for older
+                                    // touch paths; pointer handlers own the
+                                    // primary slider history lifecycle.
                                     onTouchStart={() => {
                                         gridTouchActiveRef.current = true
                                         beginGridSliderTransactionIfNeeded(
@@ -12118,8 +12157,6 @@ function PixelEditorFramer({
                                     }}
                                     // S-MOBILE-5:
                                     onBlur={() => {
-                                        if (isMobileUI) return
-
                                         commitGridSliderTransactionIfNeeded()
                                     }}
                                     style={
@@ -12258,9 +12295,13 @@ function PixelEditorFramer({
                                     step={1}
                                     value={paletteCount}
                                     onChange={(e) => {
-                                        setPaletteCount(
-                                            parseInt(e.currentTarget.value, 10)
+                                        const nextPaletteCount = parseInt(
+                                            e.currentTarget.value,
+                                            10
                                         )
+                                        paletteCountDraftRef.current =
+                                            nextPaletteCount
+                                        setPaletteCount(nextPaletteCount)
                                     }}
                                     onKeyDown={(e) => {
                                         if (!isSliderKeyboardDragKey(e.key))
@@ -12278,17 +12319,14 @@ function PixelEditorFramer({
                                         commitPaletteSliderTransactionIfNeeded()
                                     }}
                                     onPointerDown={() => {
-                                        if (isMobileUI) return
                                         beginPaletteSliderTransactionIfNeeded(
                                             "pointer"
                                         )
                                     }}
                                     onPointerUp={() => {
-                                        if (isMobileUI) return
                                         commitPaletteSliderTransactionIfNeeded()
                                     }}
                                     onPointerCancel={() => {
-                                        if (isMobileUI) return
                                         commitPaletteSliderTransactionIfNeeded()
                                     }}
                                     onPointerLeave={() => {
@@ -12297,8 +12335,6 @@ function PixelEditorFramer({
                                         // commit must happen only on pointerup / pointercancel / touchend / touchcancel / blur.
                                     }}
                                     onBlur={() => {
-                                        if (isMobileUI) return
-
                                         commitPaletteSliderTransactionIfNeeded()
                                     }}
                                     onTouchStart={() => {
@@ -12349,7 +12385,7 @@ function PixelEditorFramer({
                                 width: "100%",
                             }}
                         >
-                            {/* Палитра на всю ширину блока холста */}
+                            {/* Palette spans the full width of the canvas block. */}
                             <div
                                 style={{
                                     width: "100%",

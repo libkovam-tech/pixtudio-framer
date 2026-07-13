@@ -1778,6 +1778,52 @@ describe("palette state", () => {
         })
     })
 
+    it("remaps deleted auto swatch pixels to the nearest remaining auto swatch", () => {
+        const result = prepareSwatchDelete({
+            swatchId: "auto-1",
+            imagePixels: [
+                ["auto-1", "auto-0"],
+                ["auto-2", "auto-1"],
+            ],
+            overlayPixels: [["auto-1", null]],
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#000000",
+                    isTransparent: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#C83028",
+                    isTransparent: false,
+                },
+                {
+                    id: "auto-2",
+                    color: "#D04438",
+                    isTransparent: false,
+                },
+            ],
+            userSwatches: [],
+            selectedSwatch: "auto-1",
+            autoOverrides: {},
+        })
+
+        expect(result.removed).toBe(true)
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+            "auto-2",
+        ])
+        expect(result.autoSwatches.map((swatch) => swatch.color)).not.toContain(
+            "#C83028"
+        )
+        expect(result.imagePixels).toEqual([
+            ["auto-2", "auto-0"],
+            ["auto-2", "auto-2"],
+        ])
+        expect(result.overlayPixels).toEqual([["auto-2", null]])
+        expect(result.selectedSwatch).toBe("auto-0")
+    })
+
     it("prepares swatch delete project applications with committed state", () => {
         const baseState = {
             gridSize: 2,
@@ -1832,8 +1878,8 @@ describe("palette state", () => {
         expect(result.deletedAutoPaletteColors).toEqual(["#FFFFFF"])
         expect(result.projectState).toMatchObject({
             ...baseState,
-            imagePixels: [[null, "auto-0"]],
-            overlayPixels: [[null, null]],
+            imagePixels: [["auto-0", "auto-0"]],
+            overlayPixels: [[null, "auto-0"]],
             autoSwatches: [
                 {
                     id: "auto-0",

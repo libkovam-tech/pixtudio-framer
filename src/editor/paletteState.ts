@@ -1055,8 +1055,62 @@ export function removePalettePixelValueFromGrid<
     return changed ? out : grid
 }
 
+function findNearestAutoSwatchId<TSwatch extends PalettePaintSwatchLike>(input: {
+    deletedSwatch: TSwatch | undefined
+    targetAutoSwatches: ReadonlyArray<TSwatch>
+}): string | null {
+    if (!input.deletedSwatch || input.deletedSwatch.isTransparent) return null
+
+    const deletedRgb = parseDeletedAutoColorToRgb(
+        normalizeSwatchColor(input.deletedSwatch.color)
+    )
+    if (!deletedRgb) return null
+
+    const deletedLab = rgbToOklabColor(deletedRgb)
+    let bestId: string | null = null
+    let bestDistance = Number.POSITIVE_INFINITY
+
+    for (const swatch of input.targetAutoSwatches) {
+        if (!swatch.id || swatch.isTransparent) continue
+        const rgb = parseDeletedAutoColorToRgb(
+            normalizeSwatchColor(swatch.color)
+        )
+        if (!rgb) continue
+
+        const distance = oklabDistance(deletedLab, rgbToOklabColor(rgb))
+        if (distance < bestDistance) {
+            bestDistance = distance
+            bestId = String(swatch.id)
+        }
+    }
+
+    return bestId
+}
+
+function remapPalettePixelValueInGrid<TPixel extends string | null>(
+    grid: TPixel[][],
+    fromSwatchId: string,
+    toSwatchId: string
+): TPixel[][] {
+    let changed = false
+    const out = grid.map((row) => {
+        let rowChanged = false
+        const nextRow = row.map((value) => {
+            if (value === fromSwatchId) {
+                rowChanged = true
+                return toSwatchId as TPixel
+            }
+            return value
+        })
+        if (rowChanged) changed = true
+        return rowChanged ? nextRow : row
+    })
+
+    return changed ? out : grid
+}
+
 export function prepareSwatchDelete<
-    TSwatch extends PaletteSwatchLike & { id: string },
+    TSwatch extends PalettePaintSwatchLike & { id: string },
     TPixel extends string | null,
     TOverride,
 >(input: {
@@ -1102,14 +1156,27 @@ export function prepareSwatchDelete<
         }
     }
 
-    const nextImage = removePalettePixelValueFromGrid(
-        input.imagePixels,
-        input.swatchId
-    )
-    const nextOverlay = removePalettePixelValueFromGrid(
-        input.overlayPixels,
-        input.swatchId
-    )
+    const deletedAutoSwatch = input.swatchId.startsWith("auto-")
+        ? input.autoSwatches.find((swatch) => swatch.id === input.swatchId)
+        : undefined
+    const autoRemapTarget = findNearestAutoSwatchId({
+        deletedSwatch: deletedAutoSwatch,
+        targetAutoSwatches: nextAuto,
+    })
+    const nextImage = autoRemapTarget
+        ? remapPalettePixelValueInGrid(
+              input.imagePixels,
+              input.swatchId,
+              autoRemapTarget
+          )
+        : removePalettePixelValueFromGrid(input.imagePixels, input.swatchId)
+    const nextOverlay = autoRemapTarget
+        ? remapPalettePixelValueInGrid(
+              input.overlayPixels,
+              input.swatchId,
+              autoRemapTarget
+          )
+        : removePalettePixelValueFromGrid(input.overlayPixels, input.swatchId)
     const nextSelected =
         input.selectedSwatch === input.swatchId
             ? nextAuto[0]?.id ?? nextUser[0]?.id ?? "transparent"
@@ -1133,7 +1200,7 @@ export function prepareSwatchDelete<
 }
 
 export function preparePaletteSwatchDeleteProjectApplication<
-    TSwatch extends PaletteSwatchLike & EditorHistorySwatch,
+    TSwatch extends PalettePaintSwatchLike & EditorHistorySwatch,
     TPixel extends string | null,
     TImportedPreset extends ImportedPalettePresetForHistory,
 >(input: {
