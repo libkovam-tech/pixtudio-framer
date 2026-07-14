@@ -71,7 +71,11 @@ import {
     preparePaletteTabReferenceWorld,
     prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
-import { sortSwatchesForUI } from "./paletteSwatchSorting.ts"
+import { PalettePanel } from "./PalettePanel.tsx"
+import {
+    buildPalettePresentationModel,
+    type FixedPaletteProfile,
+} from "./palettePresentation.ts"
 import {
     collapseDuplicateSwatchesAndRemapPixels,
     computePaletteCountFromSwatches,
@@ -166,7 +170,6 @@ import {
     RedoIcon,
     ZoomOutIcon,
     ZoomInIcon,
-    AddNewSwatch,
     PipetteIcon,
     HandIconOn,
     HandIconOff,
@@ -188,7 +191,6 @@ import {
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 const CANVAS_SIZE = 512
-const TRANSPARENT_LABEL = "Transparent"
 const TRANSPARENT_PIXEL = "__PX_TRANSPARENT__" as const
 
 const MODAL_OVERLAY_STYLE: React.CSSProperties = {
@@ -935,7 +937,7 @@ function bakeRef512InChineseRoom(
 }
 
 type PixelValue = SwatchId | null | typeof TRANSPARENT_PIXEL
-type FixedQuantizationProfile = Extract<QuantizationProfile, { kind: "fixed" }>
+type FixedQuantizationProfile = FixedPaletteProfile
 
 type ImportedPalettePreset = {
     id: string
@@ -8089,17 +8091,27 @@ function PixelEditorFramer({
         ? TRANSPARENT_PIXEL
         : (selectedSwatch as SwatchId)
 
-    // Main palette: auto swatches only, without transparent.
-    const sortedAutoSwatchesForUI = React.useMemo(() => {
-        return sortSwatchesForUI(autoSwatches).filter(
-            (s) => !s.isTransparent && s.id !== "transparent"
-        )
-    }, [autoSwatches])
-
-    // User paint swatches live in a separate block after the add button.
-    const sortedUserSwatchesForUI = React.useMemo(() => {
-        return sortSwatchesForUI(userSwatches)
-    }, [userSwatches])
+    const palettePresentation = React.useMemo(
+        () =>
+            buildPalettePresentationModel({
+                activeTab: paletteTabsState.activeTab,
+                quantizationProfile,
+                activePresetButtonId: activePresetButton,
+                hiddenPresetIds,
+                autoSwatches,
+                userSwatches,
+                importedPalettePresets,
+            }),
+        [
+            activePresetButton,
+            autoSwatches,
+            hiddenPresetIds,
+            importedPalettePresets,
+            paletteTabsState.activeTab,
+            quantizationProfile,
+            userSwatches,
+        ]
+    )
 
     const swatchById = React.useMemo(() => {
         const m = new Map<SwatchId, Swatch>()
@@ -10582,281 +10594,31 @@ function PixelEditorFramer({
         setHexDraft(canon)
     }, [pendingColor, pendingTransparent])
 
-    // ------------------- PALETTE LAYOUT ORDER -------------------
-    // 1) autoSwatches
-    // 2) transparent tool
-    // 3) add button
-    // 4) userSwatches
-
-    const SWATCH_PX = 26
-    const SWATCH_GAP = 10
-    const ACTIVE_SWATCH_SCALE_MOBILE = 1.3
-    const ACTIVE_SWATCH_SCALE_DESKTOP = 1.4
-
-    const renderSwatchButton = (sw: Swatch) => {
-        const isActive = selectedSwatch === sw.id
-        const isMobileActiveSwatch = isMobileUI && isActive
-        const isDesktopActiveSwatch = !isMobileUI && isActive
-        const swatchTransform = isMobileActiveSwatch
-            ? `scale(${ACTIVE_SWATCH_SCALE_MOBILE})`
-            : isDesktopActiveSwatch
-              ? `scale(${ACTIVE_SWATCH_SCALE_DESKTOP})`
-              : "scale(1)"
-
-        let longPressTimeout: number | null = null
-        const cancelLongPress = () => {
-            if (longPressTimeout) {
-                clearTimeout(longPressTimeout)
-                longPressTimeout = null
-            }
-        }
-
-        return (
-            <button
-                key={sw.id}
-                type="button"
-                onClick={() => setSelectedSwatch(sw.id)}
-                onContextMenu={(e) => {
-                    e.preventDefault()
-                    openColorEditor(sw.id)
-                }}
-                onPointerDown={(e: any) => {
-                    if (e.pointerType === "touch") {
-                        longPressTimeout = window.setTimeout(() => {
-                            openColorEditor(sw.id)
-                        }, 600)
-                    }
-                }}
-                onPointerUp={cancelLongPress}
-                onPointerLeave={cancelLongPress}
-                onPointerCancel={cancelLongPress}
-                title={
-                    sw.isTransparent
-                        ? `${TRANSPARENT_LABEL} Swatch`
-                        : sw.color || ""
-                }
-                style={{
-                    width: SWATCH_PX,
-                    height: SWATCH_PX,
-                    borderRadius: 0,
-                    padding: 0,
-                    cursor: "pointer",
-                    background: sw.isTransparent
-                        ? checkerBackground
-                        : sw.color || "",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxSizing: "border-box",
-                    border: isActive
-                        ? `2px solid ${pixtudioInk(0.95)}`
-                        : `1px solid ${pixtudioInk(0.25)}`,
-                    transform: swatchTransform,
-                    transformOrigin: "center",
-                    transition:
-                        "transform 120ms ease, box-shadow 120ms ease",
-                    position: "relative",
-                    zIndex:
-                        isMobileActiveSwatch || isDesktopActiveSwatch ? 2 : 1,
-                }}
-            />
-        )
+    const handlePaletteSliderChange = (nextPaletteCount: number) => {
+        paletteCountDraftRef.current = nextPaletteCount
+        setPaletteCount(nextPaletteCount)
     }
 
-    const renderTransparentSwatchButton = () => {
-        const isTransparentSelected = selectedSwatch === "transparent"
-        const isMobileActiveTransparent =
-            isMobileUI && isTransparentSelected
-        const isDesktopActiveTransparent =
-            !isMobileUI && isTransparentSelected
-        const transparentTransform = isMobileActiveTransparent
-            ? `scale(${ACTIVE_SWATCH_SCALE_MOBILE})`
-            : isDesktopActiveTransparent
-              ? `scale(${ACTIVE_SWATCH_SCALE_DESKTOP})`
-              : "scale(1)"
-
-        return (
-            <button
-                type="button"
-                onClick={() => setSelectedSwatch("transparent")}
-                title={TRANSPARENT_LABEL}
-                style={{
-                    width: SWATCH_PX,
-                    height: SWATCH_PX,
-                    borderRadius: 0,
-                    padding: 0,
-                    cursor: "pointer",
-                    background: checkerBackground,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: isTransparentSelected
-                        ? "2px solid rgba(255,255,255,0.95)"
-                        : "2px solid rgba(255,255,255,0.25)",
-                    boxShadow: isTransparentSelected
-                        ? `0 0 0 2px ${pixtudioInk(0.6)}`
-                        : `0 0 0 2px ${pixtudioInk(0.35)}`,
-                    boxSizing: "border-box",
-                    transform: transparentTransform,
-                    transformOrigin: "center",
-                    transition:
-                        "transform 120ms ease, box-shadow 120ms ease",
-                    position: "relative",
-                    zIndex:
-                        isMobileActiveTransparent ||
-                        isDesktopActiveTransparent
-                            ? 2
-                            : 1,
-                }}
-            />
-        )
+    const handlePaletteSliderKeyDown = (key: string) => {
+        if (!isSliderKeyboardDragKey(key)) return
+        beginPaletteSliderTransactionIfNeeded("keyboard")
     }
 
-    const builtinPresetProfiles: FixedQuantizationProfile[] = [
-        QUANTIZATION_PROFILES.sunset,
-        QUANTIZATION_PROFILES.grayscale,
-        QUANTIZATION_PROFILES.bw,
-    ]
-    const visibleBuiltinPresetProfiles = builtinPresetProfiles.filter(
-        (profile) => !hiddenPresetIds.includes(profile.id)
-    )
-
-    const shouldShowPresetSwatches =
-        paletteTabsState.activeTab === "presets" &&
-        quantizationProfile.kind === "fixed" &&
-        activePresetButton === quantizationProfile.id
-
-    const getPresetButtonLabel = (profile: FixedQuantizationProfile) =>
-        profile.id === "black-white-2" ? "BLACK/WHITE" : profile.name
-
-    const presetButtonStyle = (
-        label: string,
-        secondary = false,
-        active = false
-    ): React.CSSProperties => {
-        const wide = label.length >= 10
-        return {
-            position: "relative",
-            width: isMobileUI
-                ? secondary
-                    ? 123
-                    : wide
-                      ? 144
-                      : 123
-                : secondary
-                  ? 145
-                  : wide
-                    ? 168
-                    : 147,
-            height: isMobileUI ? 35 : 43,
-            border: `2px solid ${PIXTUDIO_INK}`,
-            borderRadius: 0,
-            background: secondary ? PIXTUDIO_INK : active ? "#FFFFFF" : bg,
-            backgroundColor: secondary
-                ? PIXTUDIO_INK
-                : active
-                  ? "#FFFFFF"
-                  : bg,
-            color: secondary ? "#FFFFFF" : PIXTUDIO_INK,
-            fontWeight: 900,
-            fontSize: isMobileUI ? 12 : 15,
-            letterSpacing: 0,
-            cursor: "pointer",
-            boxSizing: "border-box",
-            padding: 0,
-            overflow: "hidden",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-        }
+    const handlePaletteSliderKeyUp = () => {
+        if (!paletteSliderTxRef.current.keyboardActive) return
+        commitPaletteSliderTransactionIfNeeded()
     }
 
-    const presetButtonTextStyle = (
-        hasDelete: boolean
-    ): React.CSSProperties => ({
-        position: "absolute",
-        left: 17,
-        right: hasDelete ? 32 : 17,
-        top: "50%",
-        transform: "translateY(-50%)",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        textAlign: "center",
-        pointerEvents: "none",
-    })
-
-    const presetDeleteButtonStyle: React.CSSProperties = {
-        position: "absolute",
-        right: 0,
-        top: 0,
-        width: "17%",
-        height: "100%",
-        border: "none",
-        background: "transparent",
-        color: PIXTUDIO_INK,
-        cursor: "pointer",
-        padding: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: isMobileUI ? 13 : 16,
-        fontWeight: 900,
-        lineHeight: 1,
+    const handlePaletteSliderTouchStart = () => {
+        paletteTouchActiveRef.current = true
+        beginPaletteSliderTransactionIfNeeded("pointer")
     }
 
-    const renderPresetButton = (profile: FixedQuantizationProfile) => {
-        const active = activePresetButton === profile.id
-        const label = getPresetButtonLabel(profile)
+    const handlePaletteSliderTouchEnd = () => {
+        if (!paletteTouchActiveRef.current) return
 
-        return (
-            <button
-                key={profile.id}
-                type="button"
-                onClick={() => applyFixedPalettePreset(profile)}
-                className="pxUiAnim"
-                title={profile.name}
-                style={presetButtonStyle(label, false, active)}
-            >
-                <span style={presetButtonTextStyle(true)}>{label}</span>
-                <span
-                    role="button"
-                    tabIndex={-1}
-                    aria-label={`Delete ${profile.name} preset`}
-                    title={`Delete ${profile.name}`}
-                    onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        deletePalettePreset(profile.id)
-                    }}
-                    style={presetDeleteButtonStyle}
-                >
-                    {"\u00d7"}
-                </span>
-            </button>
-        )
-    }
-
-    const renderLoadPaletteButton = () => {
-        const label = "Load Palette"
-
-        return (
-            <button
-                type="button"
-                onClick={openPalettePresetFileDialog}
-                className="pxUiAnim"
-                style={presetButtonStyle(label, true)}
-            >
-                <span
-                    style={{
-                        ...presetButtonTextStyle(false),
-                        color: "#FFFFFF",
-                    }}
-                >
-                    {label}
-                </span>
-            </button>
-        )
+        paletteTouchActiveRef.current = false
+        commitPaletteSliderTransactionIfNeeded()
     }
 
     const renderPipetteHoverCell = () => {
@@ -11776,399 +11538,73 @@ function PixelEditorFramer({
                             </div>
                         </div>
 
-                        {/* Palette tabs */}
-                        <div
-                            style={{
-                                marginTop: isMobileUI ? 18 : 30,
-                                opacity: overlayMode ? 0.5 : 1,
-                                pointerEvents: overlayMode
-                                    ? "none"
-                                    : ("auto" as any),
+                        <PalettePanel
+                            activeTab={paletteTabsState.activeTab}
+                            activePresetButtonId={activePresetButton}
+                            autoSwatches={
+                                palettePresentation.sortedAutoSwatchesForUI
+                            }
+                            bg={bg}
+                            checkerBackground={checkerBackground}
+                            disabled={!!overlayMode}
+                            importedPresetProfiles={
+                                palettePresentation.importedPresetProfiles
+                            }
+                            isMobileUI={isMobileUI}
+                            paletteCount={paletteCount}
+                            paletteCountActual={paletteCountActual}
+                            paletteMax={PALETTE_MAX}
+                            paletteMin={PALETTE_MIN}
+                            rangeStyleBase={rangeStyleBase}
+                            rangeTrackStyle={rangeTrackStyle}
+                            selectedSwatch={selectedSwatch}
+                            shouldShowPresetSwatches={
+                                palettePresentation.shouldShowPresetSwatches
+                            }
+                            trackWrap={trackWrap}
+                            userSwatches={
+                                palettePresentation.sortedUserSwatchesForUI
+                            }
+                            visibleBuiltinPresetProfiles={
+                                palettePresentation.visibleBuiltinPresetProfiles
+                            }
+                            onAddSwatch={handleAddSwatchClick}
+                            onApplyPreset={applyFixedPalettePreset}
+                            onDeletePreset={deletePalettePreset}
+                            onOpenColorEditor={openColorEditor}
+                            onOpenPalettePresetFileDialog={
+                                openPalettePresetFileDialog
+                            }
+                            onPaletteSliderBlur={
+                                commitPaletteSliderTransactionIfNeeded
+                            }
+                            onPaletteSliderChange={handlePaletteSliderChange}
+                            onPaletteSliderKeyDown={
+                                handlePaletteSliderKeyDown
+                            }
+                            onPaletteSliderKeyUp={handlePaletteSliderKeyUp}
+                            onPaletteSliderPointerCancel={
+                                commitPaletteSliderTransactionIfNeeded
+                            }
+                            onPaletteSliderPointerDown={() =>
+                                beginPaletteSliderTransactionIfNeeded("pointer")
+                            }
+                            onPaletteSliderPointerLeave={() => {
+                                // Drag may temporarily leave range bounds; commit belongs to release/cancel/blur.
                             }}
-                        >
-                            <div
-                                style={{
-                                    position: "relative",
-                                    display: "grid",
-                                    gridTemplateColumns: "1fr 1fr",
-                                    alignItems: "center",
-                                    height: isMobileUI ? 22 : 30,
-                                }}
-                            >
-                                <div
-                                    aria-hidden="true"
-                                    style={{
-                                        position: "absolute",
-                                        left: "50%",
-                                        top: "50%",
-                                        transform: "translate(-50%, -50%)",
-                                        width: 3,
-                                        height: isMobileUI ? 18 : 24,
-                                        background: "rgba(30, 43, 47, 0.2)",
-                                    }}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => switchPaletteTab("size")}
-                                    style={{
-                                        height: "100%",
-                                        background: "transparent",
-                                        border: "none",
-                                        color:
-                                            paletteTabsState.activeTab ===
-                                            "size"
-                                                ? PIXTUDIO_INK
-                                                : "rgba(30, 43, 47, 0.32)",
-                                        fontWeight: 800,
-                                        fontSize: isMobileUI ? 13 : 20,
-                                        lineHeight: 1,
-                                        letterSpacing: 0.4,
-                                        textAlign: "left",
-                                        padding: 0,
-                                        cursor: "pointer",
-                                        boxSizing: "border-box",
-                                    }}
-                                >
-                                    AUTO PALETTE{" "}
-                                    <span style={{ fontWeight: 500 }}>
-                                        {paletteCountActual} colors
-                                    </span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => switchPaletteTab("presets")}
-                                    style={{
-                                        height: "100%",
-                                        background: "transparent",
-                                        border: "none",
-                                        color:
-                                            paletteTabsState.activeTab ===
-                                            "presets"
-                                                ? PIXTUDIO_INK
-                                                : "rgba(30, 43, 47, 0.32)",
-                                        fontWeight: 800,
-                                        fontSize: isMobileUI ? 13 : 20,
-                                        lineHeight: 1,
-                                        letterSpacing: 0.4,
-                                        textAlign: "left",
-                                        padding: isMobileUI
-                                            ? "0 10px"
-                                            : "0 0 0 44px",
-                                        cursor: "pointer",
-                                        boxSizing: "border-box",
-                                    }}
-                                >
-                                    PALETTE PRESETS
-                                </button>
-                            </div>
-
-                            <div
-                                style={{
-                                    minHeight: isMobileUI ? 126 : 164,
-                                    padding: 0,
-                                    boxSizing: "border-box",
-                                }}
-                            >
-                                {paletteTabsState.activeTab === "size" ? (
-                                    <>
-                        {/* PALETTE SIZE (real slider) */}
-                        <div style={{ marginBottom: 14 }}>
-                            <div
-                                style={{
-                                    display: "none",
-                                    alignItems: "baseline",
-                                }}
-                            >
-                                <div style={labelStyle}>PALETTE SIZE:</div>
-                                <div style={subLabelStyle}>
-                                    {paletteCountActual} colors
-                                </div>
-                            </div>
-
-                            <div style={trackWrap}>
-                                <input
-                                    type="range"
-                                    className="pxRange"
-                                    min={PALETTE_MIN}
-                                    max={PALETTE_MAX}
-                                    step={1}
-                                    value={paletteCount}
-                                    onChange={(e) => {
-                                        const nextPaletteCount = parseInt(
-                                            e.currentTarget.value,
-                                            10
-                                        )
-                                        paletteCountDraftRef.current =
-                                            nextPaletteCount
-                                        setPaletteCount(nextPaletteCount)
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (!isSliderKeyboardDragKey(e.key))
-                                            return
-                                        beginPaletteSliderTransactionIfNeeded(
-                                            "keyboard"
-                                        )
-                                    }}
-                                    onKeyUp={() => {
-                                        if (
-                                            !paletteSliderTxRef.current
-                                                .keyboardActive
-                                        )
-                                            return
-                                        commitPaletteSliderTransactionIfNeeded()
-                                    }}
-                                    onPointerDown={() => {
-                                        beginPaletteSliderTransactionIfNeeded(
-                                            "pointer"
-                                        )
-                                    }}
-                                    onPointerUp={() => {
-                                        commitPaletteSliderTransactionIfNeeded()
-                                    }}
-                                    onPointerCancel={() => {
-                                        commitPaletteSliderTransactionIfNeeded()
-                                    }}
-                                    onPointerLeave={() => {
-                                        // no-op:
-                                        // drag may temporarily leave range bounds;
-                                        // commit must happen only on pointerup / pointercancel / touchend / touchcancel / blur.
-                                    }}
-                                    onBlur={() => {
-                                        commitPaletteSliderTransactionIfNeeded()
-                                    }}
-                                    onTouchStart={() => {
-                                        paletteTouchActiveRef.current = true
-                                        beginPaletteSliderTransactionIfNeeded(
-                                            "pointer"
-                                        )
-                                    }}
-                                    onTouchEnd={() => {
-                                        if (!paletteTouchActiveRef.current)
-                                            return
-
-                                        paletteTouchActiveRef.current = false
-                                        commitPaletteSliderTransactionIfNeeded()
-                                    }}
-                                    onTouchCancel={() => {
-                                        if (!paletteTouchActiveRef.current)
-                                            return
-
-                                        paletteTouchActiveRef.current = false
-                                        commitPaletteSliderTransactionIfNeeded()
-                                    }}
-                                    style={
-                                        {
-                                            ...rangeStyleBase,
-                                            ...rangeTrackStyle(
-                                                paletteCount,
-                                                PALETTE_MIN,
-                                                PALETTE_MAX,
-                                                "#d58a1c"
-                                            ),
-                                            "--px-thumb-color": "#d58a1c",
-                                        } as React.CSSProperties
-                                    }
-                                    disabled={!!overlayMode}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Palette row (palette full width + Clear under palette) */}
-                        <div
-                            style={{
-                                marginTop: 6,
-                                opacity: overlayMode ? 0.5 : 1,
-                                pointerEvents: overlayMode
-                                    ? "none"
-                                    : ("auto" as any),
-                                width: "100%",
-                            }}
-                        >
-                            {/* Palette spans the full width of the canvas block. */}
-                            <div
-                                style={{
-                                    width: "100%",
-                                    display: "grid",
-                                    gridTemplateColumns: `repeat(auto-fill, ${SWATCH_PX}px)`,
-                                    gap: SWATCH_GAP,
-                                    alignItems: "start",
-                                    justifyContent: "start",
-                                }}
-                            >
-                                {/* swatches (sorted for UI) */}
-                                {sortedAutoSwatchesForUI.map(
-                                    renderSwatchButton
-                                )}
-
-                                {/* 2) transparent tool */}
-                                {(() => {
-                                    const isTransparentSelected =
-                                        selectedSwatch === "transparent"
-                                    const isMobileActiveTransparent =
-                                        isMobileUI && isTransparentSelected
-                                    const isDesktopActiveTransparent =
-                                        !isMobileUI && isTransparentSelected
-                                    const transparentTransform =
-                                        isMobileActiveTransparent
-                                            ? `scale(${ACTIVE_SWATCH_SCALE_MOBILE})`
-                                            : isDesktopActiveTransparent
-                                              ? `scale(${ACTIVE_SWATCH_SCALE_DESKTOP})`
-                                              : "scale(1)"
-
-                                    return (
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setSelectedSwatch("transparent")
-                                            }
-                                            title={TRANSPARENT_LABEL}
-                                            style={{
-                                                width: SWATCH_PX,
-                                                height: SWATCH_PX,
-                                                borderRadius: 0,
-                                                padding: 0,
-                                                cursor: "pointer",
-                                                background: checkerBackground,
-                                                display: "inline-flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                border: isTransparentSelected
-                                                    ? "2px solid rgba(255,255,255,0.95)"
-                                                    : "2px solid rgba(255,255,255,0.25)",
-                                                boxShadow: isTransparentSelected
-                                                    ? `0 0 0 2px ${pixtudioInk(0.6)}`
-                                                    : `0 0 0 2px ${pixtudioInk(0.35)}`,
-                                                boxSizing: "border-box",
-                                                transform:
-                                                    transparentTransform,
-                                                transformOrigin: "center",
-                                                transition:
-                                                    "transform 120ms ease, box-shadow 120ms ease",
-                                                position: "relative",
-                                                zIndex:
-                                                    isMobileActiveTransparent ||
-                                                    isDesktopActiveTransparent
-                                                        ? 2
-                                                        : 1,
-                                            }}
-                                        />
-                                    )
-                                })()}
-
-                                {/* 3) add button INSIDE grid (после прозрачности) */}
-                                <button
-                                    type="button"
-                                    onClick={handleAddSwatchClick}
-                                    className="pxUiAnim"
-                                    title="Add swatch"
-                                    style={{
-                                        width: SWATCH_PX,
-                                        height: SWATCH_PX,
-                                        padding: 0,
-                                        border: "none",
-                                        background: "transparent",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        userSelect: "none",
-                                        cursor: "pointer",
-                                    }}
-                                >
-                                    <AddNewSwatch size={SWATCH_PX} />
-                                </button>
-
-                                {/* 4) user swatches */}
-                                {sortedUserSwatchesForUI.map(
-                                    renderSwatchButton
-                                )}
-                            </div>
-
-                            {/* Clear под палитрой */}
-                            <div style={{ marginTop: 12, width: "100%" }} />
-                        </div>
-                                    </>
-                                ) : (
-                                    <div
-                                        style={{
-                                            minHeight: isMobileUI ? 112 : 132,
-                                            display: "flex",
-                                            flexDirection: "column",
-                                            alignItems: "center",
-                                            justifyContent: "flex-start",
-                                            gap: isMobileUI ? 14 : 28,
-                                            paddingTop: 15,
-                                            boxSizing: "border-box",
-                                        }}
-                                    >
-                                        <div
-                                            style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                flexWrap: "wrap",
-                                                columnGap: isMobileUI
-                                                    ? 10
-                                                    : 28,
-                                                rowGap: isMobileUI ? 12 : 26,
-                                                width: "100%",
-                                            }}
-                                        >
-                                            {visibleBuiltinPresetProfiles.map(
-                                                renderPresetButton
-                                            )}
-                                            {importedPalettePresets.map(
-                                                (preset) =>
-                                                    renderPresetButton(
-                                                        preset.profile
-                                                    )
-                                            )}
-                                            {renderLoadPaletteButton()}
-                                        </div>
-
-                                        <div
-                                            style={{
-                                                width: "100%",
-                                                display: "grid",
-                                                gridTemplateColumns: `repeat(auto-fill, ${SWATCH_PX}px)`,
-                                                gap: SWATCH_GAP,
-                                                alignItems: "start",
-                                                justifyContent: "start",
-                                            }}
-                                        >
-                                            {shouldShowPresetSwatches &&
-                                                sortedAutoSwatchesForUI.map(
-                                                    renderSwatchButton
-                                                )}
-                                            {renderTransparentSwatchButton()}
-                                            <button
-                                                type="button"
-                                                onClick={handleAddSwatchClick}
-                                                className="pxUiAnim"
-                                                title="Add swatch"
-                                                style={{
-                                                    width: SWATCH_PX,
-                                                    height: SWATCH_PX,
-                                                    padding: 0,
-                                                    border: "none",
-                                                    background: "transparent",
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    userSelect: "none",
-                                                    cursor: "pointer",
-                                                }}
-                                            >
-                                                <AddNewSwatch size={SWATCH_PX} />
-                                            </button>
-                                            {sortedUserSwatchesForUI.map(
-                                                renderSwatchButton
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                            onPaletteSliderPointerUp={
+                                commitPaletteSliderTransactionIfNeeded
+                            }
+                            onPaletteSliderTouchCancel={
+                                handlePaletteSliderTouchEnd
+                            }
+                            onPaletteSliderTouchEnd={handlePaletteSliderTouchEnd}
+                            onPaletteSliderTouchStart={
+                                handlePaletteSliderTouchStart
+                            }
+                            onSelectSwatch={setSelectedSwatch}
+                            onSwitchPaletteTab={switchPaletteTab}
+                        />
                     </div>
                 </div>
 
