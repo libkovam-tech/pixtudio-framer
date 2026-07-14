@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
+    ensureActiveImportedPalettePresetRegistered,
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
     makeImportedPalettePreset,
@@ -64,6 +65,22 @@ describe("palette preset extension", () => {
             name: profile.name,
             profile,
         })
+    })
+
+    it("ensures an active imported fixed profile has a registry preset", () => {
+        expect(
+            ensureActiveImportedPalettePresetRegistered([], profile)
+        ).toEqual([makeImportedPalettePreset(profile)])
+    })
+
+    it("does not add registry presets for builtin fixed profiles", () => {
+        expect(
+            ensureActiveImportedPalettePresetRegistered([], {
+                ...profile,
+                id: "builtin-demo",
+                source: "builtin",
+            })
+        ).toEqual([])
     })
 
     it("prepares imported palette presets from color lists", () => {

@@ -1480,6 +1480,19 @@ export function upsertImportedPalettePreset<
         : [...registry, preset]
 }
 
+export function ensureActiveImportedPalettePresetRegistered<
+    TPreset extends ImportedPalettePresetRecord,
+>(
+    registry: ReadonlyArray<TPreset>,
+    profile: QuantizationProfile
+): TPreset[] {
+    if (profile.kind !== "fixed" || profile.source !== "imported") {
+        return registry.slice()
+    }
+
+    return upsertImportedPalettePreset(registry, profile)
+}
+
 export function extendFixedPaletteProfile<
     T extends EditableFixedPaletteProfile,
 >(

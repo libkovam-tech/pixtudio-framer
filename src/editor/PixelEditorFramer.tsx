@@ -57,6 +57,7 @@ import {
 } from "./saveLoadResult.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
+    ensureActiveImportedPalettePresetRegistered,
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
     prepareImportedPalettePresetFromColors,
@@ -5443,6 +5444,11 @@ function PixelEditorFramer({
         importedPresetRegistry = importedPalettePresets
     ) {
         const before = latestProjectStateRef.current ?? makeProjectState()
+        const effectiveImportedPresetRegistry =
+            ensureActiveImportedPalettePresetRegistered(
+                importedPresetRegistry,
+                profile
+            )
         paletteUndoTrace("applyFixedPalettePreset:start", {
             profile: quantizationProfileTraceSummary(profile),
             activeTab: paletteTabsState.activeTab,
@@ -5472,7 +5478,7 @@ function PixelEditorFramer({
                 brushSize,
                 showImage,
                 hasOriginalImageData: hasImportContext,
-                importedPalettePresets: importedPresetRegistry,
+                importedPalettePresets: effectiveImportedPresetRegistry,
                 hiddenPresetIds,
                 deletedAutoPaletteColors,
                 autoOverrides,
@@ -5501,6 +5507,7 @@ function PixelEditorFramer({
 
             beginEditorActionTransaction("palette-preset-apply", before)
             setQuantizationProfile(profile)
+            setImportedPalettePresets(effectiveImportedPresetRegistry)
             setActivePresetButton(profile.id)
             setPaletteTabsState((prev) =>
                 preparePaletteTabWorldCommit({
@@ -5534,6 +5541,7 @@ function PixelEditorFramer({
         const world = prepared.world
         const afterState = prepared.projectState
         beginEditorActionTransaction("palette-preset-apply", before)
+        setImportedPalettePresets(effectiveImportedPresetRegistry)
         setActivePresetButton(profile.id)
         setPaletteTabsState((prev) =>
             preparePaletteTabWorldCommit({
@@ -5548,7 +5556,11 @@ function PixelEditorFramer({
             overlayNonNull: countNonNullCells(world.overlayPixels),
             autoSwatches: world.autoSwatches.length,
         })
-        applyDerivedWorldSnapshot(world, preferredSwatch, importedPresetRegistry)
+        applyDerivedWorldSnapshot(
+            world,
+            preferredSwatch,
+            effectiveImportedPresetRegistry
+        )
         pushCommit(before, { afterState })
 
         if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
@@ -5696,9 +5708,13 @@ function PixelEditorFramer({
     }
 
     function deletePalettePreset(profileId: string) {
+        const before = latestProjectStateRef.current ?? makeProjectState()
+        const activePresetForDelete =
+            activePresetButton ??
+            (quantizationProfile.kind === "fixed" ? quantizationProfile.id : null)
         const decision = preparePalettePresetDeleteDecision({
             profileId,
-            activePresetButton,
+            activePresetButton: activePresetForDelete,
             hiddenPresetIds,
             importedPalettePresets,
         })
@@ -5711,8 +5727,24 @@ function PixelEditorFramer({
             return
         }
 
+        const nextImportedPalettePresets =
+            ensureActiveImportedPalettePresetRegistered(
+                decision.importedPalettePresets,
+                quantizationProfile
+            )
+        const afterState: ProjectState = {
+            ...before,
+            importedPalettePresets: cloneImportedPalettePresetsForHistory(
+                nextImportedPalettePresets
+            ),
+            hiddenPresetIds: decision.hiddenPresetIds.slice(),
+        }
+
+        beginEditorActionTransaction("editor-action", before)
         setHiddenPresetIds(decision.hiddenPresetIds)
-        setImportedPalettePresets(decision.importedPalettePresets)
+        setImportedPalettePresets(nextImportedPalettePresets)
+        latestProjectStateRef.current = afterState
+        pushCommit(before, { afterState })
     }
 
     // H0:
@@ -5724,10 +5756,16 @@ function PixelEditorFramer({
     // applyProjectState(state)
     //   = restore editor committed-state
     //
-    // На H0-H2 это уже существующий рабочий editor-side фундамент истории.
-    // Поведение здесь не меняем.
+    // On H0-H2 this is the existing editor-side history foundation.
+    // Behavior here is intentionally preserved.
 
     function makeProjectState(): ProjectState {
+        const committedImportedPalettePresets =
+            ensureActiveImportedPalettePresetRegistered(
+                importedPalettePresets,
+                quantizationProfile
+            )
+
         return {
             gridSize,
             paletteCount,
@@ -5744,7 +5782,9 @@ function PixelEditorFramer({
             quantizationProfile:
                 cloneQuantizationProfileForHistory(quantizationProfile),
             importedPalettePresets:
-                cloneImportedPalettePresetsForHistory(importedPalettePresets),
+                cloneImportedPalettePresetsForHistory(
+                    committedImportedPalettePresets
+                ),
             hiddenPresetIds: hiddenPresetIds.slice(),
             activePaletteTab: paletteTabsState.activeTab,
             deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
@@ -6118,16 +6158,10 @@ function PixelEditorFramer({
         const nextProfile =
             state.quantizationProfile ?? EXTRACT_QUANTIZATION_PROFILE
         const restoredImportedPresets =
-            state.importedPalettePresets ??
-            (nextProfile.kind === "fixed" && nextProfile.source === "imported"
-                ? [
-                      {
-                          id: nextProfile.id,
-                          name: nextProfile.name,
-                          profile: nextProfile,
-                      },
-                  ]
-                : [])
+            ensureActiveImportedPalettePresetRegistered(
+                state.importedPalettePresets ?? [],
+                nextProfile
+            )
         setImportedPalettePresets(
             cloneImportedPalettePresetsForHistory(restoredImportedPresets)
         )
