@@ -93,6 +93,13 @@ import {
     prepareUserSwatchCreateProjectApplication,
 } from "./paletteState.ts"
 import {
+    renderPaintGridToImageData,
+    renderTransparentPaintGridToImageData,
+    renderUserPaintGridToImageData,
+    requantizePaintRefsToOverlayPixels,
+    toHexUpperOrNull,
+} from "./paintReference.ts"
+import {
     areEditorCommittedStatesEqual,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
@@ -3442,10 +3449,15 @@ function PixelEditorFramer({
         const overlayNext = requantizePaintRefsToOverlayPixels({
             colorSnapshot: colorRefSnap,
             userSnapshot: userRefSnap,
+            userValueByHex: paintUserRefValueByHexRef.current,
             transparentSnapshot: transparentRefSnap,
+            transparentValueByHex: paintTransparentRefValueByHexRef.current,
             gridSize,
             baseAuto: autoEffective,
             user: userSwatches,
+            pixelizeSnapshot: (snapshot, nextGridSize) =>
+                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+            quantizeToFixedPalette,
         })
 
         setOverlayPixels(overlayNext)
@@ -4200,16 +4212,34 @@ function PixelEditorFramer({
             paintGrid: params.overlay,
             autoSwatches: params.autoSwatches,
             userSwatches: params.userSwatches,
+            canvasSize: CANVAS_SIZE,
+            transparentPixel: TRANSPARENT_PIXEL,
+            getCanvas: () =>
+                offscreenRef.current ||
+                (offscreenRef.current = document.createElement("canvas")),
+            get2dContext: get2dReadFrequentlyContext,
         })
         const userSnap = renderUserPaintGridToImageData({
             paintGrid: params.overlay,
             autoSwatches: params.autoSwatches,
             userSwatches: params.userSwatches,
+            canvasSize: CANVAS_SIZE,
+            transparentPixel: TRANSPARENT_PIXEL,
+            getCanvas: () =>
+                offscreenRef.current ||
+                (offscreenRef.current = document.createElement("canvas")),
+            get2dContext: get2dReadFrequentlyContext,
         })
         const transparentSnap = renderTransparentPaintGridToImageData({
             paintGrid: params.overlay,
             autoSwatches: params.autoSwatches,
             userSwatches: params.userSwatches,
+            canvasSize: CANVAS_SIZE,
+            transparentPixel: TRANSPARENT_PIXEL,
+            getCanvas: () =>
+                offscreenRef.current ||
+                (offscreenRef.current = document.createElement("canvas")),
+            get2dContext: get2dReadFrequentlyContext,
         })
 
         setPaintRefImageData(colorSnap)
@@ -4371,450 +4401,8 @@ function PixelEditorFramer({
         }
     }
 
-    // =====================
-    // P1 — Paint Reference helpers (render + requantize)
-    // =====================
-
-    function buildSwatchByIdMap(
-        autoSwatches: Swatch[],
-        userSwatches: Swatch[]
-    ) {
-        const m = new Map<string, Swatch>()
-        for (const s of autoSwatches) m.set(s.id, s)
-        for (const s of userSwatches) m.set(s.id, s)
-        return m
-    }
-
-    // "Фотография" overlayPixels: 512x512, прозрачный фон, закраска свотчами
-    function renderPaintGridToImageData(params: {
-        paintGrid: PixelValue[][]
-        autoSwatches: Swatch[]
-        userSwatches: Swatch[]
-    }): ImageData {
-        const { paintGrid, autoSwatches, userSwatches } = params
-
-        const rows = paintGrid?.length ?? 0
-        const cols = rows > 0 ? (paintGrid[0]?.length ?? 0) : 0
-
-        // Всегда возвращаем 512x512, даже если сетка пустая (прозрачная)
-        const canvas =
-            offscreenRef.current ||
-            (offscreenRef.current = document.createElement("canvas"))
-        canvas.width = CANVAS_SIZE
-        canvas.height = CANVAS_SIZE
-
-        const ctx = get2dReadFrequentlyContext(canvas)
-        if (!ctx) {
-            return new ImageData(CANVAS_SIZE, CANVAS_SIZE)
-        }
-
-        ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-
-        if (rows <= 0 || cols <= 0) {
-            return ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-        }
-
-        const swatchById = buildSwatchByIdMap(autoSwatches, userSwatches)
-
-        for (let r = 0; r < rows; r++) {
-            const y0 = Math.floor((r * CANVAS_SIZE) / rows)
-            const y1 = Math.floor(((r + 1) * CANVAS_SIZE) / rows)
-            const row = paintGrid[r] || []
-
-            for (let c = 0; c < cols; c++) {
-                const x0 = Math.floor((c * CANVAS_SIZE) / cols)
-                const x1 = Math.floor(((c + 1) * CANVAS_SIZE) / cols)
-
-                const v = (row[c] ?? null) as PixelValue
-
-                // null / TRANSPARENT_PIXEL => просто оставляем прозрачным
-                if (v === null) continue
-                if (v === TRANSPARENT_PIXEL) continue
-
-                // v — это SwatchId
-                const sw = swatchById.get(v)
-                if (!sw) continue
-                if ((sw as any).isTransparent) continue
-
-                ctx.fillStyle = sw.color
-                ctx.fillRect(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0))
-            }
-        }
-
-        return ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-    }
-
-    function transparentMaskHexForIndex(index: number): string {
-        const code = Math.max(1, index + 1)
-        const r = (code & 0x0f) * 16
-        const g = ((code >> 4) & 0x0f) * 16
-        const b = ((code >> 8) & 0x0f) * 16
-        const toHex = (value: number) =>
-            value.toString(16).toUpperCase().padStart(2, "0")
-        return `#${toHex(r)}${toHex(g)}${toHex(b)}`
-    }
-
-    function renderTransparentPaintGridToImageData(params: {
-        paintGrid: PixelValue[][]
-        autoSwatches: Swatch[]
-        userSwatches: Swatch[]
-    }): {
-        imageData: ImageData
-        valueByHex: Map<string, PixelValue>
-        count: number
-    } {
-        const { paintGrid, autoSwatches, userSwatches } = params
-
-        const rows = paintGrid?.length ?? 0
-        const cols = rows > 0 ? (paintGrid[0]?.length ?? 0) : 0
-        const canvas =
-            offscreenRef.current ||
-            (offscreenRef.current = document.createElement("canvas"))
-        canvas.width = CANVAS_SIZE
-        canvas.height = CANVAS_SIZE
-
-        const ctx = get2dReadFrequentlyContext(canvas)
-        if (!ctx) {
-            return {
-                imageData: new ImageData(CANVAS_SIZE, CANVAS_SIZE),
-                valueByHex: new Map(),
-                count: 0,
-            }
-        }
-
-        ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-
-        const swatchById = buildSwatchByIdMap(autoSwatches, userSwatches)
-        const hexByValue = new Map<PixelValue, string>()
-        const valueByHex = new Map<string, PixelValue>()
-        let count = 0
-
-        const getMaskHex = (value: PixelValue) => {
-            const existing = hexByValue.get(value)
-            if (existing) return existing
-
-            const hex = transparentMaskHexForIndex(hexByValue.size)
-            hexByValue.set(value, hex)
-            valueByHex.set(hex, value)
-            return hex
-        }
-
-        for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
-            const y0 = Math.floor((rowIndex * CANVAS_SIZE) / rows)
-            const y1 =
-                Math.floor(((rowIndex + 1) * CANVAS_SIZE) / rows) || y0 + 1
-            const row = paintGrid[rowIndex] || []
-
-            for (let column = 0; column < cols; column++) {
-                const x0 = Math.floor((column * CANVAS_SIZE) / cols)
-                const x1 =
-                    Math.floor(((column + 1) * CANVAS_SIZE) / cols) || x0 + 1
-                const value = (row[column] ?? null) as PixelValue
-
-                if (value == null) continue
-
-                const isTransparentTool = value === TRANSPARENT_PIXEL
-                const isTransparentSwatch =
-                    typeof value === "string" &&
-                    !!swatchById.get(value)?.isTransparent
-                if (!isTransparentTool && !isTransparentSwatch) continue
-
-                ctx.fillStyle = getMaskHex(value)
-                ctx.fillRect(
-                    x0,
-                    y0,
-                    Math.max(1, x1 - x0),
-                    Math.max(1, y1 - y0)
-                )
-                count++
-            }
-        }
-
-        return {
-            imageData: ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE),
-            valueByHex,
-            count,
-        }
-    }
-
-    function renderUserPaintGridToImageData(params: {
-        paintGrid: PixelValue[][]
-        autoSwatches: Swatch[]
-        userSwatches: Swatch[]
-    }): {
-        imageData: ImageData
-        valueByHex: Map<string, PixelValue>
-        count: number
-    } {
-        const { paintGrid, userSwatches } = params
-
-        const rows = paintGrid?.length ?? 0
-        const cols = rows > 0 ? (paintGrid[0]?.length ?? 0) : 0
-        const canvas =
-            offscreenRef.current ||
-            (offscreenRef.current = document.createElement("canvas"))
-        canvas.width = CANVAS_SIZE
-        canvas.height = CANVAS_SIZE
-
-        const ctx = get2dReadFrequentlyContext(canvas)
-        if (!ctx) {
-            return {
-                imageData: new ImageData(CANVAS_SIZE, CANVAS_SIZE),
-                valueByHex: new Map(),
-                count: 0,
-            }
-        }
-
-        ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-
-        const userSwatchIds = new Set(
-            userSwatches
-                .filter((swatch) => swatch && !swatch.isTransparent)
-                .map((swatch) => swatch.id)
-        )
-        const hexByValue = new Map<PixelValue, string>()
-        const valueByHex = new Map<string, PixelValue>()
-        let count = 0
-
-        const getMaskHex = (value: PixelValue) => {
-            const existing = hexByValue.get(value)
-            if (existing) return existing
-
-            const hex = transparentMaskHexForIndex(hexByValue.size)
-            hexByValue.set(value, hex)
-            valueByHex.set(hex, value)
-            return hex
-        }
-
-        for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
-            const y0 = Math.floor((rowIndex * CANVAS_SIZE) / rows)
-            const y1 =
-                Math.floor(((rowIndex + 1) * CANVAS_SIZE) / rows) || y0 + 1
-            const row = paintGrid[rowIndex] || []
-
-            for (let column = 0; column < cols; column++) {
-                const x0 = Math.floor((column * CANVAS_SIZE) / cols)
-                const x1 =
-                    Math.floor(((column + 1) * CANVAS_SIZE) / cols) || x0 + 1
-                const value = (row[column] ?? null) as PixelValue
-
-                if (value == null) continue
-                if (value === TRANSPARENT_PIXEL) continue
-                if (!userSwatchIds.has(String(value))) continue
-
-                ctx.fillStyle = getMaskHex(value)
-                ctx.fillRect(
-                    x0,
-                    y0,
-                    Math.max(1, x1 - x0),
-                    Math.max(1, y1 - y0)
-                )
-                count++
-            }
-        }
-
-        return {
-            imageData: ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE),
-            valueByHex,
-            count,
-        }
-    }
-
-    // =====================
-    // P2 — Paint Snapshot requantize helpers
-    // =====================
-
-    function toHexUpperOrNull(css: string | null): string | null {
-        if (!css) return null
-        const hx = (cssColorToHex(css) || "").toUpperCase()
-        return hx || null
-    }
-
-    function requantizeTransparentPaintSnapshotToOverlayPixels(params: {
-        snapshot: ImageData
-        gridSize: number
-        valueByHex: ReadonlyMap<string, PixelValue>
-    }): PixelValue[][] {
-        const maskPixels = pixelizeFromImageDominant(
-            params.snapshot,
-            params.gridSize,
-            16
-        )
-        const out: PixelValue[][] = Array.from(
-            { length: params.gridSize },
-            () => Array.from({ length: params.gridSize }, () => null as PixelValue)
-        )
-
-        for (let row = 0; row < params.gridSize; row++) {
-            const sourceRow = maskPixels[row] || []
-            const outRow = out[row]
-            for (let column = 0; column < params.gridSize; column++) {
-                const hex = toHexUpperOrNull(sourceRow[column] ?? null)
-                outRow[column] = hex
-                    ? params.valueByHex.get(hex) ?? null
-                    : null
-            }
-        }
-
-        return out
-    }
-
-    function overlayTransparentSnapshotOverColor(params: {
-        colorOverlay: PixelValue[][]
-        transparentOverlay: PixelValue[][]
-    }): PixelValue[][] {
-        let changed = false
-        const out = params.colorOverlay.map((row) => row.slice())
-
-        for (let row = 0; row < out.length; row++) {
-            const transparentRow = params.transparentOverlay[row] || []
-            const outRow = out[row]
-            for (let column = 0; column < outRow.length; column++) {
-                const transparentValue = transparentRow[column] ?? null
-                if (transparentValue == null) continue
-                if (outRow[column] !== transparentValue) {
-                    outRow[column] = transparentValue
-                    changed = true
-                }
-            }
-        }
-
-        return changed ? out : params.colorOverlay
-    }
-
-    function buildFixedPaletteHexAndIdMap(params: {
-        baseAuto: Swatch[]
-        user: Swatch[]
-    }): { paletteHex: string[]; idByHex: Map<string, SwatchId> } {
-        const { baseAuto, user } = params
-
-        const paletteHex: string[] = []
-        const idByHex = new Map<string, SwatchId>()
-
-        const add = (sw: Swatch) => {
-            if ((sw as any)?.isTransparent) return
-            const hx = toHexUpperOrNull(sw.color)
-            if (!hx) return
-            // Preserve order while collapsing duplicate hex colors.
-            if (!idByHex.has(hx)) {
-                paletteHex.push(hx)
-                idByHex.set(hx, sw.id)
-            }
-        }
-
-        for (const s of baseAuto) add(s)
-        for (const s of user) add(s)
-
-        return { paletteHex, idByHex }
-    }
-
-    function requantizePaintSnapshotToOverlayPixels(params: {
-        snapshot: ImageData
-        gridSize: number
-        baseAuto: Swatch[]
-        user: Swatch[]
-    }): PixelValue[][] {
-        const { snapshot, gridSize, baseAuto, user } = params
-
-        // 1) pixelize snapshot -> rgb-grid
-        const snapPixels = pixelizeFromImageDominant(snapshot, gridSize, 16)
-
-        // 2) fixed palette = baseAuto + userSwatches, excluding transparent swatches
-        const { paletteHex, idByHex } = buildFixedPaletteHexAndIdMap({
-            baseAuto,
-            user,
-        })
-
-        // Safety: if the palette is somehow empty, return a transparent overlay.
-        if (paletteHex.length === 0) {
-            return createEmptyPixels(gridSize)
-        }
-
-        // 3) quantize rgb-grid to fixed palette
-        const q = quantizeToFixedPalette(snapPixels, paletteHex)
-
-        // 4) map rgb -> SwatchId through hex; null remains null
-        const out: PixelValue[][] = Array.from({ length: gridSize }, () =>
-            Array.from({ length: gridSize }, () => null as PixelValue)
-        )
-
-        for (let r = 0; r < gridSize; r++) {
-            const row = q[r] || []
-            const outRow = out[r]
-            for (let c = 0; c < gridSize; c++) {
-                const col = row[c] ?? null
-                if (col == null) {
-                    outRow[c] = null
-                    continue
-                }
-                const hx = toHexUpperOrNull(col)
-                if (!hx) {
-                    outRow[c] = null
-                    continue
-                }
-                const id = idByHex.get(hx)
-                outRow[c] = (id ?? "auto-0") as PixelValue
-            }
-        }
-
-        return out
-    }
-
-    function requantizePaintRefsToOverlayPixels(params: {
-        colorSnapshot: ImageData | null
-        userSnapshot: ImageData | null
-        userValueByHex?: ReadonlyMap<string, PixelValue>
-        transparentSnapshot: ImageData | null
-        transparentValueByHex?: ReadonlyMap<string, PixelValue>
-        gridSize: number
-        baseAuto: Swatch[]
-        user: Swatch[]
-    }): PixelValue[][] {
-        const colorOverlay = params.colorSnapshot
-            ? requantizePaintSnapshotToOverlayPixels({
-                  snapshot: params.colorSnapshot,
-                  gridSize: params.gridSize,
-                  baseAuto: params.baseAuto,
-                  user: params.user,
-              })
-            : createEmptyPixels(params.gridSize)
-
-        const userOverlay = params.userSnapshot
-            ? requantizeTransparentPaintSnapshotToOverlayPixels({
-                  snapshot: params.userSnapshot,
-                  gridSize: params.gridSize,
-                  valueByHex:
-                      params.userValueByHex ?? paintUserRefValueByHexRef.current,
-              })
-            : null
-
-        const colorWithExactUserOverlay = userOverlay
-            ? overlayTransparentSnapshotOverColor({
-                  colorOverlay,
-                  transparentOverlay: userOverlay,
-              })
-            : colorOverlay
-
-        if (!params.transparentSnapshot) return colorWithExactUserOverlay
-
-        const transparentOverlay =
-            requantizeTransparentPaintSnapshotToOverlayPixels({
-                snapshot: params.transparentSnapshot,
-                gridSize: params.gridSize,
-                valueByHex:
-                    params.transparentValueByHex ??
-                    paintTransparentRefValueByHexRef.current,
-            })
-
-        return overlayTransparentSnapshotOverColor({
-            colorOverlay: colorWithExactUserOverlay,
-            transparentOverlay,
-        })
-    }
-
+    // Paint reference overlay application stays in the editor because it
+    // publishes React state and the current canvas frame.
     function applyOverlayAfterBaseRebuild(params: {
         imagePixelsNext: PixelValue[][]
         nextAuto: Swatch[]
@@ -4852,10 +4440,15 @@ function PixelEditorFramer({
             overlayNext = requantizePaintRefsToOverlayPixels({
                 colorSnapshot: colorSnapToUse,
                 userSnapshot: userSnapToUse,
+                userValueByHex: paintUserRefValueByHexRef.current,
                 transparentSnapshot: transparentSnapToUse,
+                transparentValueByHex: paintTransparentRefValueByHexRef.current,
                 gridSize,
                 baseAuto: nextAuto,
                 user: nextUser,
+                pixelizeSnapshot: (currentSnapshot, nextGridSize) =>
+                    pixelizeFromImageDominant(currentSnapshot, nextGridSize, 16),
+                quantizeToFixedPalette,
             })
 
             if (ENABLE_PREP_LOGS) {
@@ -6337,9 +5930,9 @@ function PixelEditorFramer({
                     frozenUserOverlaySnapshot ||
                     frozenTransparentOverlaySnapshot
                         ? requantizePaintRefsToOverlayPixels({
-                              colorSnapshot: frozenOverlaySnapshot,
-                              userSnapshot: frozenUserOverlaySnapshot,
-                              userValueByHex: frozenUserValueByHex,
+                          colorSnapshot: frozenOverlaySnapshot,
+                          userSnapshot: frozenUserOverlaySnapshot,
+                          userValueByHex: frozenUserValueByHex,
                               transparentSnapshot:
                                   frozenTransparentOverlaySnapshot,
                               transparentValueByHex:
@@ -6347,6 +5940,13 @@ function PixelEditorFramer({
                               gridSize: nextGridSize,
                               baseAuto: collapsed.autoSwatches,
                               user: collapsed.userSwatches,
+                              pixelizeSnapshot: (snapshot, nextGridSize) =>
+                                  pixelizeFromImageDominant(
+                                      snapshot,
+                                      nextGridSize,
+                                      16
+                                  ),
+                              quantizeToFixedPalette,
                           })
                         : createEmptyPixels(nextGridSize)
 
