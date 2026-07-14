@@ -65,7 +65,7 @@ import {
     prepareActivePresetFallbackToAuto,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetProjectApplication,
-    prepareFixedPalettePresetSwatchDeleteApplication,
+    prepareFixedPalettePresetSwatchDeleteProjectApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference,
     preparePalettePresetDeleteDecision,
@@ -9561,31 +9561,68 @@ function PixelEditorFramer({
             quantizationProfile.kind === "fixed" &&
             editingSwatchId.startsWith("auto-")
         ) {
+            const before = latestProjectStateRef.current ?? makeProjectState()
             const colorIndex = getAutoSwatchIndex(editingSwatchId)
             const editableProfile = makeEditableFixedPresetProfile(
                 quantizationProfile,
                 makeImportedPalettePresetId
             )
             const preparedDelete =
-                prepareFixedPalettePresetSwatchDeleteApplication({
-                profile: editableProfile,
-                swatchColor: swatch.color,
-                swatchId: editingSwatchId,
-                swatchIndex: colorIndex,
-                selectedSwatch,
-                importedPalettePresets,
-            })
+                prepareFixedPalettePresetSwatchDeleteProjectApplication({
+                    profile: editableProfile,
+                    swatchColor: swatch.color,
+                    swatchId: editingSwatchId,
+                    swatchIndex: colorIndex,
+                    selectedSwatch,
+                    imagePixels,
+                    overlayPixels,
+                    autoSwatches,
+                    userSwatches,
+                    gridSize,
+                    paletteCount,
+                    brushSize,
+                    showImage,
+                    hasOriginalImageData: hasImportContext,
+                    referenceSnapshot: originalImageData,
+                    referenceSignature: imageDataSampleSignature(originalImageData),
+                    importedPalettePresets,
+                    hiddenPresetIds,
+                    deletedAutoPaletteColors,
+                    autoOverrides,
+                })
             if (preparedDelete.kind === "ignored") {
                 handleModalCancel()
                 return
             }
 
+            const afterState: ProjectState = preparedDelete.projectState
+
+            beginEditorActionTransaction("palette-vocabulary-extension", before)
+            setQuantizationProfile(preparedDelete.profile)
             setImportedPalettePresets(preparedDelete.importedPalettePresets)
-            applyFixedPalettePreset(
-                preparedDelete.profile,
-                preparedDelete.selectedSwatch,
-                preparedDelete.importedPalettePresets
+            setActivePresetButton(preparedDelete.profile.id)
+            setPaletteTabsState((prev) =>
+                preparePaletteTabWorldCommit({
+                    state: prev,
+                    activeTab: "presets",
+                    world: preparedDelete.world,
+                })
             )
+            setAutoSwatches(preparedDelete.autoSwatches)
+            setImagePixels(preparedDelete.imagePixels)
+            setOverlayPixels(preparedDelete.overlayPixels)
+            setCanvasPixels(preparedDelete.canvasPixels)
+            setSelectedSwatch(preparedDelete.selectedSwatch as SwatchId)
+            setAutoOverrides(afterState.autoOverrides)
+            syncPaintRefToOverlay({
+                overlay: afterState.overlayPixels,
+                auto: afterState.autoSwatches,
+                user: afterState.userSwatches,
+                autoOverrides: afterState.autoOverrides,
+                reason: "fixed-preset-swatch-delete",
+            })
+            latestProjectStateRef.current = afterState
+            pushCommit(before, { afterState })
             closeColorModalAfterCreate()
             return
         }

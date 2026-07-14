@@ -22,6 +22,7 @@ import {
     prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
+    prepareFixedPalettePresetSwatchDeleteProjectApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
@@ -2302,6 +2303,114 @@ describe("palette preset extension", () => {
                 },
             ],
         })
+    })
+
+    it("deletes fixed preset swatches without remapping surviving swatch ids", () => {
+        const editedProfile = {
+            ...profile,
+            colors: ["#000000", "#333333", "#00FF00"],
+        }
+        const autoSwatches = [
+            {
+                id: "auto-0",
+                color: "#000000",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-5",
+                color: "#333333",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-8",
+                color: "#00FF00",
+                isTransparent: false,
+                isUser: false,
+            },
+        ]
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF00FF",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+        const result = prepareFixedPalettePresetSwatchDeleteProjectApplication({
+            profile: editedProfile,
+            swatchColor: "#333333",
+            swatchId: "auto-5",
+            swatchIndex: 5,
+            selectedSwatch: "auto-8",
+            imagePixels: [
+                ["auto-8", "auto-5"],
+                ["auto-0", "auto-8"],
+            ],
+            overlayPixels: [
+                [null, "user-0"],
+                ["auto-5", null],
+            ],
+            autoSwatches,
+            userSwatches,
+            gridSize: 2,
+            paletteCount: 3,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            referenceSnapshot: { width: 1, height: 1, data: [0, 0, 0, 255] },
+            referenceSignature: "reference-delete",
+            importedPalettePresets: [],
+            hiddenPresetIds: ["hidden"],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("deleted")
+        if (result.kind !== "deleted") return
+
+        expect(result.profile.colors).toEqual(["#000000", "#00FF00"])
+        expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
+            "auto-0",
+            "auto-8",
+        ])
+        expect(result.imagePixels).toEqual([
+            ["auto-8", "auto-0"],
+            ["auto-0", "auto-8"],
+        ])
+        expect(result.overlayPixels).toEqual([
+            [null, "user-0"],
+            ["auto-0", null],
+        ])
+        expect(result.selectedSwatch).toBe("auto-8")
+        expect(result.projectState).toMatchObject({
+            gridSize: 2,
+            paletteCount: 3,
+            brushSize: 3,
+            imagePixels: result.imagePixels,
+            overlayPixels: result.overlayPixels,
+            autoSwatches: result.autoSwatches,
+            userSwatches,
+            selectedSwatch: "auto-8",
+            quantizationProfile: {
+                ...editedProfile,
+                colors: ["#000000", "#00FF00"],
+            },
+            hiddenPresetIds: ["hidden"],
+            activePaletteTab: "presets",
+            autoOverrides: {},
+        })
+        expect(result.projectState.importedPalettePresets).toEqual([
+            {
+                id: editedProfile.id,
+                name: editedProfile.name,
+                profile: {
+                    ...editedProfile,
+                    colors: ["#000000", "#00FF00"],
+                },
+            },
+        ])
     })
 
     it("ignores fixed preset swatch delete applications for invalid indexes", () => {

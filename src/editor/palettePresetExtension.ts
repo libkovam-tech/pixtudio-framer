@@ -10,6 +10,7 @@ import {
 } from "./paletteQuantizationEngine.ts"
 import {
     appendDeletedAutoPaletteColor,
+    prepareSwatchDelete,
     prepareProjectStateFromPaletteWorld,
     resolveSelectedSwatchAfterAutoChange,
     type PaletteAutoOverrideLike,
@@ -111,6 +112,32 @@ export type FixedPalettePresetSwatchDeleteApplicationResult<
           profile: TProfile
           selectedSwatch: string
           importedPalettePresets: TPreset[]
+      }
+
+export type FixedPalettePresetSwatchDeleteProjectApplicationResult<
+    TProfile extends EditableFixedPaletteProfile,
+    TPreset extends ImportedPalettePresetForHistory,
+    TSwatch extends FixedPaletteAutoSwatch & EditorHistorySwatch,
+    TPixel extends string | null,
+> =
+    | {
+          kind: "ignored"
+      }
+    | {
+          kind: "deleted"
+          profile: TProfile
+          selectedSwatch: string
+          importedPalettePresets: TPreset[]
+          autoSwatches: TSwatch[]
+          imagePixels: TPixel[][]
+          overlayPixels: TPixel[][]
+          canvasPixels: TPixel[][]
+          world: FixedPaletteVocabularyExtensionWorld<
+              TProfile,
+              TSwatch,
+              TPixel
+          >
+          projectState: EditorCommittedState<TPixel, TSwatch, TPreset>
       }
 
 export type FixedPalettePresetSwatchEditApplicationResult<
@@ -2057,5 +2084,120 @@ export function prepareFixedPalettePresetSwatchDeleteApplication<
             input.importedPalettePresets,
             preparedDelete.profile
         ),
+    }
+}
+
+export function prepareFixedPalettePresetSwatchDeleteProjectApplication<
+    TProfile extends EditableFixedPaletteProfile & { source: "imported" },
+    TSwatch extends FixedPaletteAutoSwatch & EditorHistorySwatch,
+    TPixel extends string | null,
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(input: {
+    profile: TProfile
+    swatchColor: string
+    swatchId: string
+    swatchIndex: number | null
+    selectedSwatch: string
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    autoSwatches: ReadonlyArray<TSwatch>
+    userSwatches: ReadonlyArray<TSwatch>
+    gridSize: number
+    paletteCount: number
+    brushSize: number
+    showImage: boolean
+    hasOriginalImageData: boolean
+    referenceSnapshot?: ImageDataSampleSource | null
+    referenceSignature?: string | null
+    importedPalettePresets: ReadonlyArray<TImportedPreset>
+    hiddenPresetIds: ReadonlyArray<string>
+    deletedAutoPaletteColors: ReadonlyArray<string>
+    autoOverrides: EditorCommittedState<
+        TPixel,
+        TSwatch,
+        TImportedPreset
+    >["autoOverrides"]
+}): FixedPalettePresetSwatchDeleteProjectApplicationResult<
+    TProfile,
+    TImportedPreset,
+    TSwatch,
+    TPixel
+> {
+    const preparedProfileDelete = prepareFixedPaletteSwatchDelete({
+        profile: input.profile,
+        swatchColor: input.swatchColor,
+        swatchId: input.swatchId,
+        swatchIndex: input.swatchIndex,
+        selectedSwatch: input.selectedSwatch,
+    })
+    if (!preparedProfileDelete.removed) return { kind: "ignored" }
+
+    const preparedSwatches = prepareSwatchDelete({
+        swatchId: input.swatchId,
+        imagePixels: input.imagePixels,
+        overlayPixels: input.overlayPixels,
+        autoSwatches: input.autoSwatches,
+        userSwatches: input.userSwatches,
+        selectedSwatch: preparedProfileDelete.selectedSwatch,
+        autoOverrides: input.autoOverrides,
+    })
+    if (!preparedSwatches.removed) return { kind: "ignored" }
+
+    const autoSwatches = cloneSwatches(preparedSwatches.autoSwatches)
+    const imagePixels = clonePixelGrid(preparedSwatches.imagePixels)
+    const overlayPixels = clonePixelGrid(preparedSwatches.overlayPixels)
+    const canvasPixels = overlayOverBase(imagePixels, overlayPixels)
+    const selectedSwatch = preparedSwatches.selectedSwatch
+    const importedPalettePresets = upsertImportedPalettePreset(
+        input.importedPalettePresets,
+        preparedProfileDelete.profile
+    )
+
+    const world: FixedPaletteVocabularyExtensionWorld<
+        TProfile,
+        TSwatch,
+        TPixel
+    > = {
+        profile: preparedProfileDelete.profile,
+        referenceSignature: input.referenceSignature,
+        autoSwatches,
+        imagePixels,
+        overlayPixels,
+        canvasPixels,
+    }
+
+    return {
+        kind: "deleted",
+        profile: preparedProfileDelete.profile,
+        selectedSwatch,
+        importedPalettePresets,
+        autoSwatches,
+        imagePixels,
+        overlayPixels,
+        canvasPixels,
+        world,
+        projectState: {
+            gridSize: input.gridSize,
+            paletteCount: input.paletteCount,
+            brushSize: input.brushSize,
+            imagePixels,
+            overlayPixels,
+            showImage: input.showImage,
+            hasOriginalImageData: input.hasOriginalImageData,
+            referenceSnapshot: input.referenceSnapshot,
+            autoSwatches,
+            userSwatches: cloneSwatches(preparedSwatches.userSwatches),
+            selectedSwatch,
+            quantizationProfile: cloneQuantizationProfileForHistory(
+                preparedProfileDelete.profile
+            ),
+            importedPalettePresets: cloneImportedPalettePresetsForHistory(
+                importedPalettePresets
+            ),
+            hiddenPresetIds: input.hiddenPresetIds.slice(),
+            activePaletteTab: "presets",
+            deletedAutoPaletteColors: input.deletedAutoPaletteColors.slice(),
+            autoOverrides: { ...preparedSwatches.autoOverrides },
+        },
     }
 }
