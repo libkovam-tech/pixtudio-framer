@@ -323,12 +323,7 @@ export function preparePaletteProjectStateRestoreTabs<
     activePaletteTab?: PaletteTabKey | null
     fallbackActiveTab?: PaletteTabKey | null
 }): PaletteProjectStateRestoreTabsResult<TWorld> {
-    const nextActiveTab =
-        input.world.profile.kind === "fixed"
-            ? "presets"
-            : input.activePaletteTab ?? input.fallbackActiveTab ?? "size"
-
-    if (nextActiveTab === "presets") {
+    if (input.world.profile.kind === "fixed") {
         return {
             activeTab: "presets",
             sizeWorld: input.state.sizeWorld,
@@ -336,10 +331,13 @@ export function preparePaletteProjectStateRestoreTabs<
         }
     }
 
+    const nextActiveTab =
+        input.activePaletteTab ?? input.fallbackActiveTab ?? "size"
+
     return {
-        activeTab: "size",
+        activeTab: nextActiveTab,
         sizeWorld: input.world,
-        presetsWorld: input.state.presetsWorld,
+        presetsWorld: null,
     }
 }
 

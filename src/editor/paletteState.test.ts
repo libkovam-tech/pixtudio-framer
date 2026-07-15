@@ -523,7 +523,7 @@ describe("palette state", () => {
         })
     })
 
-    it("restores extract project states into the stored active tab", () => {
+    it("restores extract project states into the stored active tab without keeping stale presets", () => {
         const restoredWorld: TestPaletteTabWorld = {
             profile: { kind: "extract" },
             autoSwatches: [{ id: "auto-restored" }],
@@ -546,12 +546,12 @@ describe("palette state", () => {
 
         expect(result).toEqual({
             activeTab: "presets",
-            sizeWorld: null,
-            presetsWorld: restoredWorld,
+            sizeWorld: restoredWorld,
+            presetsWorld: null,
         })
     })
 
-    it("restores extract project states into size by default", () => {
+    it("restores extract project states into size by default without keeping stale presets", () => {
         const restoredWorld: TestPaletteTabWorld = {
             profile: { kind: "extract" },
             autoSwatches: [{ id: "auto-restored" }],
@@ -573,7 +573,7 @@ describe("palette state", () => {
         expect(result).toEqual({
             activeTab: "size",
             sizeWorld: restoredWorld,
-            presetsWorld: presetWorld,
+            presetsWorld: null,
         })
     })
 
