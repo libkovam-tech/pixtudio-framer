@@ -2056,12 +2056,13 @@ describe("palette preset extension", () => {
         ])
     })
 
-    it("keeps fixed assignment preservation candidate disabled by default", () => {
+    it("can explicitly disable fixed assignment preservation candidate", () => {
         const imagePixels = [
             ["auto-1", "auto-1"],
             ["auto-1", "auto-1"],
         ]
         const result = prepareFixedPaletteAssignmentPreservationCandidate({
+            enabled: false,
             imagePixels,
             previousImagePixels: [
                 ["auto-5", "auto-1"],

@@ -63,6 +63,7 @@ import {
     prepareImportedPalettePresetFromColors,
     prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
+    prepareFixedPaletteAssignmentPreservationCandidate,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPalettePresetSwatchDeleteProjectApplication,
@@ -3597,6 +3598,23 @@ function PixelEditorFramer({
         }
 
         return quantizePixels(pixels, targetColors, deletedAutoPaletteColors)
+    }
+
+    function prepareFixedPaletteRebuildImagePixelsCandidate(input: {
+        imagePixels: PixelValue[][]
+        targetAutoSwatches: Swatch[]
+    }) {
+        return prepareFixedPaletteAssignmentPreservationCandidate({
+            imagePixels: input.imagePixels,
+            previousImagePixels: imagePixels,
+            targetAutoSwatches: input.targetAutoSwatches,
+            preservedSwatchIds:
+                quantizationProfile.kind === "fixed" &&
+                selectedSwatch !== "transparent" &&
+                selectedSwatch.startsWith("auto-")
+                    ? [selectedSwatch]
+                    : [],
+        })
     }
 
     React.useEffect(() => {
@@ -8605,6 +8623,11 @@ function PixelEditorFramer({
                     nextAutoOverrides: activeAutoOverrides,
                     selectedSwatch,
                 })
+                const preservedImagePixels =
+                    prepareFixedPaletteRebuildImagePixelsCandidate({
+                        imagePixels: collapsed.imagePixels,
+                        targetAutoSwatches: collapsed.autoSwatches,
+                    })
 
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setUserSwatches (with-original) [after collapse]",
@@ -8637,6 +8660,9 @@ function PixelEditorFramer({
                     }
                     return prev
                 })
+                if (preservedImagePixels.changed) {
+                    setImagePixels(preservedImagePixels.imagePixels)
+                }
 
                 // Overlay must also be remapped; otherwise it may reference a removed swatch.
                 traceLoad("repixelizeEffect MUTATE", {
@@ -8648,7 +8674,7 @@ function PixelEditorFramer({
                     hasSnap,
                 })
                 applyOverlayAfterBaseRebuild({
-                    imagePixelsNext: collapsed.imagePixels,
+                    imagePixelsNext: preservedImagePixels.imagePixels,
                     nextAuto: collapsed.autoSwatches,
                     nextUser: collapsed.userSwatches,
                     hasSnap,
@@ -8658,7 +8684,7 @@ function PixelEditorFramer({
 
                 enforceGridRuleAfterRestore(
                     {
-                        imagePixels: collapsed.imagePixels,
+                        imagePixels: preservedImagePixels.imagePixels,
                         overlayPixels,
                         autoSwatches: collapsed.autoSwatches,
                         userSwatches: collapsed.userSwatches,
@@ -8713,6 +8739,11 @@ function PixelEditorFramer({
                     nextAutoOverrides: activeAutoOverrides,
                     selectedSwatch,
                 })
+                const preservedImagePixels =
+                    prepareFixedPaletteRebuildImagePixelsCandidate({
+                        imagePixels: collapsed.imagePixels,
+                        targetAutoSwatches: collapsed.autoSwatches,
+                    })
 
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setUserSwatches (no-original) [after collapse]",
@@ -8754,7 +8785,7 @@ function PixelEditorFramer({
                 })
 
                 applyOverlayAfterBaseRebuild({
-                    imagePixelsNext: collapsed.imagePixels,
+                    imagePixelsNext: preservedImagePixels.imagePixels,
                     nextAuto: collapsed.autoSwatches,
                     nextUser: collapsed.userSwatches,
                     hasSnap,
@@ -8762,7 +8793,7 @@ function PixelEditorFramer({
                     reason: "repixelize:no-original",
                 })
 
-                setImagePixels(collapsed.imagePixels)
+                setImagePixels(preservedImagePixels.imagePixels)
             }
 
             // ✅ txn commit success (раньше тут ошибочно было ok:false)

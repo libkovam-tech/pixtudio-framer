@@ -58,7 +58,7 @@ export type FixedPaletteEditSwatchLike = {
     isTransparent?: boolean
 }
 
-export const ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE = false
+export const ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE = true
 
 type FixedPaletteCandidateSwatchLike = FixedPaletteEditSwatchLike & {
     [key: string]: unknown
