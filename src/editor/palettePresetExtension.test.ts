@@ -449,6 +449,81 @@ describe("palette preset extension", () => {
         )
     })
 
+    it("applies fixed presets without inheriting dirty auto swatch edit artifacts", () => {
+        const referenceSnapshot = {
+            width: 2,
+            height: 2,
+            data: new Uint8ClampedArray(16),
+        }
+        const dirtyAutoColor = "#55FF44"
+        const dirtyAutoOverrides = {
+            "auto-0": { hex: dirtyAutoColor, isTransparent: false },
+        }
+        const result = prepareFixedPalettePresetProjectApplication({
+            profile,
+            referenceSnapshot,
+            gridSize: 2,
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            previousSwatches: [
+                {
+                    id: "auto-0",
+                    color: dirtyAutoColor,
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-1",
+                    color: "#222222",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [],
+            pixelizeReference: () => [
+                ["#001219", "#E9D8A6"],
+                ["#E9D8A6", "#001219"],
+            ],
+            referenceSignature: () => "dirty-auto-reference",
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-1", "auto-0"],
+            ],
+            selectedSwatch: "auto-0",
+            preferredSwatch: null,
+            projectPaletteCount: 8,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets: [],
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: dirtyAutoOverrides,
+        })
+
+        expect(result.kind).toBe("reference")
+        if (result.kind !== "reference") throw new Error("expected reference")
+
+        const appliedColors = result.projectState.autoSwatches.map(
+            (swatch) => swatch.color
+        )
+        expect(result.projectState.autoOverrides).toEqual({})
+        expect(appliedColors).toHaveLength(profile.colors.length)
+        expect(appliedColors).toEqual(expect.arrayContaining(profile.colors))
+        expect(appliedColors).not.toContain(dirtyAutoColor)
+        const appliedIds = new Set(
+            result.projectState.autoSwatches.map((swatch) => swatch.id)
+        )
+        expect(
+            result.projectState.imagePixels.flat().every((pixel) =>
+                pixel == null ? true : appliedIds.has(pixel)
+            )
+        ).toBe(true)
+        expect(result.projectState.quantizationProfile).toEqual(profile)
+    })
+
     it("prepares fixed preset project applications from drawing state", () => {
         const userSwatches = [
             {
