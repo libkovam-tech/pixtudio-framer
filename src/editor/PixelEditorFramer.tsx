@@ -5150,6 +5150,7 @@ function PixelEditorFramer({
         setImagePixels(preparedApplication.imagePixels)
         setOverlayPixels(preparedApplication.overlayPixels)
         setCanvasPixels(preparedApplication.canvasPixels)
+        setAutoOverrides(preparedSnapshot.projectState.autoOverrides)
         latestProjectStateRef.current = preparedSnapshot.projectState
         paletteUndoTrace("applyDerivedWorldSnapshot:latest-ref-updated", {
             latestRef: editorCommittedStateTraceSummary(
@@ -8584,12 +8585,14 @@ function PixelEditorFramer({
                 })
                 setImagePixels(indexed)
 
-                // ✅ legacy-mode: canvasPixels НЕ трогаем здесь.
+                // Legacy mode: canvasPixels is updated by B1-SYNC below.
                 // B1-SYNC updates the display: canvasPixels = composeVisualGrid().
 
+                const activeAutoOverrides =
+                    quantizationProfile.kind === "fixed" ? {} : autoOverrides
                 const nextAutoEffective = applyAutoOverrides(
                     nextAuto,
-                    autoOverrides
+                    activeAutoOverrides
                 )
 
                 // Collapse duplicates and remap BOTH base+overlay,
@@ -8599,7 +8602,7 @@ function PixelEditorFramer({
                     overlayPixels,
                     nextAuto: nextAutoEffective,
                     nextUser: userSwatches,
-                    nextAutoOverrides: autoOverrides,
+                    nextAutoOverrides: activeAutoOverrides,
                     selectedSwatch,
                 })
 
@@ -8694,9 +8697,11 @@ function PixelEditorFramer({
                               isUser: false,
                           }))
 
+                const activeAutoOverrides =
+                    quantizationProfile.kind === "fixed" ? {} : autoOverrides
                 const nextAutoEffective = applyAutoOverrides(
                     nextAutoRaw,
-                    autoOverrides
+                    activeAutoOverrides
                 )
 
                 // Collapse and remap base+overlay.
@@ -8705,7 +8710,7 @@ function PixelEditorFramer({
                     overlayPixels,
                     nextAuto: nextAutoEffective,
                     nextUser: userSwatches,
-                    nextAutoOverrides: autoOverrides,
+                    nextAutoOverrides: activeAutoOverrides,
                     selectedSwatch,
                 })
 

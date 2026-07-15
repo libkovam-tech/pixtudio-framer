@@ -963,7 +963,7 @@ describe("palette preset extension", () => {
             importedPalettePresets,
             hiddenPresetIds: ["hidden"],
             deletedAutoPaletteColors: ["#001219"],
-            autoOverrides,
+            autoOverrides: {},
         })
 
         expect(result.kind).toBe("applied")
@@ -984,7 +984,7 @@ describe("palette preset extension", () => {
             hiddenPresetIds: ["hidden"],
             activePaletteTab: "presets",
             deletedAutoPaletteColors: ["#001219"],
-            autoOverrides,
+            autoOverrides: {},
         })
         expect(result.projectState.userSwatches).toEqual(userSwatches)
         expect(result.projectState.userSwatches).not.toBe(userSwatches)

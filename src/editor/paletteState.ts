@@ -252,7 +252,8 @@ function buildProjectStateFromPaletteParts<
         hiddenPresetIds: input.hiddenPresetIds.slice(),
         activePaletteTab: input.activePaletteTab,
         deletedAutoPaletteColors: input.deletedAutoPaletteColors.slice(),
-        autoOverrides: { ...input.autoOverrides },
+        autoOverrides:
+            input.profile.kind === "fixed" ? {} : { ...input.autoOverrides },
     }
 }
 

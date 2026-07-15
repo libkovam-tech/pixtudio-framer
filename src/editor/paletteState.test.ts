@@ -1598,7 +1598,7 @@ describe("palette state", () => {
         expect(result.projectState.deletedAutoPaletteColors).toEqual([
             "#000000",
         ])
-        expect(result.projectState.autoOverrides).toEqual(autoOverrides)
+        expect(result.projectState.autoOverrides).toEqual({})
         expect(result.projectState.autoSwatches).toBe(
             result.application.autoSwatches
         )
@@ -1696,7 +1696,7 @@ describe("palette state", () => {
         expect(result.activePaletteTab).toBe("presets")
         expect(result.imagePixels).toEqual([["auto-0"]])
         expect(result.overlayPixels).toEqual([[null]])
-        expect(result.autoOverrides).toEqual(autoOverrides)
+        expect(result.autoOverrides).toEqual({})
         expect(result.quantizationProfile).toEqual(fixedProfile)
         expect(result.importedPalettePresets).toEqual(importedPalettePresets)
         expect(result.autoSwatches).not.toBe(world.autoSwatches)
