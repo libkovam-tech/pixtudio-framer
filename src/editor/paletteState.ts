@@ -31,6 +31,8 @@ export type PaletteAutoOverrideLike = {
     isTransparent?: boolean
 }
 
+export const ENABLE_PROTECTED_AUTO_ASSIGNMENT_CANDIDATE = false
+
 type RgbColor = { r: number; g: number; b: number }
 type OklabColor = { l: number; a: number; b: number }
 
@@ -62,6 +64,15 @@ export type PaletteTabWorldCommitResult<TWorld> = PaletteTabWorldState<TWorld>
 export type PaletteAutoSessionResetResult<TAutoOverrides> = {
     autoOverrides: TAutoOverrides
     deletedAutoPaletteColors: string[]
+}
+
+export type ProtectedAutoAssignmentCandidateResult<
+    TPixel extends string | null,
+> = {
+    imagePixels: TPixel[][]
+    protectedSwatchIds: string[]
+    changed: boolean
+    enabled: boolean
 }
 
 export type PalettePresetSessionResetResult<TWorld> = {
@@ -1032,6 +1043,105 @@ export function remapPaletteGridById<TPixel extends string | null>(
     })
 
     return changed ? out : grid
+}
+
+function mapResizedCellIndex(input: {
+    index: number
+    fromSize: number
+    toSize: number
+}): number {
+    if (input.fromSize <= 0 || input.toSize <= 0) return -1
+    const mapped = Math.floor(
+        ((input.index + 0.5) * input.fromSize) / input.toSize
+    )
+    return Math.max(0, Math.min(input.fromSize - 1, mapped))
+}
+
+export function prepareProtectedAutoAssignmentCandidate<
+    TPixel extends string | null,
+    TSwatch extends PaletteSwatchLike,
+    TOverride,
+>(input: {
+    enabled?: boolean
+    imagePixels: TPixel[][]
+    previousImagePixels: TPixel[][]
+    targetAutoSwatches: ReadonlyArray<TSwatch>
+    autoOverrides: PaletteAutoOverridesMap<TOverride>
+}): ProtectedAutoAssignmentCandidateResult<TPixel> {
+    const enabled =
+        input.enabled ?? ENABLE_PROTECTED_AUTO_ASSIGNMENT_CANDIDATE
+    const targetSwatchIds = new Set(
+        input.targetAutoSwatches
+            .map((swatch) => swatch.id)
+            .filter((id): id is string => typeof id === "string" && !!id)
+    )
+    const protectedSwatchIds = Object.keys(input.autoOverrides || {}).filter(
+        (id) => id.startsWith("auto-") && targetSwatchIds.has(id)
+    )
+
+    if (!enabled || protectedSwatchIds.length === 0) {
+        return {
+            imagePixels: input.imagePixels,
+            protectedSwatchIds,
+            changed: false,
+            enabled,
+        }
+    }
+
+    const protectedSet = new Set(protectedSwatchIds)
+    const oldRows = input.previousImagePixels.length
+    const oldCols = input.previousImagePixels[0]?.length ?? 0
+    const newRows = input.imagePixels.length
+    const newCols = input.imagePixels[0]?.length ?? 0
+
+    if (oldRows <= 0 || oldCols <= 0 || newRows <= 0 || newCols <= 0) {
+        return {
+            imagePixels: input.imagePixels,
+            protectedSwatchIds,
+            changed: false,
+            enabled,
+        }
+    }
+
+    let changed = false
+    const imagePixels = input.imagePixels.map((row, rowIndex) => {
+        const sourceRowIndex = mapResizedCellIndex({
+            index: rowIndex,
+            fromSize: oldRows,
+            toSize: newRows,
+        })
+        let rowChanged = false
+        const nextRow = row.map((pixel, columnIndex) => {
+            const sourceColumnIndex = mapResizedCellIndex({
+                index: columnIndex,
+                fromSize: oldCols,
+                toSize: newCols,
+            })
+            const sourcePixel =
+                input.previousImagePixels[sourceRowIndex]?.[sourceColumnIndex]
+
+            if (
+                typeof sourcePixel === "string" &&
+                protectedSet.has(sourcePixel) &&
+                pixel !== sourcePixel
+            ) {
+                rowChanged = true
+                return sourcePixel as TPixel
+            }
+
+            return pixel
+        })
+
+        if (rowChanged) changed = true
+        return rowChanged ? nextRow : row
+    })
+
+    return {
+        imagePixels: changed ? imagePixels : input.imagePixels,
+        protectedSwatchIds,
+        changed,
+        enabled,
+    }
 }
 
 export function removePalettePixelValueFromGrid<

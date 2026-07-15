@@ -11,6 +11,7 @@ import {
     prepareAutoOverridesForSwatchEdit,
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSwatchEditApplication,
+    prepareProtectedAutoAssignmentCandidate,
     preparePaletteProjectStateRestoreTabs,
     preparePalettePresetSessionReset,
     preparePaletteSliderCommitCleanup,
@@ -1289,6 +1290,85 @@ describe("palette state", () => {
             "auto-1": { hex: "#FF0000" },
         })
         expect(result.selectedSwatch).toBe("auto-1")
+    })
+
+    it("keeps protected auto assignment candidate disabled by default", () => {
+        const imagePixels = [
+            ["auto-1", "auto-1"],
+            ["auto-1", "auto-1"],
+        ]
+        const result = prepareProtectedAutoAssignmentCandidate({
+            imagePixels,
+            previousImagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-1", "auto-0"],
+            ],
+            targetAutoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+            autoOverrides: {
+                "auto-0": { hex: "#FFFF33" },
+            },
+        })
+
+        expect(result).toEqual({
+            imagePixels,
+            protectedSwatchIds: ["auto-0"],
+            changed: false,
+            enabled: false,
+        })
+    })
+
+    it("can preserve protected auto assignments through deterministic grid resize", () => {
+        const result = prepareProtectedAutoAssignmentCandidate({
+            enabled: true,
+            imagePixels: [
+                ["auto-1", "auto-1", "auto-1"],
+                ["auto-1", "auto-1", "auto-1"],
+                ["auto-1", "auto-1", "auto-1"],
+            ],
+            previousImagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-1", "auto-0"],
+            ],
+            targetAutoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+            autoOverrides: {
+                "auto-0": { hex: "#FFFF33" },
+            },
+        })
+
+        expect(result.enabled).toBe(true)
+        expect(result.changed).toBe(true)
+        expect(result.protectedSwatchIds).toEqual(["auto-0"])
+        expect(result.imagePixels).toEqual([
+            ["auto-0", "auto-1", "auto-1"],
+            ["auto-1", "auto-0", "auto-0"],
+            ["auto-1", "auto-0", "auto-0"],
+        ])
+    })
+
+    it("does not preserve protected auto assignments missing from the target palette", () => {
+        const imagePixels = [
+            ["auto-1", "auto-1"],
+            ["auto-1", "auto-1"],
+        ]
+        const result = prepareProtectedAutoAssignmentCandidate({
+            enabled: true,
+            imagePixels,
+            previousImagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-1", "auto-0"],
+            ],
+            targetAutoSwatches: [{ id: "auto-1" }],
+            autoOverrides: {
+                "auto-0": { hex: "#FFFF33" },
+            },
+        })
+
+        expect(result).toEqual({
+            imagePixels,
+            protectedSwatchIds: [],
+            changed: false,
+            enabled: true,
+        })
     })
 
     it("prepares swatch edit applications with updated swatches and overrides", () => {
