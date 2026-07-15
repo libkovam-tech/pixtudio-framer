@@ -58,6 +58,8 @@ export type FixedPaletteEditSwatchLike = {
     isTransparent?: boolean
 }
 
+export const ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE = false
+
 type FixedPaletteCandidateSwatchLike = FixedPaletteEditSwatchLike & {
     [key: string]: unknown
 }
@@ -175,6 +177,15 @@ export type FixedPaletteVocabularyExtensionWorldResult<
 > = {
     world: FixedPaletteVocabularyExtensionWorld<TProfile, TSwatch, TPixel>
     selectedSwatch: string
+}
+
+export type FixedPaletteAssignmentPreservationCandidateResult<
+    TPixel extends string | null,
+> = {
+    imagePixels: TPixel[][]
+    preservedSwatchIds: string[]
+    changed: boolean
+    enabled: boolean
 }
 
 export type FixedPaletteVocabularyExtensionWorldInput<
@@ -513,6 +524,106 @@ function cloneSwatches<TSwatch>(swatches: ReadonlyArray<TSwatch>): TSwatch[] {
 
 function clonePixelGrid<TPixel>(pixels: TPixel[][]): TPixel[][] {
     return pixels.map((row) => row.slice())
+}
+
+function mapFixedPaletteResizedCellIndex(input: {
+    index: number
+    fromSize: number
+    toSize: number
+}): number {
+    if (input.fromSize <= 0 || input.toSize <= 0) return -1
+    const mapped = Math.floor(
+        ((input.index + 0.5) * input.fromSize) / input.toSize
+    )
+    return Math.max(0, Math.min(input.fromSize - 1, mapped))
+}
+
+export function prepareFixedPaletteAssignmentPreservationCandidate<
+    TPixel extends string | null,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    enabled?: boolean
+    imagePixels: TPixel[][]
+    previousImagePixels: TPixel[][]
+    targetAutoSwatches: ReadonlyArray<TSwatch>
+    preservedSwatchIds: ReadonlyArray<string>
+}): FixedPaletteAssignmentPreservationCandidateResult<TPixel> {
+    const enabled =
+        input.enabled ?? ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE
+    const targetSwatchIds = new Set(
+        input.targetAutoSwatches.map((swatch) => swatch.id)
+    )
+    const preservedSwatchIds = Array.from(
+        new Set(
+            input.preservedSwatchIds.filter(
+                (id) => !!id && targetSwatchIds.has(id)
+            )
+        )
+    )
+
+    if (!enabled || preservedSwatchIds.length === 0) {
+        return {
+            imagePixels: input.imagePixels,
+            preservedSwatchIds,
+            changed: false,
+            enabled,
+        }
+    }
+
+    const preservedSet = new Set(preservedSwatchIds)
+    const oldRows = input.previousImagePixels.length
+    const oldCols = input.previousImagePixels[0]?.length ?? 0
+    const newRows = input.imagePixels.length
+    const newCols = input.imagePixels[0]?.length ?? 0
+
+    if (oldRows <= 0 || oldCols <= 0 || newRows <= 0 || newCols <= 0) {
+        return {
+            imagePixels: input.imagePixels,
+            preservedSwatchIds,
+            changed: false,
+            enabled,
+        }
+    }
+
+    let changed = false
+    const imagePixels = input.imagePixels.map((row, rowIndex) => {
+        const sourceRowIndex = mapFixedPaletteResizedCellIndex({
+            index: rowIndex,
+            fromSize: oldRows,
+            toSize: newRows,
+        })
+        let rowChanged = false
+        const nextRow = row.map((pixel, columnIndex) => {
+            const sourceColumnIndex = mapFixedPaletteResizedCellIndex({
+                index: columnIndex,
+                fromSize: oldCols,
+                toSize: newCols,
+            })
+            const sourcePixel =
+                input.previousImagePixels[sourceRowIndex]?.[sourceColumnIndex]
+
+            if (
+                typeof sourcePixel === "string" &&
+                preservedSet.has(sourcePixel) &&
+                pixel !== sourcePixel
+            ) {
+                rowChanged = true
+                return sourcePixel as TPixel
+            }
+
+            return pixel
+        })
+
+        if (rowChanged) changed = true
+        return rowChanged ? nextRow : row
+    })
+
+    return {
+        imagePixels: changed ? imagePixels : input.imagePixels,
+        preservedSwatchIds,
+        changed,
+        enabled,
+    }
 }
 
 function assignNewVocabularySwatchCells<

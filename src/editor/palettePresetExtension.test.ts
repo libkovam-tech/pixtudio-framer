@@ -18,6 +18,7 @@ import {
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPaletteDrawingProjectApplication,
+    prepareFixedPaletteAssignmentPreservationCandidate,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
@@ -2053,6 +2054,110 @@ describe("palette preset extension", () => {
             ["auto-4", "auto-0"],
             ["auto-3", "auto-4"],
         ])
+    })
+
+    it("keeps fixed assignment preservation candidate disabled by default", () => {
+        const imagePixels = [
+            ["auto-1", "auto-1"],
+            ["auto-1", "auto-1"],
+        ]
+        const result = prepareFixedPaletteAssignmentPreservationCandidate({
+            imagePixels,
+            previousImagePixels: [
+                ["auto-5", "auto-1"],
+                ["auto-1", "auto-5"],
+            ],
+            targetAutoSwatches: [
+                { id: "auto-1", color: "#E9D8A6" },
+                { id: "auto-5", color: "#55FF44" },
+            ],
+            preservedSwatchIds: ["auto-5"],
+        })
+
+        expect(result).toEqual({
+            imagePixels,
+            preservedSwatchIds: ["auto-5"],
+            changed: false,
+            enabled: false,
+        })
+    })
+
+    it("can preserve explicit fixed swatch assignments through deterministic grid resize", () => {
+        const result = prepareFixedPaletteAssignmentPreservationCandidate({
+            enabled: true,
+            imagePixels: [
+                ["auto-1", "auto-1", "auto-1"],
+                ["auto-1", "auto-1", "auto-1"],
+                ["auto-1", "auto-1", "auto-1"],
+            ],
+            previousImagePixels: [
+                ["auto-5", "auto-1"],
+                ["auto-1", "auto-5"],
+            ],
+            targetAutoSwatches: [
+                { id: "auto-1", color: "#E9D8A6" },
+                { id: "auto-5", color: "#55FF44" },
+            ],
+            preservedSwatchIds: ["auto-5"],
+        })
+
+        expect(result.enabled).toBe(true)
+        expect(result.changed).toBe(true)
+        expect(result.preservedSwatchIds).toEqual(["auto-5"])
+        expect(result.imagePixels).toEqual([
+            ["auto-5", "auto-1", "auto-1"],
+            ["auto-1", "auto-5", "auto-5"],
+            ["auto-1", "auto-5", "auto-5"],
+        ])
+    })
+
+    it("only preserves fixed swatch ids explicitly requested by the caller", () => {
+        const result = prepareFixedPaletteAssignmentPreservationCandidate({
+            enabled: true,
+            imagePixels: [
+                ["auto-1", "auto-1"],
+                ["auto-1", "auto-1"],
+            ],
+            previousImagePixels: [
+                ["auto-5", "auto-8"],
+                ["auto-8", "auto-5"],
+            ],
+            targetAutoSwatches: [
+                { id: "auto-1", color: "#E9D8A6" },
+                { id: "auto-5", color: "#55FF44" },
+                { id: "auto-8", color: "#005F73" },
+            ],
+            preservedSwatchIds: ["auto-5"],
+        })
+
+        expect(result.imagePixels).toEqual([
+            ["auto-5", "auto-1"],
+            ["auto-1", "auto-5"],
+        ])
+    })
+
+    it("does not preserve fixed swatch assignments missing from the target palette", () => {
+        const imagePixels = [
+            ["auto-1", "auto-1"],
+            ["auto-1", "auto-1"],
+        ]
+        const result = prepareFixedPaletteAssignmentPreservationCandidate({
+            enabled: true,
+            imagePixels,
+            previousImagePixels: [
+                ["auto-5", "auto-1"],
+                ["auto-1", "auto-5"],
+            ],
+            targetAutoSwatches: [{ id: "auto-1", color: "#E9D8A6" }],
+            preservedSwatchIds: ["auto-5"],
+        })
+
+        expect(result).toEqual({
+            imagePixels,
+            preservedSwatchIds: [],
+            changed: false,
+            enabled: true,
+        })
     })
 
     it("prepares vocabulary extension application grids from the same world", () => {
