@@ -57,6 +57,7 @@ import {
 } from "./saveLoadResult.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
+    ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE,
     ensureActiveImportedPalettePresetRegistered,
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
@@ -3563,6 +3564,16 @@ function PixelEditorFramer({
         React.useState<AutoSwatchOverridesMap>({})
     const [deletedAutoPaletteColors, setDeletedAutoPaletteColors] =
         React.useState<string[]>([])
+    const fixedPaletteAssignmentCandidateRef = React.useRef<{
+        profileId: string | null
+        entries: Array<{
+            swatchId: SwatchId
+            imagePixels: PixelValue[][]
+        }>
+    }>({
+        profileId: null,
+        entries: [],
+    })
 
     function resetAutoOverridesForNewImport() {
         const reset = preparePaletteAutoSessionReset<AutoSwatchOverridesMap>()
@@ -3576,6 +3587,10 @@ function PixelEditorFramer({
         >({
             defaultProfile: EXTRACT_QUANTIZATION_PROFILE,
         })
+        fixedPaletteAssignmentCandidateRef.current = {
+            profileId: null,
+            entries: [],
+        }
         setQuantizationProfile(reset.quantizationProfile)
         setPaletteTabsState(reset.tabsState)
         setActivePresetButton(reset.activePresetButton)
@@ -3604,17 +3619,44 @@ function PixelEditorFramer({
         imagePixels: PixelValue[][]
         targetAutoSwatches: Swatch[]
     }) {
-        return prepareFixedPaletteAssignmentPreservationCandidate({
-            imagePixels: input.imagePixels,
-            previousImagePixels: imagePixels,
-            targetAutoSwatches: input.targetAutoSwatches,
-            preservedSwatchIds:
-                quantizationProfile.kind === "fixed" &&
-                selectedSwatch !== "transparent" &&
-                selectedSwatch.startsWith("auto-")
-                    ? [selectedSwatch]
-                    : [],
-        })
+        const anchor = fixedPaletteAssignmentCandidateRef.current
+        if (
+            !ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE ||
+            quantizationProfile.kind !== "fixed" ||
+            anchor.profileId !== quantizationProfile.id ||
+            anchor.entries.length === 0
+        ) {
+            return {
+                imagePixels: input.imagePixels,
+                preservedSwatchIds: [],
+                changed: false,
+                enabled: ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE,
+            }
+        }
+
+        let imagePixelsNext = input.imagePixels
+        let changed = false
+        const preservedSwatchIds: string[] = []
+
+        for (const entry of anchor.entries) {
+            const prepared = prepareFixedPaletteAssignmentPreservationCandidate({
+                enabled: true,
+                imagePixels: imagePixelsNext,
+                previousImagePixels: entry.imagePixels,
+                targetAutoSwatches: input.targetAutoSwatches,
+                preservedSwatchIds: [entry.swatchId],
+            })
+            imagePixelsNext = prepared.imagePixels
+            changed = changed || prepared.changed
+            preservedSwatchIds.push(...prepared.preservedSwatchIds)
+        }
+
+        return {
+            imagePixels: imagePixelsNext,
+            preservedSwatchIds,
+            changed,
+            enabled: true,
+        }
     }
 
     React.useEffect(() => {
@@ -9797,6 +9839,27 @@ function PixelEditorFramer({
                     setColorModalMode("edit")
                     setPendingDelete(false)
                     return
+                }
+
+                if (ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE) {
+                    const currentAnchor =
+                        fixedPaletteAssignmentCandidateRef.current
+                    const entries =
+                        currentAnchor.profileId === preparedEdit.profile.id
+                            ? currentAnchor.entries.filter(
+                                  (entry) => entry.swatchId !== editingSwatchId
+                              )
+                            : []
+                    fixedPaletteAssignmentCandidateRef.current = {
+                        profileId: preparedEdit.profile.id,
+                        entries: [
+                            ...entries,
+                            {
+                                swatchId: editingSwatchId,
+                                imagePixels: clonePixelsGrid(imagePixels),
+                            },
+                        ],
+                    }
                 }
 
                 setImportedPalettePresets(preparedEdit.importedPalettePresets)
