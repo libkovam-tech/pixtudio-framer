@@ -57,17 +57,15 @@ import {
 } from "./saveLoadResult.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
-    ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE,
-    ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE,
+    USE_LEGACY_FIXED_PRESET_SWATCH_EDIT_ROLLBACK,
     ensureActiveImportedPalettePresetRegistered,
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
     prepareImportedPalettePresetFromColors,
     prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
-    applyFixedPaletteDisplayOverrideCandidateSwatches,
-    prepareFixedPaletteAssignmentPreservationCandidate,
-    prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication,
+    applyFixedPaletteDisplayOverrideSwatches,
+    prepareFixedPaletteDisplayOverrideSwatchEditApplication,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPalettePresetSwatchDeleteProjectApplication,
@@ -3567,16 +3565,6 @@ function PixelEditorFramer({
         React.useState<AutoSwatchOverridesMap>({})
     const [deletedAutoPaletteColors, setDeletedAutoPaletteColors] =
         React.useState<string[]>([])
-    const fixedPaletteAssignmentCandidateRef = React.useRef<{
-        profileId: string | null
-        entries: Array<{
-            swatchId: SwatchId
-            imagePixels: PixelValue[][]
-        }>
-    }>({
-        profileId: null,
-        entries: [],
-    })
 
     function resetAutoOverridesForNewImport() {
         const reset = preparePaletteAutoSessionReset<AutoSwatchOverridesMap>()
@@ -3590,10 +3578,6 @@ function PixelEditorFramer({
         >({
             defaultProfile: EXTRACT_QUANTIZATION_PROFILE,
         })
-        fixedPaletteAssignmentCandidateRef.current = {
-            profileId: null,
-            entries: [],
-        }
         setQuantizationProfile(reset.quantizationProfile)
         setPaletteTabsState(reset.tabsState)
         setActivePresetButton(reset.activePresetButton)
@@ -3616,50 +3600,6 @@ function PixelEditorFramer({
         }
 
         return quantizePixels(pixels, targetColors, deletedAutoPaletteColors)
-    }
-
-    function prepareFixedPaletteRebuildImagePixelsCandidate(input: {
-        imagePixels: PixelValue[][]
-        targetAutoSwatches: Swatch[]
-    }) {
-        const anchor = fixedPaletteAssignmentCandidateRef.current
-        if (
-            !ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE ||
-            quantizationProfile.kind !== "fixed" ||
-            anchor.profileId !== quantizationProfile.id ||
-            anchor.entries.length === 0
-        ) {
-            return {
-                imagePixels: input.imagePixels,
-                preservedSwatchIds: [],
-                changed: false,
-                enabled: ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE,
-            }
-        }
-
-        let imagePixelsNext = input.imagePixels
-        let changed = false
-        const preservedSwatchIds: string[] = []
-
-        for (const entry of anchor.entries) {
-            const prepared = prepareFixedPaletteAssignmentPreservationCandidate({
-                enabled: true,
-                imagePixels: imagePixelsNext,
-                previousImagePixels: entry.imagePixels,
-                targetAutoSwatches: input.targetAutoSwatches,
-                preservedSwatchIds: [entry.swatchId],
-            })
-            imagePixelsNext = prepared.imagePixels
-            changed = changed || prepared.changed
-            preservedSwatchIds.push(...prepared.preservedSwatchIds)
-        }
-
-        return {
-            imagePixels: imagePixelsNext,
-            preservedSwatchIds,
-            changed,
-            enabled: true,
-        }
     }
 
     React.useEffect(() => {
@@ -5937,8 +5877,7 @@ function PixelEditorFramer({
             const frozenUserSwatches = cloneSwatches(userSwatches)
             const frozenAutoOverrides = { ...autoOverrides }
             const frozenFixedPaletteColors =
-                quantizationProfile.kind === "fixed" &&
-                ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE
+                quantizationProfile.kind === "fixed"
                     ? getFixedProfilePaletteForApplication(quantizationProfile)
                     : frozenAutoSwatches
                           .filter((swatch) => !swatch.isTransparent)
@@ -6006,7 +5945,7 @@ function PixelEditorFramer({
                 }))
                 const nextAutoWithFixedDisplay =
                     frozenQuantizationProfile.kind === "fixed"
-                        ? applyFixedPaletteDisplayOverrideCandidateSwatches({
+                        ? applyFixedPaletteDisplayOverrideSwatches({
                               profile: frozenQuantizationProfile,
                               previousAutoSwatches: frozenAutoSwatches,
                               nextAutoSwatches: nextAutoRaw,
@@ -8667,7 +8606,7 @@ function PixelEditorFramer({
                     quantizationProfile.kind === "fixed" ? {} : autoOverrides
                 const nextAutoWithFixedDisplay =
                     quantizationProfile.kind === "fixed"
-                        ? applyFixedPaletteDisplayOverrideCandidateSwatches({
+                        ? applyFixedPaletteDisplayOverrideSwatches({
                               profile: quantizationProfile,
                               previousAutoSwatches: autoSwatches,
                               nextAutoSwatches: nextAuto,
@@ -8688,11 +8627,6 @@ function PixelEditorFramer({
                     nextAutoOverrides: activeAutoOverrides,
                     selectedSwatch,
                 })
-                const preservedImagePixels =
-                    prepareFixedPaletteRebuildImagePixelsCandidate({
-                        imagePixels: collapsed.imagePixels,
-                        targetAutoSwatches: collapsed.autoSwatches,
-                    })
 
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setUserSwatches (with-original) [after collapse]",
@@ -8725,9 +8659,6 @@ function PixelEditorFramer({
                     }
                     return prev
                 })
-                if (preservedImagePixels.changed) {
-                    setImagePixels(preservedImagePixels.imagePixels)
-                }
 
                 // Overlay must also be remapped; otherwise it may reference a removed swatch.
                 traceLoad("repixelizeEffect MUTATE", {
@@ -8739,7 +8670,7 @@ function PixelEditorFramer({
                     hasSnap,
                 })
                 applyOverlayAfterBaseRebuild({
-                    imagePixelsNext: preservedImagePixels.imagePixels,
+                    imagePixelsNext: collapsed.imagePixels,
                     nextAuto: collapsed.autoSwatches,
                     nextUser: collapsed.userSwatches,
                     hasSnap,
@@ -8749,7 +8680,7 @@ function PixelEditorFramer({
 
                 enforceGridRuleAfterRestore(
                     {
-                        imagePixels: preservedImagePixels.imagePixels,
+                        imagePixels: collapsed.imagePixels,
                         overlayPixels,
                         autoSwatches: collapsed.autoSwatches,
                         userSwatches: collapsed.userSwatches,
@@ -8792,7 +8723,7 @@ function PixelEditorFramer({
                     quantizationProfile.kind === "fixed" ? {} : autoOverrides
                 const nextAutoWithFixedDisplay =
                     quantizationProfile.kind === "fixed"
-                        ? applyFixedPaletteDisplayOverrideCandidateSwatches({
+                        ? applyFixedPaletteDisplayOverrideSwatches({
                               profile: quantizationProfile,
                               previousAutoSwatches: autoSwatches,
                               nextAutoSwatches: nextAutoRaw,
@@ -8812,11 +8743,6 @@ function PixelEditorFramer({
                     nextAutoOverrides: activeAutoOverrides,
                     selectedSwatch,
                 })
-                const preservedImagePixels =
-                    prepareFixedPaletteRebuildImagePixelsCandidate({
-                        imagePixels: collapsed.imagePixels,
-                        targetAutoSwatches: collapsed.autoSwatches,
-                    })
 
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "setUserSwatches (no-original) [after collapse]",
@@ -8858,7 +8784,7 @@ function PixelEditorFramer({
                 })
 
                 applyOverlayAfterBaseRebuild({
-                    imagePixelsNext: preservedImagePixels.imagePixels,
+                    imagePixelsNext: collapsed.imagePixels,
                     nextAuto: collapsed.autoSwatches,
                     nextUser: collapsed.userSwatches,
                     hasSnap,
@@ -8866,7 +8792,7 @@ function PixelEditorFramer({
                     reason: "repixelize:no-original",
                 })
 
-                setImagePixels(preservedImagePixels.imagePixels)
+                setImagePixels(collapsed.imagePixels)
             }
 
             // ✅ txn commit success (раньше тут ошибочно было ok:false)
@@ -9853,17 +9779,8 @@ function PixelEditorFramer({
                 !pendingTransparent
             ) {
                 const preparedEdit =
-                    ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE
-                        ? prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication(
-                              {
-                                  profile: quantizationProfile,
-                                  swatchId: editingSwatchId,
-                                  nextColor: colorUpper,
-                                  autoSwatches,
-                                  importedPalettePresets,
-                              }
-                          )
-                        : prepareFixedPalettePresetSwatchEditApplication({
+                    USE_LEGACY_FIXED_PRESET_SWATCH_EDIT_ROLLBACK
+                        ? prepareFixedPalettePresetSwatchEditApplication({
                               profile: makeEditableFixedPresetProfile(
                                   quantizationProfile,
                                   makeImportedPalettePresetId
@@ -9874,33 +9791,21 @@ function PixelEditorFramer({
                               autoSwatches,
                               importedPalettePresets,
                           })
+                        : prepareFixedPaletteDisplayOverrideSwatchEditApplication(
+                              {
+                                  profile: quantizationProfile,
+                                  swatchId: editingSwatchId,
+                                  nextColor: colorUpper,
+                                  autoSwatches,
+                                  importedPalettePresets,
+                              }
+                          )
                 if (preparedEdit.kind === "ignored") {
                     setIsColorModalOpen(false)
                     setEditingSwatchId(null)
                     setColorModalMode("edit")
                     setPendingDelete(false)
                     return
-                }
-
-                if (ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE) {
-                    const currentAnchor =
-                        fixedPaletteAssignmentCandidateRef.current
-                    const entries =
-                        currentAnchor.profileId === preparedEdit.profile.id
-                            ? currentAnchor.entries.filter(
-                                  (entry) => entry.swatchId !== editingSwatchId
-                              )
-                            : []
-                    fixedPaletteAssignmentCandidateRef.current = {
-                        profileId: preparedEdit.profile.id,
-                        entries: [
-                            ...entries,
-                            {
-                                swatchId: editingSwatchId,
-                                imagePixels: clonePixelsGrid(imagePixels),
-                            },
-                        ],
-                    }
                 }
 
                 setImportedPalettePresets(preparedEdit.importedPalettePresets)

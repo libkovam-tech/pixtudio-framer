@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
-    applyFixedPaletteDisplayOverrideCandidateSwatches,
+    applyFixedPaletteDisplayOverrideSwatches,
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
     ensureActiveImportedPalettePresetRegistered,
@@ -19,13 +19,12 @@ import {
     prepareAutoPaletteWorldFromReference,
     prepareFixedPaletteDrawingApplication,
     prepareFixedPaletteDrawingProjectApplication,
-    prepareFixedPaletteAssignmentPreservationCandidate,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPaletteReferenceProjectApplication,
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchDeleteProjectApplication,
-    prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication,
+    prepareFixedPaletteDisplayOverrideSwatchEditApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
@@ -1756,14 +1755,14 @@ describe("palette preset extension", () => {
         })
     })
 
-    it("prepares fixed display override candidate edits without changing quantization colors", () => {
+    it("prepares fixed display override edits without changing quantization colors", () => {
         const autoSwatches = [
             { id: "auto-0", color: "#001219", isTransparent: false },
             { id: "auto-1", color: "#E9D8A6", isTransparent: false },
         ]
 
         const result =
-            prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication({
+            prepareFixedPaletteDisplayOverrideSwatchEditApplication({
                 profile,
                 swatchId: "auto-1",
                 nextColor: "#FFFFFF",
@@ -1792,7 +1791,7 @@ describe("palette preset extension", () => {
         })
     })
 
-    it("keeps builtin fixed display override candidate edits out of imported preset registry", () => {
+    it("keeps builtin fixed display override edits out of imported preset registry", () => {
         const builtinProfile = {
             ...profile,
             source: "builtin" as const,
@@ -1805,7 +1804,7 @@ describe("palette preset extension", () => {
         ]
 
         const result =
-            prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication({
+            prepareFixedPaletteDisplayOverrideSwatchEditApplication({
                 profile: builtinProfile,
                 swatchId: "auto-1",
                 nextColor: "#00FF1E",
@@ -1828,8 +1827,8 @@ describe("palette preset extension", () => {
         })
     })
 
-    it("applies fixed display override candidate swatches after requantize", () => {
-        const result = applyFixedPaletteDisplayOverrideCandidateSwatches({
+    it("applies fixed display override swatches after requantize", () => {
+        const result = applyFixedPaletteDisplayOverrideSwatches({
             profile,
             previousAutoSwatches: [
                 { id: "auto-0", color: "#001219", isTransparent: false },
@@ -2147,111 +2146,6 @@ describe("palette preset extension", () => {
             ["auto-4", "auto-0"],
             ["auto-3", "auto-4"],
         ])
-    })
-
-    it("can explicitly disable fixed assignment preservation candidate", () => {
-        const imagePixels = [
-            ["auto-1", "auto-1"],
-            ["auto-1", "auto-1"],
-        ]
-        const result = prepareFixedPaletteAssignmentPreservationCandidate({
-            enabled: false,
-            imagePixels,
-            previousImagePixels: [
-                ["auto-5", "auto-1"],
-                ["auto-1", "auto-5"],
-            ],
-            targetAutoSwatches: [
-                { id: "auto-1", color: "#E9D8A6" },
-                { id: "auto-5", color: "#55FF44" },
-            ],
-            preservedSwatchIds: ["auto-5"],
-        })
-
-        expect(result).toEqual({
-            imagePixels,
-            preservedSwatchIds: ["auto-5"],
-            changed: false,
-            enabled: false,
-        })
-    })
-
-    it("can preserve explicit fixed swatch assignments through deterministic grid resize", () => {
-        const result = prepareFixedPaletteAssignmentPreservationCandidate({
-            enabled: true,
-            imagePixels: [
-                ["auto-1", "auto-1", "auto-1"],
-                ["auto-1", "auto-1", "auto-1"],
-                ["auto-1", "auto-1", "auto-1"],
-            ],
-            previousImagePixels: [
-                ["auto-5", "auto-1"],
-                ["auto-1", "auto-5"],
-            ],
-            targetAutoSwatches: [
-                { id: "auto-1", color: "#E9D8A6" },
-                { id: "auto-5", color: "#55FF44" },
-            ],
-            preservedSwatchIds: ["auto-5"],
-        })
-
-        expect(result.enabled).toBe(true)
-        expect(result.changed).toBe(true)
-        expect(result.preservedSwatchIds).toEqual(["auto-5"])
-        expect(result.imagePixels).toEqual([
-            ["auto-5", "auto-1", "auto-1"],
-            ["auto-1", "auto-5", "auto-5"],
-            ["auto-1", "auto-5", "auto-5"],
-        ])
-    })
-
-    it("only preserves fixed swatch ids explicitly requested by the caller", () => {
-        const result = prepareFixedPaletteAssignmentPreservationCandidate({
-            enabled: true,
-            imagePixels: [
-                ["auto-1", "auto-1"],
-                ["auto-1", "auto-1"],
-            ],
-            previousImagePixels: [
-                ["auto-5", "auto-8"],
-                ["auto-8", "auto-5"],
-            ],
-            targetAutoSwatches: [
-                { id: "auto-1", color: "#E9D8A6" },
-                { id: "auto-5", color: "#55FF44" },
-                { id: "auto-8", color: "#005F73" },
-            ],
-            preservedSwatchIds: ["auto-5"],
-        })
-
-        expect(result.imagePixels).toEqual([
-            ["auto-5", "auto-1"],
-            ["auto-1", "auto-5"],
-        ])
-    })
-
-    it("does not preserve fixed swatch assignments missing from the target palette", () => {
-        const imagePixels = [
-            ["auto-1", "auto-1"],
-            ["auto-1", "auto-1"],
-        ]
-        const result = prepareFixedPaletteAssignmentPreservationCandidate({
-            enabled: true,
-            imagePixels,
-            previousImagePixels: [
-                ["auto-5", "auto-1"],
-                ["auto-1", "auto-5"],
-            ],
-            targetAutoSwatches: [{ id: "auto-1", color: "#E9D8A6" }],
-            preservedSwatchIds: ["auto-5"],
-        })
-
-        expect(result).toEqual({
-            imagePixels,
-            preservedSwatchIds: [],
-            changed: false,
-            enabled: true,
-        })
     })
 
     it("prepares vocabulary extension application grids from the same world", () => {
