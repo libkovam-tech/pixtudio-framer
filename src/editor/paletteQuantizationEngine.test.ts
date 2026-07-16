@@ -20,7 +20,40 @@ import {
     remapOverlay,
     runAutoPaletteExtractorGateway,
 } from "./paletteQuantizationEngine.ts"
-import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
+import {
+    USE_OBJECTIVE_FIXED_PALETTE_MAPPER_CANDIDATE,
+    quantizeFixedPaletteOklab,
+    quantizeFixedPaletteObjectiveCandidate,
+} from "./quantizationMethods/fixedPaletteOklab.ts"
+
+function makeRareGreenAccentSource(): string[][] {
+    return [
+        [
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+        ],
+        [
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+        ],
+        [
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+        ],
+        [
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(255, 8, 8)",
+            "rgb(0, 100, 0)",
+        ],
+    ]
+}
 
 describe("palette quantization engine", () => {
     it("extracts a palette and maps pixels to extracted colors", () => {
@@ -97,16 +130,26 @@ describe("palette quantization engine", () => {
         expect(result).toEqual([["rgb(255, 0, 0)", "rgb(0, 0, 255)", null]])
     })
 
-    it("uses OKLAB mapping for fixed palette worlds", () => {
-        const source = [["rgb(0, 5, 0)"]]
+    it("keeps pure OKLAB mapping available as the fixed palette rollback baseline", () => {
+        const source = makeRareGreenAccentSource()
         const palette = ["#FF0000", "#00FF00"]
 
-        expect(quantizeWithFixedPalette(source, palette)).toEqual(
-            quantizeFixedPaletteOklab(source, palette)
+        expect(quantizeFixedPaletteOklab(source, palette)[3][3]).toBe(
+            "rgb(255, 0, 0)"
         )
-        expect(quantizeWithFixedPalette(source, palette)).toEqual([
-            ["rgb(255, 0, 0)"],
-        ])
+    })
+
+    it("routes fixed palette application through the objective mapper candidate", () => {
+        const source = makeRareGreenAccentSource()
+        const palette = ["#FF0000", "#00FF00"]
+
+        expect(USE_OBJECTIVE_FIXED_PALETTE_MAPPER_CANDIDATE).toBe(true)
+        expect(quantizeWithFixedPalette(source, palette)).toEqual(
+            quantizeFixedPaletteObjectiveCandidate(source, palette)
+        )
+        expect(quantizeWithFixedPalette(source, palette)[3][3]).toBe(
+            "rgb(0, 255, 0)"
+        )
     })
 
     it("remaps auto swatches but preserves user swatch ids", () => {
@@ -240,24 +283,32 @@ describe("palette quantization engine", () => {
         expect(world.imagePixels).toEqual([["auto-0", "auto-1"]])
     })
 
-    it("builds preset derived worlds through the OKLAB fixed mapper", () => {
+    it("builds preset derived worlds through the objective fixed mapper candidate", () => {
         const world = buildDerivedWorld({
             profile: {
                 kind: "fixed",
-                id: "test-oklab",
-                name: "Test OKLAB",
+                id: "test-objective-fixed",
+                name: "Test Objective Fixed",
                 source: "builtin",
                 colors: ["#FF0000", "#00FF00"],
             },
-            sourcePixels: [["rgb(0, 5, 0)"]],
-            overlayPixels: [[null]],
+            sourcePixels: makeRareGreenAccentSource(),
+            overlayPixels: [
+                [null, null, null, null],
+                [null, null, null, null],
+                [null, null, null, null],
+                [null, null, null, null],
+            ],
             previousSwatches: [],
             userSwatches: [],
             paletteCountTarget: 2,
         })
 
-        expect(world.imagePixels).toEqual([["auto-0"]])
-        expect(world.autoSwatches[0].color).toBe("#FF0000")
+        expect(world.imagePixels[3][3]).toBe("auto-1")
+        expect(world.autoSwatches.map((swatch) => swatch.color)).toEqual([
+            "#FF0000",
+            "#00FF00",
+        ])
     })
 
     it("registers NEON_COLD_32 as a built-in fixed profile", () => {

@@ -1,5 +1,5 @@
 import { extractPaletteOklabTournament } from "./quantizationMethods/autoPaletteOklabTournament.ts"
-import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
+import { quantizeFixedPaletteForApplication } from "./quantizationMethods/fixedPaletteOklab.ts"
 import {
     applyImportedPaletteToPixels,
     extractImportedPaletteColors,
@@ -264,7 +264,7 @@ export function quantizeWithFixedPalette(
     pixels: QuantizationPixel[][],
     paletteColors: string[]
 ): QuantizationPixel[][] {
-    return quantizeFixedPaletteOklab(pixels, paletteColors)
+    return quantizeFixedPaletteForApplication(pixels, paletteColors)
     // RGB baseline rollback: return quantizeWithFixedPaletteRgbBaseline(pixels, paletteColors)
 }
 
