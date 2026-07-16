@@ -1,7 +1,7 @@
 import * as React from "react"
 
 import { FFmpeg } from "@ffmpeg/ffmpeg"
-import { fetchFile, toBlobURL } from "@ffmpeg/util"
+import { fetchFile } from "@ffmpeg/util"
 
 import {
     SvgAlertBacking,
@@ -118,9 +118,6 @@ const EXPORT_PROGRESS_PREP_MAX = 12
 const EXPORT_PROGRESS_PNG_MAX = 42
 const EXPORT_PROGRESS_ENCODE_START = 56
 const EXPORT_PROGRESS_ENCODE_MAX = 96
-const FFMPEG_CUSTOM_CORE_MIME = "text/javascript"
-const FFMPEG_CUSTOM_WASM_MIME = "application/wasm"
-
 const okCancelButtonStyle: React.CSSProperties = {
     width: 50,
     height: 50,
@@ -505,25 +502,17 @@ async function ensureFFmpegLoaded() {
     ffmpegLoadPromise = (async () => {
         const ffmpeg = ffmpegSingleton ?? new FFmpeg()
         if (!ffmpeg.loaded) {
-            const coreBlobURL = await toBlobURL(
-                FFMPEG_CUSTOM_CORE_URL,
-                FFMPEG_CUSTOM_CORE_MIME
-            )
-            const wasmBlobURL = await toBlobURL(
-                FFMPEG_CUSTOM_WASM_URL,
-                FFMPEG_CUSTOM_WASM_MIME
-            )
             if (QUANTIZATION_EXPORT_DEBUG) {
                 console.info("[QuantizationRecorder] About to call ffmpeg.load()", {
                     classWorkerURL: FFMPEG_CUSTOM_WORKER_URL,
-                    coreURL: coreBlobURL,
-                    wasmURL: wasmBlobURL,
+                    coreURL: FFMPEG_CUSTOM_CORE_URL,
+                    wasmURL: FFMPEG_CUSTOM_WASM_URL,
                 })
             }
             await ffmpeg.load({
                 classWorkerURL: FFMPEG_CUSTOM_WORKER_URL,
-                coreURL: coreBlobURL,
-                wasmURL: wasmBlobURL,
+                coreURL: FFMPEG_CUSTOM_CORE_URL,
+                wasmURL: FFMPEG_CUSTOM_WASM_URL,
             })
             if (QUANTIZATION_EXPORT_DEBUG) {
                 console.info("[QuantizationRecorder] ffmpeg.load() resolved")
