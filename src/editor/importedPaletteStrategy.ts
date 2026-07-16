@@ -1,5 +1,5 @@
 import { extractPaletteOklabTournament } from "./quantizationMethods/autoPaletteOklabTournament.ts"
-import { quantizeFixedPaletteForApplication } from "./quantizationMethods/fixedPaletteOklab.ts"
+import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
 
 type Rgb = { r: number; g: number; b: number }
 type Oklab = { l: number; a: number; b: number }
@@ -462,7 +462,7 @@ export function applyImportedPaletteToPixels(
     paletteColors: string[]
 ): PalettePixel[][] {
     const prepared = prepareImportedPaletteColorsForApplication(paletteColors)
-    return quantizeFixedPaletteForApplication(pixels, prepared)
+    return quantizeFixedPaletteOklab(pixels, prepared)
 }
 
 export function shouldUseObjectiveImportedPaletteSampling(): boolean {
