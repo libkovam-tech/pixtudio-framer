@@ -1792,6 +1792,42 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("keeps builtin fixed display override candidate edits out of imported preset registry", () => {
+        const builtinProfile = {
+            ...profile,
+            source: "builtin" as const,
+            id: "sunset-10",
+            name: "SUNSET",
+        }
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+        ]
+
+        const result =
+            prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication({
+                profile: builtinProfile,
+                swatchId: "auto-1",
+                nextColor: "#00FF1E",
+                autoSwatches,
+                importedPalettePresets: [],
+            })
+
+        expect(result).toEqual({
+            kind: "edited",
+            profile: builtinProfile,
+            autoSwatches: [
+                autoSwatches[0],
+                {
+                    id: "auto-1",
+                    color: "#00FF1E",
+                    isTransparent: false,
+                },
+            ],
+            importedPalettePresets: [],
+        })
+    })
+
     it("applies fixed display override candidate swatches after requantize", () => {
         const result = applyFixedPaletteDisplayOverrideCandidateSwatches({
             profile,

@@ -9852,15 +9852,11 @@ function PixelEditorFramer({
                 editingSwatchId.startsWith("auto-") &&
                 !pendingTransparent
             ) {
-                const editableProfile = makeEditableFixedPresetProfile(
-                    quantizationProfile,
-                    makeImportedPalettePresetId
-                )
                 const preparedEdit =
                     ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE
                         ? prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication(
                               {
-                                  profile: editableProfile,
+                                  profile: quantizationProfile,
                                   swatchId: editingSwatchId,
                                   nextColor: colorUpper,
                                   autoSwatches,
@@ -9868,7 +9864,10 @@ function PixelEditorFramer({
                               }
                           )
                         : prepareFixedPalettePresetSwatchEditApplication({
-                              profile: editableProfile,
+                              profile: makeEditableFixedPresetProfile(
+                                  quantizationProfile,
+                                  makeImportedPalettePresetId
+                              ),
                               swatchId: editingSwatchId,
                               displayedColor: currentSwatch.color,
                               nextColor: colorUpper,

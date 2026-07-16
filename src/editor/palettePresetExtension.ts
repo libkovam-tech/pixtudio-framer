@@ -1863,7 +1863,7 @@ export function prepareFixedPalettePresetSwatchEditApplication<
 }
 
 export function prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication<
-    TProfile extends EditableFixedPaletteProfile & { source: "imported" },
+    TProfile extends EditableFixedPaletteProfile,
     TPreset extends ImportedPalettePresetRecord,
     TSwatch extends FixedPaletteEditSwatchLike,
 >(input: {
@@ -1904,10 +1904,13 @@ export function prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication
         kind: "edited",
         profile: input.profile,
         autoSwatches,
-        importedPalettePresets: upsertImportedPalettePreset(
-            input.importedPalettePresets,
-            input.profile
-        ),
+        importedPalettePresets:
+            input.profile.source === "imported"
+                ? upsertImportedPalettePreset(
+                      input.importedPalettePresets,
+                      input.profile
+                  )
+                : input.importedPalettePresets.slice(),
     }
 }
 
