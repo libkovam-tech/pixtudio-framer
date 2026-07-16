@@ -59,6 +59,7 @@ export type FixedPaletteEditSwatchLike = {
 }
 
 export const ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE = false
+export const ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE = true
 
 type FixedPaletteCandidateSwatchLike = FixedPaletteEditSwatchLike & {
     [key: string]: unknown
@@ -768,6 +769,62 @@ export function makeAutoSwatchesFromFixedProfile(
         isTransparent: false,
         isUser: false,
     }))
+}
+
+function getFixedPaletteSwatchIndex(swatchId: string): number | null {
+    const match = /^auto-(\d+)$/.exec(swatchId)
+    if (!match) return null
+    const index = Number(match[1])
+    return Number.isFinite(index) ? index : null
+}
+
+export function applyFixedPaletteDisplayOverrideCandidateSwatches<
+    TProfile extends EditableFixedPaletteProfile,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    enabled?: boolean
+    profile: TProfile
+    previousAutoSwatches: ReadonlyArray<TSwatch>
+    nextAutoSwatches: ReadonlyArray<TSwatch>
+}): TSwatch[] {
+    if (
+        !(input.enabled ?? ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE)
+    ) {
+        return input.nextAutoSwatches.map((swatch) => ({ ...swatch }) as TSwatch)
+    }
+
+    const fixedColors = getFixedProfilePaletteForApplication(input.profile).map(
+        (color) => normalizeEditablePaletteColor(color)
+    )
+    const previousById = new Map(
+        input.previousAutoSwatches.map((swatch) => [swatch.id, swatch])
+    )
+
+    return input.nextAutoSwatches.map((swatch) => {
+        const swatchIndex = getFixedPaletteSwatchIndex(swatch.id)
+        const fixedColor =
+            swatchIndex == null ? null : fixedColors[swatchIndex] ?? null
+        const previousSwatch = previousById.get(swatch.id)
+        const previousColor = previousSwatch
+            ? normalizeImportedPaletteHex(previousSwatch.color)
+            : null
+
+        if (
+            !previousSwatch ||
+            previousSwatch.isTransparent ||
+            !previousColor ||
+            !fixedColor ||
+            previousColor === fixedColor
+        ) {
+            return { ...swatch } as TSwatch
+        }
+
+        return {
+            ...swatch,
+            color: previousColor,
+            isTransparent: false,
+        } as TSwatch
+    })
 }
 
 export function prepareFixedPaletteDrawingApplication<
@@ -1801,6 +1858,55 @@ export function prepareFixedPalettePresetSwatchEditApplication<
         importedPalettePresets: upsertImportedPalettePreset(
             input.importedPalettePresets,
             preparedEdit.profile
+        ),
+    }
+}
+
+export function prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication<
+    TProfile extends EditableFixedPaletteProfile & { source: "imported" },
+    TPreset extends ImportedPalettePresetRecord,
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(input: {
+    enabled?: boolean
+    profile: TProfile
+    swatchId: string
+    nextColor: string
+    autoSwatches: ReadonlyArray<TSwatch>
+    importedPalettePresets: ReadonlyArray<TPreset>
+}): FixedPalettePresetSwatchEditApplicationResult<
+    TProfile,
+    TPreset,
+    TSwatch
+> {
+    if (
+        !(input.enabled ?? ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE)
+    ) {
+        return { kind: "ignored" }
+    }
+
+    const nextColor = normalizeImportedPaletteHex(input.nextColor)
+    if (!nextColor) return { kind: "ignored" }
+
+    let edited = false
+    const autoSwatches = input.autoSwatches.map((swatch) => {
+        if (swatch.id !== input.swatchId) return swatch
+        edited = true
+        return {
+            ...swatch,
+            color: nextColor,
+            isTransparent: false,
+        } as TSwatch
+    })
+
+    if (!edited) return { kind: "ignored" }
+
+    return {
+        kind: "edited",
+        profile: input.profile,
+        autoSwatches,
+        importedPalettePresets: upsertImportedPalettePreset(
+            input.importedPalettePresets,
+            input.profile
         ),
     }
 }

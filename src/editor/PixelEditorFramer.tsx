@@ -57,6 +57,7 @@ import {
 } from "./saveLoadResult.ts"
 import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
 import {
+    ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE,
     ENABLE_FIXED_PALETTE_ASSIGNMENT_PRESERVATION_CANDIDATE,
     ensureActiveImportedPalettePresetRegistered,
     makeAutoSwatchesFromFixedProfile,
@@ -64,7 +65,9 @@ import {
     prepareImportedPalettePresetFromColors,
     prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
+    applyFixedPaletteDisplayOverrideCandidateSwatches,
     prepareFixedPaletteAssignmentPreservationCandidate,
+    prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication,
     prepareFixedPaletteDrawingProjectApplication,
     prepareFixedPalettePresetProjectApplication,
     prepareFixedPalettePresetSwatchDeleteProjectApplication,
@@ -5933,9 +5936,13 @@ function PixelEditorFramer({
             const frozenAutoSwatches = cloneSwatches(autoSwatches)
             const frozenUserSwatches = cloneSwatches(userSwatches)
             const frozenAutoOverrides = { ...autoOverrides }
-            const frozenFixedPaletteColors = frozenAutoSwatches
-                .filter((swatch) => !swatch.isTransparent)
-                .map((swatch) => swatch.color)
+            const frozenFixedPaletteColors =
+                quantizationProfile.kind === "fixed" &&
+                ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE
+                    ? getFixedProfilePaletteForApplication(quantizationProfile)
+                    : frozenAutoSwatches
+                          .filter((swatch) => !swatch.isTransparent)
+                          .map((swatch) => swatch.color)
             const frozenQuantizationProfile: QuantizationProfile =
                 quantizationProfile.kind === "fixed"
                     ? {
@@ -5997,6 +6004,14 @@ function PixelEditorFramer({
                     isTransparent: false,
                     isUser: false,
                 }))
+                const nextAutoWithFixedDisplay =
+                    frozenQuantizationProfile.kind === "fixed"
+                        ? applyFixedPaletteDisplayOverrideCandidateSwatches({
+                              profile: frozenQuantizationProfile,
+                              previousAutoSwatches: frozenAutoSwatches,
+                              nextAutoSwatches: nextAutoRaw,
+                          })
+                        : nextAutoRaw
 
                 const colorToId = new Map<string, string>()
                 for (let i = 0; i < finalPalette.length; i++) {
@@ -6015,7 +6030,7 @@ function PixelEditorFramer({
                 )
 
                 const nextAutoEffective = applyAutoOverrides(
-                    nextAutoRaw,
+                    nextAutoWithFixedDisplay,
                     frozenAutoOverrides
                 )
 
@@ -8612,7 +8627,7 @@ function PixelEditorFramer({
                 const finalQuantPixels: (string | null)[][] = q.pixels
                 const finalPalette: string[] = q.palette
 
-                // next auto-swatches from finalPalette
+                // Build next auto swatches from the quantized palette.
                 const nextAuto: Swatch[] = finalPalette.map((c, i) => ({
                     id: `auto-${i}`,
                     color: c,
@@ -8650,8 +8665,16 @@ function PixelEditorFramer({
 
                 const activeAutoOverrides =
                     quantizationProfile.kind === "fixed" ? {} : autoOverrides
+                const nextAutoWithFixedDisplay =
+                    quantizationProfile.kind === "fixed"
+                        ? applyFixedPaletteDisplayOverrideCandidateSwatches({
+                              profile: quantizationProfile,
+                              previousAutoSwatches: autoSwatches,
+                              nextAutoSwatches: nextAuto,
+                          })
+                        : nextAuto
                 const nextAutoEffective = applyAutoOverrides(
-                    nextAuto,
+                    nextAutoWithFixedDisplay,
                     activeAutoOverrides
                 )
 
@@ -8767,8 +8790,16 @@ function PixelEditorFramer({
 
                 const activeAutoOverrides =
                     quantizationProfile.kind === "fixed" ? {} : autoOverrides
+                const nextAutoWithFixedDisplay =
+                    quantizationProfile.kind === "fixed"
+                        ? applyFixedPaletteDisplayOverrideCandidateSwatches({
+                              profile: quantizationProfile,
+                              previousAutoSwatches: autoSwatches,
+                              nextAutoSwatches: nextAutoRaw,
+                          })
+                        : nextAutoRaw
                 const nextAutoEffective = applyAutoOverrides(
-                    nextAutoRaw,
+                    nextAutoWithFixedDisplay,
                     activeAutoOverrides
                 )
 
@@ -9821,18 +9852,29 @@ function PixelEditorFramer({
                 editingSwatchId.startsWith("auto-") &&
                 !pendingTransparent
             ) {
+                const editableProfile = makeEditableFixedPresetProfile(
+                    quantizationProfile,
+                    makeImportedPalettePresetId
+                )
                 const preparedEdit =
-                    prepareFixedPalettePresetSwatchEditApplication({
-                    profile: makeEditableFixedPresetProfile(
-                        quantizationProfile,
-                        makeImportedPalettePresetId
-                    ),
-                    swatchId: editingSwatchId,
-                    displayedColor: currentSwatch.color,
-                    nextColor: colorUpper,
-                    autoSwatches,
-                    importedPalettePresets,
-                })
+                    ENABLE_FIXED_PALETTE_DISPLAY_OVERRIDE_CANDIDATE
+                        ? prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication(
+                              {
+                                  profile: editableProfile,
+                                  swatchId: editingSwatchId,
+                                  nextColor: colorUpper,
+                                  autoSwatches,
+                                  importedPalettePresets,
+                              }
+                          )
+                        : prepareFixedPalettePresetSwatchEditApplication({
+                              profile: editableProfile,
+                              swatchId: editingSwatchId,
+                              displayedColor: currentSwatch.color,
+                              nextColor: colorUpper,
+                              autoSwatches,
+                              importedPalettePresets,
+                          })
                 if (preparedEdit.kind === "ignored") {
                     setIsColorModalOpen(false)
                     setEditingSwatchId(null)

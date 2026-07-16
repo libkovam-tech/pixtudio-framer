@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    applyFixedPaletteDisplayOverrideCandidateSwatches,
     extendFixedPaletteProfile,
     findPaletteColorIndexByHex,
     ensureActiveImportedPalettePresetRegistered,
@@ -24,6 +25,7 @@ import {
     prepareFixedPalettePresetSwatchCreate,
     prepareFixedPalettePresetSwatchDeleteApplication,
     prepareFixedPalettePresetSwatchDeleteProjectApplication,
+    prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication,
     prepareFixedPalettePresetSwatchEditApplication,
     prepareFixedPaletteSwatchEdit,
     prepareFixedPaletteSwatchExtension,
@@ -1752,6 +1754,61 @@ describe("palette preset extension", () => {
                 },
             ],
         })
+    })
+
+    it("prepares fixed display override candidate edits without changing quantization colors", () => {
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+        ]
+
+        const result =
+            prepareFixedPaletteDisplayOverrideCandidateSwatchEditApplication({
+                profile,
+                swatchId: "auto-1",
+                nextColor: "#FFFFFF",
+                autoSwatches,
+                importedPalettePresets: [],
+            })
+
+        expect(result).toEqual({
+            kind: "edited",
+            profile,
+            autoSwatches: [
+                autoSwatches[0],
+                {
+                    id: "auto-1",
+                    color: "#FFFFFF",
+                    isTransparent: false,
+                },
+            ],
+            importedPalettePresets: [
+                {
+                    id: profile.id,
+                    name: profile.name,
+                    profile,
+                },
+            ],
+        })
+    })
+
+    it("applies fixed display override candidate swatches after requantize", () => {
+        const result = applyFixedPaletteDisplayOverrideCandidateSwatches({
+            profile,
+            previousAutoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#FFFFFF", isTransparent: false },
+            ],
+            nextAutoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+            ],
+        })
+
+        expect(result).toEqual([
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#FFFFFF", isTransparent: false },
+        ])
     })
 
     it("ignores fixed preset swatch edit applications for invalid colors", () => {
