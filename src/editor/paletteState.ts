@@ -231,6 +231,11 @@ function buildProjectStateFromPaletteParts<
         TImportedPreset
     >["autoOverrides"]
 }): EditorCommittedState<TPixel, TSwatch, TImportedPreset> {
+    const importedPalettePresets = ensureActiveImportedPresetRegisteredForHistory(
+        input.importedPalettePresets,
+        input.profile
+    )
+
     return {
         gridSize: input.gridSize,
         paletteCount: input.paletteCount,
@@ -247,7 +252,7 @@ function buildProjectStateFromPaletteParts<
         // Imported preset swatch edits are session state, so history must carry
         // the preset registry in lockstep with the active quantization profile.
         importedPalettePresets: cloneImportedPalettePresetsForHistory(
-            input.importedPalettePresets
+            importedPalettePresets
         ),
         hiddenPresetIds: input.hiddenPresetIds.slice(),
         activePaletteTab: input.activePaletteTab,
@@ -255,6 +260,30 @@ function buildProjectStateFromPaletteParts<
         autoOverrides:
             input.profile.kind === "fixed" ? {} : { ...input.autoOverrides },
     }
+}
+
+function ensureActiveImportedPresetRegisteredForHistory<
+    TImportedPreset extends ImportedPalettePresetForHistory,
+>(
+    presets: ReadonlyArray<TImportedPreset>,
+    profile: QuantizationProfile
+): TImportedPreset[] {
+    if (profile.kind !== "fixed" || profile.source !== "imported") {
+        return presets.slice()
+    }
+
+    const preset = {
+        id: profile.id,
+        name: profile.name,
+        profile: cloneQuantizationProfileForHistory(
+            profile
+        ) as ImportedPalettePresetForHistory["profile"],
+    } as TImportedPreset
+    const exists = presets.some((item) => item.id === profile.id)
+
+    return exists
+        ? presets.map((item) => (item.id === profile.id ? preset : item))
+        : [...presets, preset]
 }
 
 export function prepareProjectStateFromPaletteWorld<

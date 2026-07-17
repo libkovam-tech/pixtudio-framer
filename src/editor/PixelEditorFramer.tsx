@@ -6213,6 +6213,21 @@ function PixelEditorFramer({
             return nextTabsState
         })
 
+        latestProjectStateRef.current = {
+            ...state,
+            autoSwatches: cloneSwatches(autoEffective),
+            userSwatches: cloneSwatches(state.userSwatches),
+            quantizationProfile: cloneQuantizationProfileForHistory(nextProfile),
+            importedPalettePresets: cloneImportedPalettePresetsForHistory(
+                restoredImportedPresets
+            ),
+            hiddenPresetIds: (state.hiddenPresetIds ?? []).slice(),
+            deletedAutoPaletteColors: (
+                (state as any).deletedAutoPaletteColors || []
+            ).slice(),
+            autoOverrides: { ...ao },
+        } as ProjectState
+
         // Important: history flags are not changed here; undo/redo/pushCommit
         // own them.
     }

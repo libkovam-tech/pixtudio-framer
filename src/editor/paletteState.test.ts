@@ -1592,7 +1592,14 @@ describe("palette state", () => {
         expect(result.projectState.activePaletteTab).toBe("presets")
         expect(result.projectState.quantizationProfile).toEqual(fixedProfile)
         expect(result.projectState.importedPalettePresets).toEqual(
-            importedPalettePresets
+            [
+                ...importedPalettePresets,
+                {
+                    id: "sunset-custom",
+                    name: "Sunset Custom",
+                    profile: fixedProfile,
+                },
+            ]
         )
         expect(result.projectState.hiddenPresetIds).toEqual(["hidden-preset"])
         expect(result.projectState.deletedAutoPaletteColors).toEqual([
@@ -1630,6 +1637,9 @@ describe("palette state", () => {
         expect(result.projectState.userSwatches).not.toBe(userSwatches)
         expect(result.projectState.importedPalettePresets?.[0]).not.toBe(
             importedPalettePresets[0]
+        )
+        expect(result.projectState.importedPalettePresets?.[1]?.profile).not.toBe(
+            fixedProfile
         )
         expect(result.projectState.autoOverrides).not.toBe(autoOverrides)
     })
@@ -1698,7 +1708,14 @@ describe("palette state", () => {
         expect(result.overlayPixels).toEqual([[null]])
         expect(result.autoOverrides).toEqual({})
         expect(result.quantizationProfile).toEqual(fixedProfile)
-        expect(result.importedPalettePresets).toEqual(importedPalettePresets)
+        expect(result.importedPalettePresets).toEqual([
+            ...importedPalettePresets,
+            {
+                id: "custom",
+                name: "Custom",
+                profile: fixedProfile,
+            },
+        ])
         expect(result.autoSwatches).not.toBe(world.autoSwatches)
         expect(result.userSwatches).not.toBe(userSwatches)
         expect(result.imagePixels).not.toBe(world.imagePixels)
@@ -1707,7 +1724,118 @@ describe("palette state", () => {
         expect(result.importedPalettePresets?.[0]).not.toBe(
             importedPalettePresets[0]
         )
+        expect(result.importedPalettePresets?.[1]?.profile).not.toBe(
+            fixedProfile
+        )
         expect(result.autoOverrides).not.toBe(autoOverrides)
+    })
+
+    it("registers active imported profiles when building committed project state", () => {
+        const fixedProfile = {
+            kind: "fixed" as const,
+            id: "custom",
+            name: "Custom",
+            source: "imported" as const,
+            colors: ["#111111", "#222222"],
+        }
+        const importedPalettePresets: Array<{
+            id: string
+            name: string
+            profile: typeof fixedProfile
+        }> = []
+
+        const result = prepareProjectStateFromPaletteWorld({
+            world: {
+                profile: fixedProfile,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#111111",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                ],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+            },
+            activePaletteTab: "presets",
+            gridSize: 1,
+            paletteCount: 2,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            importedPalettePresets,
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.importedPalettePresets).toEqual([
+            {
+                id: "custom",
+                name: "Custom",
+                profile: fixedProfile,
+            },
+        ])
+        expect(result.importedPalettePresets?.[0]?.profile).not.toBe(
+            fixedProfile
+        )
+    })
+
+    it("registers active imported profiles when applying palette worlds", () => {
+        const fixedProfile = {
+            kind: "fixed" as const,
+            id: "custom",
+            name: "Custom",
+            source: "imported" as const,
+            colors: ["#111111", "#222222"],
+        }
+        const importedPalettePresets: Array<{
+            id: string
+            name: string
+            profile: typeof fixedProfile
+        }> = []
+
+        const result = preparePaletteWorldSnapshotProjectApplication({
+            world: {
+                profile: fixedProfile,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#111111",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                ],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+                canvasPixels: [["auto-0"]],
+            },
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            activeTab: "presets",
+            gridSize: 1,
+            paletteCount: 2,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets,
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.projectState.importedPalettePresets).toEqual([
+            {
+                id: "custom",
+                name: "Custom",
+                profile: fixedProfile,
+            },
+        ])
+        expect(result.projectState.activePaletteTab).toBe("presets")
+        expect(result.application.activePresetButton).toBe("custom")
     })
 
     it("removes only pixels owned by a deleted paint swatch", () => {
