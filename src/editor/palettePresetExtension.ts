@@ -1746,17 +1746,17 @@ export function prepareFixedPalettePresetSwatchEditApplication<
 }
 
 export function prepareFixedPaletteDisplayOverrideSwatchEditApplication<
-    TProfile extends EditableFixedPaletteProfile,
     TPreset extends ImportedPalettePresetRecord,
     TSwatch extends FixedPaletteEditSwatchLike,
 >(input: {
-    profile: TProfile
+    profile: EditableFixedPaletteProfile
     swatchId: string
     nextColor: string
     autoSwatches: ReadonlyArray<TSwatch>
     importedPalettePresets: ReadonlyArray<TPreset>
+    makeImportedId: () => string
 }): FixedPalettePresetSwatchEditApplicationResult<
-    TProfile,
+    EditableFixedPaletteProfile & { source: "imported" },
     TPreset,
     TSwatch
 > {
@@ -1776,17 +1776,19 @@ export function prepareFixedPaletteDisplayOverrideSwatchEditApplication<
 
     if (!edited) return { kind: "ignored" }
 
+    const profile = makeEditableFixedPresetProfile(
+        input.profile,
+        input.makeImportedId
+    )
+
     return {
         kind: "edited",
-        profile: input.profile,
+        profile,
         autoSwatches,
-        importedPalettePresets:
-            input.profile.source === "imported"
-                ? upsertImportedPalettePreset(
-                      input.importedPalettePresets,
-                      input.profile
-                  )
-                : input.importedPalettePresets.slice(),
+        importedPalettePresets: upsertImportedPalettePreset(
+            input.importedPalettePresets,
+            profile
+        ),
     }
 }
 

@@ -9813,6 +9813,7 @@ function PixelEditorFramer({
                                   nextColor: colorUpper,
                                   autoSwatches,
                                   importedPalettePresets,
+                                  makeImportedId: makeImportedPalettePresetId,
                               }
                           )
                 if (preparedEdit.kind === "ignored") {

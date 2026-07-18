@@ -1768,6 +1768,7 @@ describe("palette preset extension", () => {
                 nextColor: "#FFFFFF",
                 autoSwatches,
                 importedPalettePresets: [],
+                makeImportedId: () => "unused",
             })
 
         expect(result).toEqual({
@@ -1791,7 +1792,7 @@ describe("palette preset extension", () => {
         })
     })
 
-    it("keeps builtin fixed display override edits out of imported preset registry", () => {
+    it("creates custom preset registry entries for builtin fixed display override edits", () => {
         const builtinProfile = {
             ...profile,
             source: "builtin" as const,
@@ -1810,11 +1811,17 @@ describe("palette preset extension", () => {
                 nextColor: "#00FF1E",
                 autoSwatches,
                 importedPalettePresets: [],
+                makeImportedId: () => "sunset-custom",
             })
 
         expect(result).toEqual({
             kind: "edited",
-            profile: builtinProfile,
+            profile: {
+                ...builtinProfile,
+                source: "imported",
+                id: "sunset-custom",
+                name: "SUNSET Custom",
+            },
             autoSwatches: [
                 autoSwatches[0],
                 {
@@ -1823,7 +1830,18 @@ describe("palette preset extension", () => {
                     isTransparent: false,
                 },
             ],
-            importedPalettePresets: [],
+            importedPalettePresets: [
+                {
+                    id: "sunset-custom",
+                    name: "SUNSET Custom",
+                    profile: {
+                        ...builtinProfile,
+                        source: "imported",
+                        id: "sunset-custom",
+                        name: "SUNSET Custom",
+                    },
+                },
+            ],
         })
     })
 
