@@ -20,10 +20,6 @@ export type ImportedPaletteExtractionResult = {
 // pass through the Smart Object source-preparation path.
 export const USE_LEGACY_IMPORTED_PALETTE_EXTRACTOR_ROLLBACK = false
 
-// Roll back to the fully unweighted unique-color extractor if the hybrid
-// candidate proves noisier in broad visual testing.
-export const USE_UNWEIGHTED_UNIQUE_COLOR_EXTRACTOR_ROLLBACK = false
-
 const OBJECTIVE_CLUSTER_ITERATIONS = 8
 
 function clamp(value: number, min: number, max: number): number {
@@ -153,17 +149,6 @@ export function sortImportedPaletteLikeAutoPalette(colors: string[]): string[] {
     )
 }
 
-function collectUniqueColors(pixels: PalettePixel[][]): string[] {
-    const colors = new Set<string>()
-    for (const row of pixels) {
-        for (const color of row) {
-            if (color == null) continue
-            colors.add(rgbToHex(parseColor(color)))
-        }
-    }
-    return sortImportedPaletteLikeAutoPalette([...colors])
-}
-
 function collectWeightedUniqueColors(pixels: PalettePixel[][]): WeightedPaletteColor[] {
     const counts = new Map<string, number>()
 
@@ -195,33 +180,6 @@ function nearestPaletteIndex(lab: Oklab, palette: Oklab[]): number {
         }
     }
     return bestIndex
-}
-
-function chooseInitialCentroids(colors: string[], count: number): Oklab[] {
-    const labs = colors.map((color) => rgbToOklab(parseColor(color)))
-    const selectedIndexes = [0]
-
-    while (selectedIndexes.length < count) {
-        let bestIndex = 0
-        let bestDistance = -1
-
-        for (let i = 0; i < labs.length; i += 1) {
-            if (selectedIndexes.includes(i)) continue
-            const minDistance = Math.min(
-                ...selectedIndexes.map((index) =>
-                    oklabDistanceSq(labs[i], labs[index])
-                )
-            )
-            if (minDistance > bestDistance) {
-                bestDistance = minDistance
-                bestIndex = i
-            }
-        }
-
-        selectedIndexes.push(bestIndex)
-    }
-
-    return selectedIndexes.map((index) => ({ ...labs[index] }))
 }
 
 function chooseInitialWeightedCentroids(
@@ -258,69 +216,6 @@ function chooseInitialWeightedCentroids(
     }
 
     return selectedIndexes.map((index) => ({ ...colors[index].lab }))
-}
-
-function objectivePaletteFromUniqueColors(
-    uniqueColors: string[],
-    targetColors: number
-): string[] {
-    if (uniqueColors.length === 0) return []
-
-    const count = Math.max(1, Math.min(Math.round(targetColors), uniqueColors.length))
-    if (uniqueColors.length <= count) return sortImportedPaletteLikeAutoPalette(uniqueColors)
-
-    // Every unique source color has one vote here; pixel area and file order are
-    // intentionally excluded from imported palette extraction.
-    const uniqueLabs = uniqueColors.map((color) => rgbToOklab(parseColor(color)))
-    let centroids = chooseInitialCentroids(uniqueColors, count)
-
-    for (let iteration = 0; iteration < OBJECTIVE_CLUSTER_ITERATIONS; iteration += 1) {
-        const clusters = centroids.map(() => ({
-            sumL: 0,
-            sumA: 0,
-            sumB: 0,
-            count: 0,
-        }))
-
-        for (const lab of uniqueLabs) {
-            const cluster = clusters[nearestPaletteIndex(lab, centroids)]
-            cluster.sumL += lab.l
-            cluster.sumA += lab.a
-            cluster.sumB += lab.b
-            cluster.count += 1
-        }
-
-        centroids = centroids.map((centroid, index) => {
-            const cluster = clusters[index]
-            if (cluster.count === 0) return centroid
-            return {
-                l: cluster.sumL / cluster.count,
-                a: cluster.sumA / cluster.count,
-                b: cluster.sumB / cluster.count,
-            }
-        })
-    }
-
-    const palette = sortImportedPaletteLikeAutoPalette(
-        centroids.map((centroid) => rgbToHex(oklabToRgb(centroid)))
-    )
-
-    if (palette.length >= count) return palette.slice(0, count)
-
-    const paletteLabs = palette.map((color) => rgbToOklab(parseColor(color)))
-    const remaining = uniqueColors.filter((color) => !palette.includes(color))
-    remaining.sort((a, b) => {
-        const labA = rgbToOklab(parseColor(a))
-        const labB = rgbToOklab(parseColor(b))
-        const distA = Math.min(...paletteLabs.map((lab) => oklabDistanceSq(labA, lab)))
-        const distB = Math.min(...paletteLabs.map((lab) => oklabDistanceSq(labB, lab)))
-        return distB - distA || a.localeCompare(b)
-    })
-
-    return sortImportedPaletteLikeAutoPalette([
-        ...palette,
-        ...remaining.slice(0, count - palette.length),
-    ])
 }
 
 function objectivePaletteFromHybridWeightedColors(
@@ -401,9 +296,6 @@ function extractObjectiveImportedPalette(
     pixels: PalettePixel[][],
     targetColors: number
 ): string[] {
-    if (USE_UNWEIGHTED_UNIQUE_COLOR_EXTRACTOR_ROLLBACK) {
-        return objectivePaletteFromUniqueColors(collectUniqueColors(pixels), targetColors)
-    }
     return objectivePaletteFromHybridWeightedColors(
         collectWeightedUniqueColors(pixels),
         targetColors

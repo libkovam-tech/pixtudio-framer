@@ -233,7 +233,6 @@ const ENABLE_ROUTE_LOGS = false
 const ENABLE_ROOT_HISTORY_LOGS = false
 
 const ENABLE_CORE_LIFECYCLE_DEBUG_LOGS = false
-const USE_LEGACY_IMAGE_IMPORT_PICKER = false
 
 const ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS = false
 const ENABLE_PALETTE_UNDO_TRACE_LOGS = false
@@ -4925,7 +4924,6 @@ function PixelEditorFramer({
 
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
     const offscreenRef = React.useRef<HTMLCanvasElement | null>(null)
-    //const fileInputRef = React.useRef<HTMLInputElement | null>(null)
     const [isDrawing, setIsDrawing] = React.useState(false)
     const DEFAULT_BRUSH_SIZE = 3
 
@@ -13607,8 +13605,6 @@ export default function PIXTUDIO_Mobile_MVP() {
         []
     )
 
-    const fileInputRef = React.useRef<HTMLInputElement | null>(null)
-
     const loadFileInputRef = React.useRef<HTMLInputElement | null>(null)
 
     const cameraInputRef = React.useRef<HTMLInputElement | null>(null)
@@ -13798,29 +13794,9 @@ export default function PIXTUDIO_Mobile_MVP() {
           ) as unknown as React.ReactNode)
         : null
 
-    // ЕДИНЫЙ вход для импорта изображения (Start Screen + Editor)
-    const openLegacyImageImportPicker = React.useCallback(() => {
-        const el = fileInputRef.current
-        if (!el) return
-
-        // важно: чтобы повторный выбор того же файла всегда триггерил onChange
-        try {
-            el.value = ""
-        } catch {
-            // на некоторых браузерах value может быть read-only — тогда просто кликаем
-        }
-
-        el.click()
-    }, [])
-
     const openImagePicker = React.useCallback(() => {
-        if (USE_LEGACY_IMAGE_IMPORT_PICKER) {
-            openLegacyImageImportPicker()
-            return
-        }
-
         openUnifiedFilePicker()
-    }, [openLegacyImageImportPicker, openUnifiedFilePicker])
+    }, [openUnifiedFilePicker])
 
     const importImageFileThroughCurrentPipeline = React.useCallback(
         async (file: File) => {
@@ -13853,53 +13829,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                     )
                 )
             }
-        },
-        []
-    )
-
-    // ЕДИНЫЙ обработчик выбранного изображения (Start Screen + Editor)
-    const handlePickedImage = React.useCallback(
-        async (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0] as File
-            if (!file) return
-
-            // важно: чтобы повторный выбор того же файла срабатывал
-            event.target.value = ""
-
-            await importImageFileThroughCurrentPipeline(file)
-            return
-
-            /*
-
-            // fail-closed: legacy image-only path
-            if (!file.type || !file.type.startsWith("image/")) {
-                console.warn("[IMPORT][GALLERY] rejected non-image file", {
-                    type: file.type,
-                    name: file.name,
-                    size: file.size,
-                })
-
-                // ✅ единый алерт (то же, что при неверном файле проекта)
-                failImport("Import failed. Please try again.")
-                return
-            }
-
-            try {
-                setImportStatus("decoding")
-                setImportError(null)
-
-                const sourceImage = await decodeToSourceImage(file)
-
-                // Gallery pipe: CropFlow -> ChineseRoom -> Editor
-                setCropFlowSource("gallery")
-                openCropFlow(sourceImage)
-            } catch (e: any) {
-                console.warn("[IMPORT][GALLERY] decodeToSourceImage failed", e)
-
-                // ✅ единый алерт
-                failImport("Import failed. Please try again.")
-            }
-            */
         },
         []
     )
@@ -15465,18 +15394,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                 />
             </div>
 
-            {/* ROOT shared hidden inputs:
-                должны быть смонтированы независимо от текущего экрана,
-                потому что root-callbacks openImagePicker/openProjectPicker
-                могут вызываться из разных веток UI. */}
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif"
-                style={{ display: "none" }}
-                onChange={handlePickedImage}
-            />
-
+            {/* Root shared hidden input stays mounted across screens because
+                root callbacks can open it from different UI branches. */}
             <input
                 ref={loadFileInputRef}
                 type="file"

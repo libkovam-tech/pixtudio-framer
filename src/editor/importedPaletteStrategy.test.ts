@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest"
 
 import {
     USE_LEGACY_IMPORTED_PALETTE_EXTRACTOR_ROLLBACK,
-    USE_UNWEIGHTED_UNIQUE_COLOR_EXTRACTOR_ROLLBACK,
     applyImportedPaletteToPixels,
     extractImportedPaletteColors,
     prepareImportedPaletteColorsForApplication,
@@ -14,7 +13,6 @@ describe("imported palette strategy", () => {
         const pixels = [["#FF0000", "#00FF00", "#0000FF", "#808080"]]
 
         expect(USE_LEGACY_IMPORTED_PALETTE_EXTRACTOR_ROLLBACK).toBe(false)
-        expect(USE_UNWEIGHTED_UNIQUE_COLOR_EXTRACTOR_ROLLBACK).toBe(false)
         expect(
             runImportedPaletteExtractorGateway({
                 pixels,
