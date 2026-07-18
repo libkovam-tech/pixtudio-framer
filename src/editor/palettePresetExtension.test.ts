@@ -216,6 +216,9 @@ describe("palette preset extension", () => {
             id: "imported-demo",
             name: "SUNSET Custom",
             colors: ["#000000", "#00FF00"],
+            applicationSource: "builtin",
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#000000", "#00FF00"],
         })
     })
 
@@ -1821,6 +1824,9 @@ describe("palette preset extension", () => {
                 source: "imported",
                 id: "sunset-custom",
                 name: "SUNSET Custom",
+                applicationSource: "builtin",
+                applicationProfileId: "sunset-10",
+                applicationColors: builtinProfile.colors,
             },
             autoSwatches: [
                 autoSwatches[0],
@@ -1839,10 +1845,51 @@ describe("palette preset extension", () => {
                         source: "imported",
                         id: "sunset-custom",
                         name: "SUNSET Custom",
+                        applicationSource: "builtin",
+                        applicationProfileId: "sunset-10",
+                        applicationColors: builtinProfile.colors,
                     },
                 },
             ],
         })
+    })
+
+    it("keeps builtin display override edits on builtin application colors after requantize", () => {
+        const builtinProfile = {
+            ...profile,
+            source: "builtin" as const,
+            id: "sunset-10",
+            name: "SUNSET",
+        }
+        const edit =
+            prepareFixedPaletteDisplayOverrideSwatchEditApplication({
+                profile: builtinProfile,
+                swatchId: "auto-1",
+                nextColor: "#00FF1E",
+                autoSwatches: [
+                    { id: "auto-0", color: "#001219", isTransparent: false },
+                    { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+                ],
+                importedPalettePresets: [],
+                makeImportedId: () => "sunset-custom",
+            })
+
+        expect(edit.kind).toBe("edited")
+        if (edit.kind !== "edited") throw new Error("expected edited")
+
+        const result = applyFixedPaletteDisplayOverrideSwatches({
+            profile: edit.profile,
+            previousAutoSwatches: edit.autoSwatches,
+            nextAutoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+            ],
+        })
+
+        expect(result).toEqual([
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#00FF1E", isTransparent: false },
+        ])
     })
 
     it("applies fixed display override swatches after requantize", () => {

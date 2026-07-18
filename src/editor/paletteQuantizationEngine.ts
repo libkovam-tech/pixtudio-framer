@@ -16,6 +16,9 @@ export type QuantizationProfile =
           name: string
           source: "builtin" | "imported"
           colors: string[]
+          applicationSource?: "builtin" | "imported"
+          applicationProfileId?: string
+          applicationColors?: string[]
       }
 
 export type PaletteTab = "size" | "presets"
@@ -334,19 +337,28 @@ export function quantizeWithFixedProfile(
     pixels: QuantizationPixel[][],
     profile: Extract<QuantizationProfile, { kind: "fixed" }>
 ): QuantizationPixel[][] {
-    if (profile.source === "imported") {
+    const applicationSource = profile.applicationSource ?? profile.source
+    const applicationProfileId = profile.applicationProfileId ?? profile.id
+    const applicationColors = getFixedProfilePaletteForApplication(profile)
+
+    if (applicationSource === "imported") {
         return applyImportedPaletteToPixels(pixels, profile.colors)
     }
-    if (profile.id === "grayscale-32") return quantizeWithGrayscaleProfile(pixels)
-    if (profile.id === "black-white-2") {
+    if (applicationProfileId === "grayscale-32") {
+        return quantizeWithGrayscaleProfile(pixels)
+    }
+    if (applicationProfileId === "black-white-2") {
         return quantizeWithBlackWhiteProfile(pixels)
     }
-    return quantizeWithFixedPalette(pixels, profile.colors)
+    return quantizeWithFixedPalette(pixels, applicationColors)
 }
 
 export function getFixedProfilePaletteForApplication(
     profile: Extract<QuantizationProfile, { kind: "fixed" }>
 ): string[] {
+    if (profile.applicationColors) {
+        return profile.applicationColors
+    }
     if (profile.source === "imported") {
         return prepareImportedPaletteColorsForApplication(profile.colors)
     }

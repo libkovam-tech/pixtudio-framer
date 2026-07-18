@@ -15,6 +15,7 @@ import {
     buildDerivedWorld,
     buildDrawingPaletteWorld,
     extractPalette,
+    getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
     remapOverlay,
@@ -295,6 +296,32 @@ describe("palette quantization engine", () => {
 
         expect(gray[0][0]).not.toBe(gray[0][1])
         expect(bw).toEqual([["#000000", "#FFFFFF"]])
+    })
+
+    it("uses builtin application colors for imported custom profiles with a builtin base", () => {
+        const customSunset = {
+            kind: "fixed" as const,
+            source: "imported" as const,
+            id: "sunset-custom",
+            name: "SUNSET Custom",
+            colors: SUNSET_10,
+            applicationSource: "builtin" as const,
+            applicationProfileId: "sunset-10",
+            applicationColors: SUNSET_10,
+        }
+
+        expect(getFixedProfilePaletteForApplication(customSunset)).toBe(SUNSET_10)
+        expect(
+            quantizeWithFixedProfile(
+                [["rgb(155, 34, 38)", "rgb(233, 216, 166)"]],
+                customSunset
+            )
+        ).toEqual(
+            quantizeWithFixedProfile(
+                [["rgb(155, 34, 38)", "rgb(233, 216, 166)"]],
+                QUANTIZATION_PROFILES.sunset
+            )
+        )
     })
 
     it("builds a neon fixed world and preserves user swatches in overlay", () => {

@@ -62,6 +62,9 @@ export type ProjectSnapshotV2 = {
               id: string
               name: string
               colors: string[]
+              applicationSource?: "builtin" | "imported"
+              applicationProfileId?: string
+              applicationColors?: string[]
           }
     smartObjectState?: {
         version: typeof PROJECT_SNAPSHOT_V2_SMART_REFERENCE_VERSION
@@ -101,6 +104,9 @@ export type ProjectSnapshotV2ResolvedQuantizationProfile =
           name: string
           source: "builtin" | "imported"
           colors: string[]
+          applicationSource?: "builtin" | "imported"
+          applicationProfileId?: string
+          applicationColors?: string[]
       }
 export type ProjectSnapshotV2RuntimeSwatch = {
     id: string
@@ -388,13 +394,30 @@ export function serializeQuantizationProfileForSnapshot(
         }
     }
 
-    return {
+    const serialized: Extract<
+        ProjectSnapshotV2["quantizationProfile"],
+        { kind: "fixed"; source: "imported" }
+    > = {
         kind: "fixed",
         source: "imported",
         id: profile.id,
         name: profile.name,
         colors: profile.colors.map((color) => normalizeColor(color)),
     }
+
+    if (profile.applicationSource) {
+        serialized.applicationSource = profile.applicationSource
+    }
+    if (profile.applicationProfileId) {
+        serialized.applicationProfileId = profile.applicationProfileId
+    }
+    if (profile.applicationColors) {
+        serialized.applicationColors = profile.applicationColors.map((color) =>
+            normalizeColor(color)
+        )
+    }
+
+    return serialized
 }
 
 export function buildProjectSnapshotV2SavePalette(
@@ -569,6 +592,9 @@ export function resolveProjectSnapshotV2QuantizationProfile(
         id: saved.id,
         name: saved.name,
         colors: saved.colors,
+        applicationSource: saved.applicationSource,
+        applicationProfileId: saved.applicationProfileId,
+        applicationColors: saved.applicationColors,
     }
 }
 
@@ -820,6 +846,11 @@ export function canonicalizeSnapshotV2(
                 id: s.quantizationProfile.id,
                 name: s.quantizationProfile.name,
                 colors: [...s.quantizationProfile.colors],
+                applicationSource: s.quantizationProfile.applicationSource,
+                applicationProfileId: s.quantizationProfile.applicationProfileId,
+                applicationColors: s.quantizationProfile.applicationColors
+                    ? [...s.quantizationProfile.applicationColors]
+                    : undefined,
             }
         }
     }
@@ -929,9 +960,25 @@ export function validateProjectSnapshotV2OrThrow(
                     "quantizationProfile"
                 )
             } else if (qp.source === "imported") {
+                const importedKeys = [
+                    "kind",
+                    "source",
+                    "id",
+                    "name",
+                    "colors",
+                ]
+                if ("applicationSource" in qp) {
+                    importedKeys.push("applicationSource")
+                }
+                if ("applicationProfileId" in qp) {
+                    importedKeys.push("applicationProfileId")
+                }
+                if ("applicationColors" in qp) {
+                    importedKeys.push("applicationColors")
+                }
                 assertExactKeys(
                     qp,
-                    ["kind", "source", "id", "name", "colors"],
+                    importedKeys,
                     "E_PALETTE",
                     "quantizationProfile"
                 )
@@ -959,6 +1006,60 @@ export function validateProjectSnapshotV2OrThrow(
                             "E_PALETTE",
                             `quantizationProfile.colors[${i}]: invalid hex`
                         )
+                    }
+                }
+                if ("applicationSource" in qp) {
+                    assertString(
+                        qp.applicationSource,
+                        "E_PALETTE",
+                        "quantizationProfile.applicationSource"
+                    )
+                    if (
+                        qp.applicationSource !== "builtin" &&
+                        qp.applicationSource !== "imported"
+                    ) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.applicationSource: invalid"
+                        )
+                    }
+                }
+                if ("applicationProfileId" in qp) {
+                    assertString(
+                        qp.applicationProfileId,
+                        "E_PALETTE",
+                        "quantizationProfile.applicationProfileId"
+                    )
+                }
+                if ("applicationColors" in qp) {
+                    if (!Array.isArray(qp.applicationColors)) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.applicationColors: not array"
+                        )
+                    }
+                    if (
+                        qp.applicationColors.length <= 0 ||
+                        qp.applicationColors.length > 256
+                    ) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.applicationColors: invalid length"
+                        )
+                    }
+                    for (let i = 0; i < qp.applicationColors.length; i++) {
+                        const color = qp.applicationColors[i]
+                        assertString(
+                            color,
+                            "E_PALETTE",
+                            `quantizationProfile.applicationColors[${i}]`
+                        )
+                        if (!/^#[0-9A-F]{6}$/.test(color)) {
+                            throw makeLoadGateError(
+                                "E_PALETTE",
+                                `quantizationProfile.applicationColors[${i}]: invalid hex`
+                            )
+                        }
                     }
                 }
             } else {

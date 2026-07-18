@@ -76,7 +76,20 @@ export function cloneQuantizationProfileForHistory(
     return {
         ...profile,
         colors: profile.colors.slice(),
+        applicationColors: profile.applicationColors?.slice(),
     }
+}
+
+function areColorArraysEqual(
+    a: ReadonlyArray<string> | undefined,
+    b: ReadonlyArray<string> | undefined
+): boolean {
+    if (a === b) return true
+    if (!a || !b || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) return false
+    }
+    return true
 }
 
 export function cloneImportedPalettePresetsForHistory<
@@ -102,6 +115,8 @@ export function areCommittedQuantizationProfilesEqual(
         aa.id !== bb.id ||
         aa.name !== bb.name ||
         aa.source !== bb.source ||
+        aa.applicationSource !== bb.applicationSource ||
+        aa.applicationProfileId !== bb.applicationProfileId ||
         aa.colors.length !== bb.colors.length
     ) {
         return false
@@ -109,7 +124,7 @@ export function areCommittedQuantizationProfilesEqual(
     for (let i = 0; i < aa.colors.length; i += 1) {
         if (aa.colors[i] !== bb.colors[i]) return false
     }
-    return true
+    return areColorArraysEqual(aa.applicationColors, bb.applicationColors)
 }
 
 export function areImportedPalettePresetsEqual<

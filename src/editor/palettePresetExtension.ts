@@ -33,6 +33,9 @@ export type EditableFixedPaletteProfile = {
     id: string
     name: string
     colors: string[]
+    applicationSource?: "builtin" | "imported"
+    applicationProfileId?: string
+    applicationColors?: string[]
 }
 
 export type FixedPaletteExtensionResult<
@@ -1471,6 +1474,9 @@ export function makeEditableFixedPresetProfile<
         return {
             ...profile,
             colors: profile.colors.map(normalizeEditablePaletteColor),
+            applicationColors: profile.applicationColors?.map(
+                normalizeEditablePaletteColor
+            ),
         } as EditableFixedPaletteProfile & { source: "imported" }
     }
 
@@ -1480,6 +1486,11 @@ export function makeEditableFixedPresetProfile<
         id: makeImportedId(),
         name: `${profile.name} Custom`,
         colors: getFixedProfilePaletteForApplication(profile).map(
+            normalizeEditablePaletteColor
+        ),
+        applicationSource: profile.source,
+        applicationProfileId: profile.id,
+        applicationColors: getFixedProfilePaletteForApplication(profile).map(
             normalizeEditablePaletteColor
         ),
     }

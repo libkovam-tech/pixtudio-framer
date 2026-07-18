@@ -218,6 +218,9 @@ describe("editor history state", () => {
             name: "Imported A",
             source: "imported" as const,
             colors: ["#000000", "#FFFFFF"],
+            applicationSource: "builtin" as const,
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#001219", "#E9D8A6"],
         }
 
         const cloned = cloneQuantizationProfileForHistory(profile)
@@ -228,6 +231,8 @@ describe("editor history state", () => {
         if (cloned.kind !== "fixed") throw new Error("expected fixed profile")
         expect(cloned.colors).toEqual(profile.colors)
         expect(cloned.colors).not.toBe(profile.colors)
+        expect(cloned.applicationColors).toEqual(profile.applicationColors)
+        expect(cloned.applicationColors).not.toBe(profile.applicationColors)
     })
 
     it("clones imported preset profiles without sharing profile color arrays", () => {

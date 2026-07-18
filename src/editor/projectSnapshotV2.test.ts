@@ -302,6 +302,9 @@ describe("ProjectSnapshotV2 invariants", () => {
                     id: "custom",
                     name: "Custom",
                     colors: ["rgb(1, 2, 3)", "#aabbcc"],
+                    applicationSource: "builtin",
+                    applicationProfileId: "sunset-10",
+                    applicationColors: ["#001219", "#e9d8a6"],
                 },
                 (color) => (color.startsWith("rgb") ? "#010203" : color.toUpperCase())
             )
@@ -311,6 +314,9 @@ describe("ProjectSnapshotV2 invariants", () => {
             id: "custom",
             name: "Custom",
             colors: ["#010203", "#AABBCC"],
+            applicationSource: "builtin",
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#001219", "#E9D8A6"],
         })
     })
 
@@ -398,6 +404,9 @@ describe("ProjectSnapshotV2 invariants", () => {
                         id: "custom",
                         name: "Custom",
                         colors: ["#010203", "#AABBCC"],
+                        applicationSource: "builtin",
+                        applicationProfileId: "sunset-10",
+                        applicationColors: ["#001219", "#E9D8A6"],
                     },
                 },
                 { fallback, resolveBuiltin }
@@ -408,6 +417,9 @@ describe("ProjectSnapshotV2 invariants", () => {
             id: "custom",
             name: "Custom",
             colors: ["#010203", "#AABBCC"],
+            applicationSource: "builtin",
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#001219", "#E9D8A6"],
         })
     })
 
