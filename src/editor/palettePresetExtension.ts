@@ -2,6 +2,7 @@ import {
     buildDerivedWorld,
     buildDrawingPaletteWorld,
     EXTRACT_QUANTIZATION_PROFILE,
+    getFixedProfilePaletteForDisplay,
     getFixedProfilePaletteForApplication,
     overlayOverBase,
     remapOverlay,
@@ -656,7 +657,7 @@ function normalizeEditablePaletteColor(color: string): string {
 export function makeAutoSwatchesFromFixedProfile(
     profile: EditableFixedPaletteProfile
 ): FixedPaletteAutoSwatch[] {
-    return getFixedProfilePaletteForApplication(profile).map((color, index) => ({
+    return getFixedProfilePaletteForDisplay(profile).map((color, index) => ({
         id: `auto-${index}`,
         color,
         isTransparent: false,
@@ -1496,6 +1497,31 @@ export function makeEditableFixedPresetProfile<
     }
 }
 
+function replaceFixedProfileDisplaySwatchColor<
+    T extends EditableFixedPaletteProfile,
+>(profile: T, swatchId: string, color: string): T {
+    const swatchIndex = getFixedPaletteSwatchIndex(swatchId)
+    if (swatchIndex == null) return profile
+
+    const displayColors = getFixedProfilePaletteForDisplay(profile).map(
+        normalizeEditablePaletteColor
+    )
+    const applicationColors = getFixedProfilePaletteForApplication(profile).map(
+        normalizeEditablePaletteColor
+    )
+    if (swatchIndex < 0 || swatchIndex >= displayColors.length) return profile
+
+    return {
+        ...profile,
+        applicationSource: profile.applicationSource ?? profile.source,
+        applicationProfileId: profile.applicationProfileId ?? profile.id,
+        applicationColors,
+        colors: displayColors.map((item, index) =>
+            index === swatchIndex ? color : item
+        ),
+    }
+}
+
 export function makeImportedPalettePresetName(fileName: string): string {
     const trimmedName = fileName.trim()
     return (
@@ -1787,9 +1813,10 @@ export function prepareFixedPaletteDisplayOverrideSwatchEditApplication<
 
     if (!edited) return { kind: "ignored" }
 
-    const profile = makeEditableFixedPresetProfile(
-        input.profile,
-        input.makeImportedId
+    const profile = replaceFixedProfileDisplaySwatchColor(
+        makeEditableFixedPresetProfile(input.profile, input.makeImportedId),
+        input.swatchId,
+        nextColor
     )
 
     return {

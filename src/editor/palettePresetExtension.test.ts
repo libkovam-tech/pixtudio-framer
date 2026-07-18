@@ -1774,9 +1774,17 @@ describe("palette preset extension", () => {
                 makeImportedId: () => "unused",
             })
 
+        const expectedProfile = {
+            ...profile,
+            colors: ["#E9D8A6", "#FFFFFF"],
+            applicationSource: "imported" as const,
+            applicationProfileId: profile.id,
+            applicationColors: ["#E9D8A6", "#001219"],
+        }
+
         expect(result).toEqual({
             kind: "edited",
-            profile,
+            profile: expectedProfile,
             autoSwatches: [
                 autoSwatches[0],
                 {
@@ -1789,7 +1797,7 @@ describe("palette preset extension", () => {
                 {
                     id: profile.id,
                     name: profile.name,
-                    profile,
+                    profile: expectedProfile,
                 },
             ],
         })
@@ -1824,6 +1832,7 @@ describe("palette preset extension", () => {
                 source: "imported",
                 id: "sunset-custom",
                 name: "SUNSET Custom",
+                colors: ["#001219", "#00FF1E"],
                 applicationSource: "builtin",
                 applicationProfileId: "sunset-10",
                 applicationColors: builtinProfile.colors,
@@ -1845,6 +1854,7 @@ describe("palette preset extension", () => {
                         source: "imported",
                         id: "sunset-custom",
                         name: "SUNSET Custom",
+                        colors: ["#001219", "#00FF1E"],
                         applicationSource: "builtin",
                         applicationProfileId: "sunset-10",
                         applicationColors: builtinProfile.colors,
@@ -1852,6 +1862,34 @@ describe("palette preset extension", () => {
                 },
             ],
         })
+    })
+
+    it("builds fixed custom swatches from display colors after preset switches", () => {
+        const customProfile = {
+            ...profile,
+            source: "imported" as const,
+            id: "sunset-custom",
+            name: "SUNSET Custom",
+            colors: ["#001219", "#00FF1E"],
+            applicationSource: "builtin" as const,
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#001219", "#E9D8A6"],
+        }
+
+        expect(makeAutoSwatchesFromFixedProfile(customProfile)).toEqual([
+            {
+                id: "auto-0",
+                color: "#001219",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-1",
+                color: "#00FF1E",
+                isTransparent: false,
+                isUser: false,
+            },
+        ])
     })
 
     it("keeps builtin display override edits on builtin application colors after requantize", () => {

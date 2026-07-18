@@ -342,7 +342,7 @@ export function quantizeWithFixedProfile(
     const applicationColors = getFixedProfilePaletteForApplication(profile)
 
     if (applicationSource === "imported") {
-        return applyImportedPaletteToPixels(pixels, profile.colors)
+        return applyImportedPaletteToPixels(pixels, applicationColors)
     }
     if (applicationProfileId === "grayscale-32") {
         return quantizeWithGrayscaleProfile(pixels)
@@ -363,6 +363,14 @@ export function getFixedProfilePaletteForApplication(
         return prepareImportedPaletteColorsForApplication(profile.colors)
     }
     return profile.colors
+}
+
+export function getFixedProfilePaletteForDisplay(
+    profile: Extract<QuantizationProfile, { kind: "fixed" }>
+): string[] {
+    return profile.applicationColors
+        ? profile.colors
+        : getFixedProfilePaletteForApplication(profile)
 }
 
 function normalizePaletteColorKey(color: string): string {
@@ -642,7 +650,7 @@ export function buildDerivedWorld<TPixel extends string | null>(params: {
                   params.sourcePixels,
                   params.profile
               ),
-              palette: getFixedProfilePaletteForApplication(params.profile),
+              palette: getFixedProfilePaletteForDisplay(params.profile),
           }
 
     const autoSwatches = result.palette.map((color, index) => ({
