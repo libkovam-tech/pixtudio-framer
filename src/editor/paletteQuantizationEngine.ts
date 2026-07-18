@@ -642,16 +642,29 @@ export function buildDerivedWorld<TPixel extends string | null>(params: {
         params.makeAutoSwatchId ?? ((index: number) => `auto-${index}`)
     const result =
         params.profile.kind === "extract"
-            ? extractPalette(params.sourcePixels, params.paletteCountTarget, {
-                  excludedColors: params.excludedColors,
-              })
+            ? (() => {
+                  const extracted = extractPalette(
+                      params.sourcePixels,
+                      params.paletteCountTarget,
+                      {
+                          excludedColors: params.excludedColors,
+                      }
+                  )
+                  return {
+                      ...extracted,
+                      pixelPalette: extracted.palette,
+                  }
+              })()
             : {
-              pixels: quantizeWithFixedProfile(
-                  params.sourcePixels,
-                  params.profile
-              ),
-              palette: getFixedProfilePaletteForDisplay(params.profile),
-          }
+                  pixels: quantizeWithFixedProfile(
+                      params.sourcePixels,
+                      params.profile
+                  ),
+                  palette: getFixedProfilePaletteForDisplay(params.profile),
+                  pixelPalette: getFixedProfilePaletteForApplication(
+                      params.profile
+                  ),
+              }
 
     const autoSwatches = result.palette.map((color, index) => ({
         id: makeAutoSwatchId(index),
@@ -666,7 +679,7 @@ export function buildDerivedWorld<TPixel extends string | null>(params: {
         targetAutoSwatches: autoSwatches,
     })
 
-    const paletteKeys = result.palette.map((color) =>
+    const paletteKeys = result.pixelPalette.map((color) =>
         rgbToCss(parseRgbColor(color))
     )
     const imagePixels = result.pixels.map((row) =>

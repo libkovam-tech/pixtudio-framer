@@ -329,6 +329,35 @@ describe("palette quantization engine", () => {
         )
     })
 
+    it("maps custom fixed world pixels by application colors and displays override colors", () => {
+        const displayColors = SUNSET_10.map((color, index) =>
+            index === 1 ? "#00FF1E" : color
+        )
+        const customSunset = {
+            kind: "fixed" as const,
+            source: "imported" as const,
+            id: "sunset-custom",
+            name: "SUNSET Custom",
+            colors: displayColors,
+            applicationSource: "builtin" as const,
+            applicationProfileId: "sunset-10",
+            applicationColors: SUNSET_10,
+        }
+
+        const world = buildDerivedWorld({
+            profile: customSunset,
+            sourcePixels: [[SUNSET_10[1]]],
+            overlayPixels: [[null]],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: 2,
+        })
+
+        expect(world.autoSwatches[1]?.color).toBe("#00FF1E")
+        expect(world.imagePixels).toEqual([["auto-1"]])
+        expect(world.canvasPixels).toEqual([["auto-1"]])
+    })
+
     it("builds a neon fixed world and preserves user swatches in overlay", () => {
         const world = buildDerivedWorld({
             profile: QUANTIZATION_PROFILES.neon,
