@@ -118,6 +118,8 @@ const EXPORT_PROGRESS_PREP_MAX = 12
 const EXPORT_PROGRESS_PNG_MAX = 42
 const EXPORT_PROGRESS_ENCODE_START = 56
 const EXPORT_PROGRESS_ENCODE_MAX = 96
+const RECORDER_TRANSPARENT_MATTE = "#FFFFFF"
+
 const okCancelButtonStyle: React.CSSProperties = {
     width: 50,
     height: 50,
@@ -618,8 +620,9 @@ function drawFrameIntoCanvas(
     if (targetCanvas.width !== targetSize) targetCanvas.width = targetSize
     if (targetCanvas.height !== targetSize) targetCanvas.height = targetSize
 
-    ctx.clearRect(0, 0, targetSize, targetSize)
     ctx.imageSmoothingEnabled = false
+    ctx.fillStyle = RECORDER_TRANSPARENT_MATTE
+    ctx.fillRect(0, 0, targetSize, targetSize)
     ctx.drawImage(frame.sourceCanvas, 0, 0, targetSize, targetSize)
 }
 
