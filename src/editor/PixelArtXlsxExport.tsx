@@ -2,6 +2,43 @@ import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 
 export type PixelArtXlsxColor = string | null | undefined
 
+export function composePixelArtXlsxExportColors<T>(params: {
+    gridSize: number
+    imagePixels: (T | null)[][]
+    overlayPixels: (T | null)[][]
+    includeStroke?: boolean
+    includeImage?: boolean
+    resolveColor: (value: T) => string | null
+    isTransparent: (value: T) => boolean
+}): (string | null)[][] {
+    const includeStroke = params.includeStroke ?? true
+    const includeImage = params.includeImage ?? true
+    const out: (string | null)[][] = []
+
+    for (let r = 0; r < params.gridSize; r++) {
+        const imageRow = params.imagePixels[r]
+        const overlayRow = params.overlayPixels[r]
+        const row: (string | null)[] = []
+
+        for (let c = 0; c < params.gridSize; c++) {
+            let value: T | null = null
+
+            if (includeStroke) {
+                const overlayValue = overlayRow?.[c] ?? null
+                if (overlayValue != null) value = overlayValue
+            }
+
+            if (value == null && includeImage) value = imageRow?.[c] ?? null
+
+            row.push(resolveExportColor(value, params))
+        }
+
+        out.push(row)
+    }
+
+    return out
+}
+
 export const PIXEL_ART_XLSX_MIME =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -10,6 +47,17 @@ const SCREEN_PIXELS_PER_MM = 96 / 25.4
 const POINTS_PER_SCREEN_PIXEL = 72 / 96
 const CALIBRI_11_MAX_DIGIT_WIDTH_PX = 7
 const MIN_STABLE_DISPLAY_CELL_PX = 12
+
+function resolveExportColor<T>(
+    value: T | null,
+    params: {
+        resolveColor: (value: T) => string | null
+        isTransparent: (value: T) => boolean
+    }
+): string | null {
+    if (value == null || params.isTransparent(value)) return null
+    return params.resolveColor(value)
+}
 
 export function buildPixelArtXlsxBlob(params: {
     colors: PixelArtXlsxColor[][]
@@ -79,7 +127,79 @@ export function normalizeXlsxHexColor(
             .toUpperCase()
     }
 
+    const hsl =
+        /^hsla?\(\s*([-+]?\d+(?:\.\d+)?)(?:deg)?\s*,\s*([-+]?\d+(?:\.\d+)?)%\s*,\s*([-+]?\d+(?:\.\d+)?)%(?:\s*,\s*([-+]?\d+(?:\.\d+)?%?)\s*)?\)$/i.exec(
+            raw
+        )
+    if (hsl) {
+        const alpha = parseCssAlpha(hsl[4])
+        if (alpha != null && (!Number.isFinite(alpha) || alpha <= 0))
+            return null
+
+        const rgbFromHsl = hslToRgb(
+            Number(hsl[1]),
+            Number(hsl[2]) / 100,
+            Number(hsl[3]) / 100
+        )
+
+        return [rgbFromHsl.r, rgbFromHsl.g, rgbFromHsl.b]
+            .map((part) => part.toString(16).padStart(2, "0"))
+            .join("")
+            .toUpperCase()
+    }
+
     return null
+}
+
+function parseCssAlpha(raw: string | undefined): number | null {
+    if (raw == null) return null
+    const value = raw.trim()
+    if (!value) return null
+    if (value.endsWith("%")) return Number(value.slice(0, -1)) / 100
+    return Number(value)
+}
+
+function hslToRgb(hueDegrees: number, saturation: number, lightness: number) {
+    const h = (((hueDegrees % 360) + 360) % 360) / 60
+    const s = clamp01(saturation)
+    const l = clamp01(lightness)
+    const c = (1 - Math.abs(2 * l - 1)) * s
+    const x = c * (1 - Math.abs((h % 2) - 1))
+    const m = l - c / 2
+    let r1 = 0
+    let g1 = 0
+    let b1 = 0
+
+    if (h < 1) {
+        r1 = c
+        g1 = x
+    } else if (h < 2) {
+        r1 = x
+        g1 = c
+    } else if (h < 3) {
+        g1 = c
+        b1 = x
+    } else if (h < 4) {
+        g1 = x
+        b1 = c
+    } else if (h < 5) {
+        r1 = x
+        b1 = c
+    } else {
+        r1 = c
+        b1 = x
+    }
+
+    return {
+        r: Math.round((r1 + m) * 255),
+        g: Math.round((g1 + m) * 255),
+        b: Math.round((b1 + m) * 255),
+    }
+}
+
+function clamp01(value: number) {
+    if (!Number.isFinite(value)) return 0
+    return Math.max(0, Math.min(1, value))
 }
 
 function collectUniqueColors(rows: (string | null)[][]): string[] {

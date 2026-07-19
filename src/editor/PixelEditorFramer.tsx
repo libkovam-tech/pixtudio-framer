@@ -15,7 +15,10 @@ import QuantizationRecorder, {
     type QuantizationRecorderFrame,
     type QuantizationRecorderSeed,
 } from "./QuantizationRecorder.tsx"
-import { buildPixelArtXlsxBlob } from "./PixelArtXlsxExport.tsx"
+import {
+    buildPixelArtXlsxBlob,
+    composePixelArtXlsxExportColors,
+} from "./PixelArtXlsxExport.tsx"
 import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 
 import {
@@ -8117,6 +8120,7 @@ function PixelEditorFramer({
     const brushSizeLabelStyle: React.CSSProperties = {
         ...labelStyle,
         fontSize: isMobileUI ? 13 : 20,
+        color: PIXTUDIO_INK,
     }
 
     const gridSizeLabelStyle: React.CSSProperties = {
@@ -8134,6 +8138,7 @@ function PixelEditorFramer({
     const brushSizeSubLabelStyle: React.CSSProperties = {
         ...subLabelStyle,
         fontSize: isMobileUI ? 14 : 20,
+        color: PIXTUDIO_INK,
     }
 
     const gridSizeSubLabelStyle: React.CSSProperties = {
@@ -10439,40 +10444,15 @@ function PixelEditorFramer({
         includeStroke: boolean
         includeImage: boolean
     }): (string | null)[][] {
-        const includeStroke = p?.includeStroke ?? true
-        const includeImage = p?.includeImage ?? true
-
-        const rows = gridSize
-        const cols = gridSize
-        const out: (string | null)[][] = []
-
-        for (let r = 0; r < rows; r++) {
-            const iRow = imagePixels[r]
-            const oRow = overlayPixels[r]
-            const row: (string | null)[] = []
-
-            for (let c = 0; c < cols; c++) {
-                let v: PixelValue = null
-
-                if (includeStroke) {
-                    const o = oRow?.[c] ?? null
-                    if (o != null) v = o
-                }
-
-                if (v == null && includeImage) v = iRow?.[c] ?? null
-
-                if (!v || isTransparentValue(v)) {
-                    row.push(null)
-                    continue
-                }
-
-                row.push(resolveToColor(v))
-            }
-
-            out.push(row)
-        }
-
-        return out
+        return composePixelArtXlsxExportColors<PixelValue>({
+            gridSize,
+            imagePixels,
+            overlayPixels,
+            includeStroke: p?.includeStroke ?? true,
+            includeImage: p?.includeImage ?? true,
+            resolveColor: resolveToColor,
+            isTransparent: isTransparentValue,
+        })
     }
 
     function makeXLSXBlob(p?: {

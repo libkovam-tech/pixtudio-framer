@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
     PIXEL_ART_XLSX_MIME,
     buildPixelArtXlsxBlob,
+    composePixelArtXlsxExportColors,
     normalizeXlsxHexColor,
 } from "./PixelArtXlsxExport.tsx"
 
@@ -44,6 +45,76 @@ describe("pixel art xlsx export", () => {
         expect(normalizeXlsxHexColor("#abc")).toBe("AABBCC")
         expect(normalizeXlsxHexColor("rgba(10, 20, 30, 0)")).toBeNull()
         expect(normalizeXlsxHexColor("rgb(10, 20, 30)")).toBe("0A141E")
+        expect(normalizeXlsxHexColor("hsl(0, 80%, 55%)")).toBe("E83030")
+        expect(normalizeXlsxHexColor("hsla(120, 80%, 55%, 0)")).toBeNull()
+    })
+
+    it("composes the stroke layer over the image layer", () => {
+        const colors = composePixelArtXlsxExportColors({
+            gridSize: 2,
+            imagePixels: [
+                ["image", null],
+                [null, null],
+            ],
+            overlayPixels: [
+                ["stroke", null],
+                [null, "image"],
+            ],
+            resolveColor: (value) =>
+                value === "stroke"
+                    ? "#ff0000"
+                    : value === "image"
+                      ? "#00ff00"
+                      : null,
+            isTransparent: (value) => value === "transparent",
+        })
+
+        expect(colors).toEqual([
+            ["#ff0000", null],
+            [null, "#00ff00"],
+        ])
+    })
+
+    it("exports only the selected layer when layer toggles are used", () => {
+        const colors = composePixelArtXlsxExportColors({
+            gridSize: 2,
+            imagePixels: [
+                ["image", null],
+                [null, null],
+            ],
+            overlayPixels: [
+                ["stroke", null],
+                [null, null],
+            ],
+            includeStroke: true,
+            includeImage: false,
+            resolveColor: (value) =>
+                value === "stroke"
+                    ? "#ff0000"
+                    : value === "image"
+                      ? "#00ff00"
+                      : null,
+            isTransparent: (value) => value === "transparent",
+        })
+
+        expect(colors).toEqual([
+            ["#ff0000", null],
+            [null, null],
+        ])
+    })
+
+    it("keeps transparent stroke cells empty instead of falling through to image", () => {
+        const colors = composePixelArtXlsxExportColors({
+            gridSize: 1,
+            imagePixels: [["image"]],
+            overlayPixels: [["transparent"]],
+            includeStroke: true,
+            includeImage: true,
+            resolveColor: (value) => (value === "image" ? "#00ff00" : null),
+            isTransparent: (value) => value === "transparent",
+        })
+
+        expect(colors).toEqual([[null]])
     })
 
     it("keeps narrow 128px exports square in Excel units", async () => {
