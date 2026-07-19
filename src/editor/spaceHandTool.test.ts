@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import {
     type SpaceHandState,
+    isPointInsideSpaceHandRect,
+    isSpaceHandTextEditingTarget,
     startSpaceHandTool,
     stopSpaceHandTool,
 } from "./spaceHandTool.ts"
@@ -66,5 +68,44 @@ describe("space hand tool", () => {
             previousTool: "pipette",
             activeTool: "brush",
         })
+    })
+
+    it("does not treat range inputs as text editing targets", () => {
+        expect(
+            isSpaceHandTextEditingTarget({
+                tagName: "input",
+                inputType: "range",
+                isContentEditable: false,
+            })
+        ).toBe(false)
+
+        expect(
+            isSpaceHandTextEditingTarget({
+                tagName: "input",
+                inputType: "text",
+                isContentEditable: false,
+            })
+        ).toBe(true)
+
+        expect(
+            isSpaceHandTextEditingTarget({
+                tagName: "textarea",
+                isContentEditable: false,
+            })
+        ).toBe(true)
+    })
+
+    it("checks shortcut access by the pointer position inside the viewport", () => {
+        const rect = {
+            left: 10,
+            right: 110,
+            top: 20,
+            bottom: 120,
+        }
+
+        expect(isPointInsideSpaceHandRect({ x: 10, y: 20 }, rect)).toBe(true)
+        expect(isPointInsideSpaceHandRect({ x: 110, y: 120 }, rect)).toBe(true)
+        expect(isPointInsideSpaceHandRect({ x: 9, y: 50 }, rect)).toBe(false)
+        expect(isPointInsideSpaceHandRect(null, rect)).toBe(false)
     })
 })

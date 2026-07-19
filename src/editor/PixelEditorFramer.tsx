@@ -120,6 +120,8 @@ import {
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
     type SpaceHandState,
+    isPointInsideSpaceHandRect,
+    isSpaceHandTextEditingTarget,
     startSpaceHandTool,
     stopSpaceHandTool,
 } from "./spaceHandTool.ts"
@@ -7819,21 +7821,29 @@ function PixelEditorFramer({
     React.useEffect(() => {
         if (!ENABLE_DESKTOP_SPACE_HAND_TOOL || isMobileUI) return
 
-        const isEditableTarget = (target: EventTarget | null) => {
-            if (!(target instanceof HTMLElement)) return false
-            const tag = target.tagName.toLowerCase()
-            return (
-                tag === "input" ||
-                tag === "textarea" ||
-                tag === "select" ||
-                target.isContentEditable
-            )
+        const getSpaceHandTargetInfo = (target: EventTarget | null) => {
+            if (!(target instanceof HTMLElement)) return null
+
+            return {
+                tagName: target.tagName,
+                inputType:
+                    target instanceof HTMLInputElement ? target.type : null,
+                isContentEditable: target.isContentEditable,
+            }
+        }
+
+        const shouldIgnoreSpaceHandTarget = (target: EventTarget | null) => {
+            return isSpaceHandTextEditingTarget(getSpaceHandTargetInfo(target))
         }
 
         const blurFocusedControlForSpaceHand = () => {
             const active = document.activeElement
             if (!(active instanceof HTMLElement)) return
-            if (isEditableTarget(active)) return
+
+            if (isSpaceHandTextEditingTarget(getSpaceHandTargetInfo(active))) {
+                return
+            }
+
             active.blur()
         }
 
@@ -7855,16 +7865,11 @@ function PixelEditorFramer({
 
             const rect = viewport.getBoundingClientRect()
 
-            return (
-                pointer.x >= rect.left &&
-                pointer.x <= rect.right &&
-                pointer.y >= rect.top &&
-                pointer.y <= rect.bottom
-            )
+            return isPointInsideSpaceHandRect(pointer, rect)
         }
 
         const handleSpaceDown = (event: KeyboardEvent) => {
-            if (isEditableTarget(event.target)) return
+            if (shouldIgnoreSpaceHandTarget(event.target)) return
 
             const next = startSpaceHandTool(spaceHandStateRef.current, {
                 enabled: ENABLE_DESKTOP_SPACE_HAND_TOOL,
@@ -7887,7 +7892,12 @@ function PixelEditorFramer({
         }
 
         const handleSpaceUp = (event: KeyboardEvent) => {
-            if (isEditableTarget(event.target)) return
+            if (
+                shouldIgnoreSpaceHandTarget(event.target) &&
+                !spaceHandStateRef.current.isHolding
+            ) {
+                return
+            }
 
             const next = stopSpaceHandTool(spaceHandStateRef.current, {
                 key: event.key,
@@ -9344,6 +9354,27 @@ function PixelEditorFramer({
         refreshBrushPreviewFromPointerState()
     }, [brushSize, cols, rows, toolMode, isPanning])
 
+    function handleCanvasViewportPointerEnter(e: any) {
+        if (isMobileUI || overlayMode) return
+
+        updatePointerFromEvent(e, true)
+        updatePipetteHoverFromEvent(e)
+    }
+
+    function handleCanvasViewportPointerMove(e: any) {
+        if (isMobileUI || overlayMode) return
+
+        updatePointerFromEvent(e, true)
+        updatePipetteHoverFromEvent(e)
+    }
+
+    function handleCanvasViewportPointerLeave() {
+        lastPointerClientRef.current = null
+        pointerRef.current = { ...pointerRef.current, inside: false }
+        hideBrushPreview()
+        clearPipetteHoverCell()
+    }
+
     function stopDrawing(e: any, reason: string = "pointerup") {
         if (e && typeof e.preventDefault === "function") {
             e.preventDefault()
@@ -9456,8 +9487,12 @@ function PixelEditorFramer({
         }
     }
 
-    function handleCanvasPointerLeave() {
-        lastPointerClientRef.current = null
+    function handleCanvasPointerLeave(e?: any) {
+        if (e) {
+            lastPointerClientRef.current = { x: e.clientX, y: e.clientY }
+        } else {
+            lastPointerClientRef.current = null
+        }
         pointerRef.current = { ...pointerRef.current, inside: false }
         hideBrushPreview()
         clearPipetteHoverCell()
@@ -11124,6 +11159,9 @@ function PixelEditorFramer({
                     <div
                         ref={viewportRef}
                         onWheel={handleDesktopCanvasWheelZoom}
+                        onPointerEnter={handleCanvasViewportPointerEnter}
+                        onPointerMove={handleCanvasViewportPointerMove}
+                        onPointerLeave={handleCanvasViewportPointerLeave}
                         style={{
                             position: "relative",
                             width: "100%",
