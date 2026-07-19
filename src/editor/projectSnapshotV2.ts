@@ -586,16 +586,23 @@ export function resolveProjectSnapshotV2QuantizationProfile(
         return options.resolveBuiltin(saved.id) ?? options.fallback
     }
 
-    return {
+    const importedProfile: ProjectSnapshotV2ResolvedQuantizationProfile = {
         kind: "fixed",
         source: "imported",
         id: saved.id,
         name: saved.name,
         colors: saved.colors,
-        applicationSource: saved.applicationSource,
-        applicationProfileId: saved.applicationProfileId,
-        applicationColors: saved.applicationColors,
     }
+    if (saved.applicationSource) {
+        importedProfile.applicationSource = saved.applicationSource
+    }
+    if (saved.applicationProfileId) {
+        importedProfile.applicationProfileId = saved.applicationProfileId
+    }
+    if (saved.applicationColors) {
+        importedProfile.applicationColors = saved.applicationColors
+    }
+    return importedProfile
 }
 
 export function buildProjectSnapshotV2RuntimeLayers<TTransparent>(
@@ -840,18 +847,27 @@ export function canonicalizeSnapshotV2(
                 name: s.quantizationProfile.name,
             }
         } else {
-            canonical.quantizationProfile = {
+            const importedProfile: ProjectSnapshotV2QuantizationProfileInput = {
                 kind: "fixed",
                 source: "imported",
                 id: s.quantizationProfile.id,
                 name: s.quantizationProfile.name,
                 colors: [...s.quantizationProfile.colors],
-                applicationSource: s.quantizationProfile.applicationSource,
-                applicationProfileId: s.quantizationProfile.applicationProfileId,
-                applicationColors: s.quantizationProfile.applicationColors
-                    ? [...s.quantizationProfile.applicationColors]
-                    : undefined,
             }
+            if (s.quantizationProfile.applicationSource) {
+                importedProfile.applicationSource =
+                    s.quantizationProfile.applicationSource
+            }
+            if (s.quantizationProfile.applicationProfileId) {
+                importedProfile.applicationProfileId =
+                    s.quantizationProfile.applicationProfileId
+            }
+            if (s.quantizationProfile.applicationColors) {
+                importedProfile.applicationColors = [
+                    ...s.quantizationProfile.applicationColors,
+                ]
+            }
+            canonical.quantizationProfile = importedProfile
         }
     }
 

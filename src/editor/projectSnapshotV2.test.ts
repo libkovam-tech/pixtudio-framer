@@ -682,6 +682,13 @@ describe("ProjectSnapshotV2 invariants", () => {
             name: "Demo",
             colors: ["#001219", "#FFDD00"],
         })
+        expect(Object.keys(parsed.canonical.quantizationProfile ?? {})).toEqual([
+            "kind",
+            "source",
+            "id",
+            "name",
+            "colors",
+        ])
     })
 
     it("rejects malformed saved payloads without accepting partial state", () => {
