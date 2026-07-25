@@ -254,6 +254,7 @@ export async function decodeToSourceImage(file: File): Promise<SourceImage> {
     return await decodeAndValidateRasterImageFile(file)
 }
 
+const ENABLE_EDITOR_CONSOLE_OUTPUT = false
 const ENABLE_PREP_LOGS = false
 const ENABLE_TXN_LOGS = false
 const ENABLE_SAVELOAD_CHECKSUM_LOGS = false
@@ -276,13 +277,28 @@ const ENABLE_DESKTOP_SPACE_HAND_TOOL = true
 const ENABLE_MOBILE_CANVAS_PINCH_ZOOM = true
 const SPACE_HAND_SUPPRESS_FOCUS_CLASS = "pxSpaceHandSuppressFocus"
 
+const editorConsole = {
+    log: (...args: unknown[]) => {
+        if (ENABLE_EDITOR_CONSOLE_OUTPUT) globalThis.console.log(...args)
+    },
+    info: (...args: unknown[]) => {
+        if (ENABLE_EDITOR_CONSOLE_OUTPUT) globalThis.console.info(...args)
+    },
+    warn: (...args: unknown[]) => {
+        if (ENABLE_EDITOR_CONSOLE_OUTPUT) globalThis.console.warn(...args)
+    },
+    error: (...args: unknown[]) => {
+        if (ENABLE_EDITOR_CONSOLE_OUTPUT) globalThis.console.error(...args)
+    },
+}
+
 function coreLifecycleLog(stage: string, meta?: Record<string, unknown>) {
     if (!ENABLE_CORE_LIFECYCLE_DEBUG_LOGS) return
     const t = nowMs().toFixed(1)
     try {
-        console.log(`[CORE t=${t}] ${stage}`, meta ?? "")
+        editorConsole.log(`[CORE t=${t}] ${stage}`, meta ?? "")
     } catch {
-        console.log(`[CORE t=${t}] ${stage}`)
+        editorConsole.log(`[CORE t=${t}] ${stage}`)
     }
 }
 
@@ -290,9 +306,9 @@ function editorHistoryShortcutLog(stage: string, meta?: Record<string, unknown>)
     if (!ENABLE_EDITOR_HISTORY_SHORTCUT_LOGS) return
     const t = nowMs().toFixed(1)
     try {
-        console.info(`[EditorHistoryShortcut t=${t}] ${stage}`, meta ?? {})
+        editorConsole.info(`[EditorHistoryShortcut t=${t}] ${stage}`, meta ?? {})
     } catch {
-        console.info(`[EditorHistoryShortcut t=${t}] ${stage}`)
+        editorConsole.info(`[EditorHistoryShortcut t=${t}] ${stage}`)
     }
 }
 
@@ -312,9 +328,9 @@ function routeLog(stage: string, meta?: any) {
     if (!ENABLE_ROUTE_LOGS) return
     const t = nowMs().toFixed(1)
     try {
-        console.log(`[ROUTE t=${t}] ${stage}`, meta ?? "")
+        editorConsole.log(`[ROUTE t=${t}] ${stage}`, meta ?? "")
     } catch {
-        console.log(`[ROUTE t=${t}] ${stage}`)
+        editorConsole.log(`[ROUTE t=${t}] ${stage}`)
     }
 }
 
@@ -773,7 +789,7 @@ function maybeSanitizeImageData(
     if (SANITIZE_DIAGNOSTICS) {
         const m = computeSanitizeDiffMetrics(imageData, sanitized)
         if (ENABLE_PREP_LOGS)
-            console.log(
+            editorConsole.log(
                 `[SANITIZE] source=${source} changed=${m.changedPixels}/${m.totalPixels} (${m.changedPct.toFixed(2)}%) ` +
                     `avgAbsRGB=(${m.avgAbsDr.toFixed(2)},${m.avgAbsDg.toFixed(2)},${m.avgAbsDb.toFixed(2)}) ` +
                     `maxAbsRGBSum=${m.maxAbsDelta} alphaChanged=${m.changedAlphaPixels}`
@@ -800,7 +816,7 @@ function maybeStylizeBoostImageData(
     if (BOOST_DIAGNOSTICS) {
         const m = computeSanitizeDiffMetrics(imageData, boosted)
         if (ENABLE_PREP_LOGS)
-            console.log(
+            editorConsole.log(
                 `[BOOST] source=${source} changed=${m.changedPixels}/${m.totalPixels} (${m.changedPct.toFixed(2)}%) ` +
                     `avgAbsRGB=(${m.avgAbsDr.toFixed(2)},${m.avgAbsDg.toFixed(2)},${m.avgAbsDb.toFixed(2)}) ` +
                     `maxAbsRGBSum=${m.maxAbsDelta} alphaChanged=${m.changedAlphaPixels}`
@@ -1525,7 +1541,7 @@ function bwToHexUpper(color: string) {
 
 function warnIfBwPaletteInvalid(palette: string[]) {
     if (!Array.isArray(palette)) {
-        console.warn(
+        editorConsole.warn(
             "[BW] invariant failed (BW5): palette is not array:",
             palette
         )
@@ -1533,7 +1549,7 @@ function warnIfBwPaletteInvalid(palette: string[]) {
     }
 
     if (palette.length !== 2) {
-        console.warn(
+        editorConsole.warn(
             `[BW] invariant failed (BW5): palette size != 2 (got ${palette.length})`,
             palette
         )
@@ -1547,7 +1563,7 @@ function warnIfBwPaletteInvalid(palette: string[]) {
 
     // проверка “каждый цвет ∈ {#000000,#FFFFFF}”
     if (!allowed.has(hex0) || !allowed.has(hex1)) {
-        console.warn(
+        editorConsole.warn(
             "[BW] invariant failed (BW5): non BW color in palette:",
             palette,
             { hex0, hex1 }
@@ -1557,7 +1573,7 @@ function warnIfBwPaletteInvalid(palette: string[]) {
 
     // опционально: если вдруг оба одинаковые (две белых/две чёрных)
     if (hex0 === hex1) {
-        console.warn(
+        editorConsole.warn(
             "[BW] invariant failed (BW5): palette has duplicate colors (expected black+white):",
             palette,
             { hex0, hex1 }
@@ -2277,7 +2293,7 @@ function CameraModal({
                 stop()
                 onClose()
             } catch (e) {
-                console.warn("[CAMERA] createImageBitmap failed", e)
+                editorConsole.warn("[CAMERA] createImageBitmap failed", e)
                 // можно показать error, но минимально — просто не закрываем модалку автоматически
                 setError("Could not capture frame. Please try again.")
             }
@@ -3193,9 +3209,9 @@ function paletteUndoTrace(stage: string, meta?: Record<string, unknown>) {
     if (!ENABLE_PALETTE_UNDO_TRACE_LOGS) return
     try {
         const suffix = meta ? ` ${JSON.stringify(meta)}` : ""
-        console.info(`[PaletteUndoTrace] ${stage}${suffix}`)
+        editorConsole.info(`[PaletteUndoTrace] ${stage}${suffix}`)
     } catch {
-        console.info(`[PaletteUndoTrace] ${stage}`)
+        editorConsole.info(`[PaletteUndoTrace] ${stage}`)
     }
 }
 
@@ -3702,7 +3718,7 @@ function PixelEditorFramer({
             ["#FF0000", "#0000FF"]
         )
 
-        console.info("[PaletteQuantizationEngine][SMOKE] connected", {
+        editorConsole.info("[PaletteQuantizationEngine][SMOKE] connected", {
             activeProfile: quantizationProfile.kind,
             extractPaletteSize: extractSmoke.palette.length,
             extractPixelsRows: extractSmoke.pixels.length,
@@ -3857,7 +3873,7 @@ function PixelEditorFramer({
             })
 
             if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
-                console.log(
+                editorConsole.log(
                     "[SAVE][CHK] len=",
                     prepared.value.jsonText.length,
                     "fnv1a32=",
@@ -4056,9 +4072,9 @@ function PixelEditorFramer({
         const id = ++loadTraceSeqRef.current
         const t = nowMs().toFixed(1)
         try {
-            console.log(`[LOAD][TRACE#${id} t=${t}] ${tag}`, meta ?? "")
+            editorConsole.log(`[LOAD][TRACE#${id} t=${t}] ${tag}`, meta ?? "")
         } catch {
-            console.log(`[LOAD][TRACE#${id} t=${t}] ${tag}`)
+            editorConsole.log(`[LOAD][TRACE#${id} t=${t}] ${tag}`)
         }
     }
 
@@ -4400,7 +4416,7 @@ function PixelEditorFramer({
             const nn = countNonNull(params.overlay)
             extra = ` overlay=${h}x${w} nn=${nn}`
             if (h !== params.gridSize || w !== params.gridSize) {
-                console.warn(
+                editorConsole.warn(
                     `[P2.5][WARN] overlay size mismatch expected=${params.gridSize} got=${h}x${w} key=${key}`
                 )
             }
@@ -4408,7 +4424,7 @@ function PixelEditorFramer({
 
         const note = params.note ? ` note=${params.note}` : ""
         if (ENABLE_PREP_LOGS) {
-            console.log(`[P2.5][${params.phase}] key=${key}${extra}${note}`)
+            editorConsole.log(`[P2.5][${params.phase}] key=${key}${extra}${note}`)
         }
     }
 
@@ -4450,7 +4466,7 @@ function PixelEditorFramer({
         overlayDirtyRef.current = false
 
         if (ENABLE_PREP_LOGS) {
-            console.log(
+            editorConsole.log(
                 `[PAINT_REF][UPDATE] refNonce=${paintSnapshotNonceRef.current} reason=${reason}`
             )
         }
@@ -4474,7 +4490,7 @@ function PixelEditorFramer({
             clearPaintRefs()
             overlayDirtyRef.current = false
             if (ENABLE_PREP_LOGS) {
-                console.log(`[PAINT_REF][SYNC] reason=${reason} -> null`)
+                editorConsole.log(`[PAINT_REF][SYNC] reason=${reason} -> null`)
             }
             return
         }
@@ -4489,7 +4505,7 @@ function PixelEditorFramer({
         overlayDirtyRef.current = false
 
         if (ENABLE_PREP_LOGS) {
-            console.log(`[PAINT_REF][SYNC] reason=${reason} nn=${nn}`)
+            editorConsole.log(`[PAINT_REF][SYNC] reason=${reason} nn=${nn}`)
         }
     }
 
@@ -4565,7 +4581,7 @@ function PixelEditorFramer({
 
                 // This warning is not gated by ENABLE_PREP_LOGS; it must not be silent.
                 if (ENABLE_OVERLAY_FALLBACK_LOGS) {
-                    console.warn(
+                    editorConsole.warn(
                         "[OVERLAY][LEGACY_RESIZE_FALLBACK]",
                         reason,
                         ":: This path should be emergency-only."
@@ -4768,7 +4784,7 @@ function PixelEditorFramer({
         setGridSuppressedByImport((prev) => {
             if (prev === next) return prev
             if (ENABLE_PREP_LOGS) {
-                console.log(`[GRID] suppressed = ${next} reason=${reason}`)
+                editorConsole.log(`[GRID] suppressed = ${next} reason=${reason}`)
             }
             return next
         })
@@ -4782,7 +4798,7 @@ function PixelEditorFramer({
 
     React.useEffect(() => {
         if (ENABLE_PREP_LOGS) {
-            console.log(
+            editorConsole.log(
                 `[GRID] suppressed = ${gridSuppressedByImport} reason=mount`
             )
         }
@@ -5692,7 +5708,7 @@ function PixelEditorFramer({
                 ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS &&
                 applicationPlan.traceLabel
             ) {
-                console.info(
+                editorConsole.info(
                     `[PaletteTabs][CHECK] ${applicationPlan.traceLabel}`,
                     {
                         ...(applicationPlan.kind === "restore"
@@ -5723,7 +5739,7 @@ function PixelEditorFramer({
         setPaletteTabsState((prev) => preparePaletteWorldInvalidation(prev))
 
         if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-            console.info("[PaletteTabs][CHECK] worlds invalidated", {
+            editorConsole.info("[PaletteTabs][CHECK] worlds invalidated", {
                 from: prevSignature,
                 to: nextSignature,
             })
@@ -5779,7 +5795,7 @@ function PixelEditorFramer({
         pushCommit(before, { afterState })
 
         if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-            console.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
+            editorConsole.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
                 profileId: profile.id,
                 source: profile.source,
                 autoSwatches: preparedApplication.autoSwatches.length,
@@ -5902,7 +5918,7 @@ function PixelEditorFramer({
                 reason: prepared.reason,
             })
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                console.info("[PaletteTabs][CHECK] fixed preset skipped", {
+                editorConsole.info("[PaletteTabs][CHECK] fixed preset skipped", {
                     profileId: profile.id,
                     reason: prepared.reason,
                     referenceSignature: beforeReferenceSignature,
@@ -5934,7 +5950,7 @@ function PixelEditorFramer({
             pushCommit(before, { afterState })
 
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                console.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
+                editorConsole.info("[PaletteTabs][CHECK] fixed preset -> drawing palette", {
                     profileId: profile.id,
                     source: profile.source,
                     autoSwatches: preparedApplication.autoSwatches.length,
@@ -5975,7 +5991,7 @@ function PixelEditorFramer({
         pushCommit(before, { afterState })
 
         if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-            console.info("[PaletteTabs][CHECK] extract -> fixed preset", {
+            editorConsole.info("[PaletteTabs][CHECK] extract -> fixed preset", {
                 profileId: profile.id,
                 source: profile.source,
                 referenceUnchanged:
@@ -6042,7 +6058,7 @@ function PixelEditorFramer({
             applyFixedPalettePreset(profile)
 
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                console.info("[PaletteTabs][CHECK] palette imported", {
+                editorConsole.info("[PaletteTabs][CHECK] palette imported", {
                     fileName: file.name,
                     profileId: profile.id,
                     colors: profile.colors.length,
@@ -6081,7 +6097,7 @@ function PixelEditorFramer({
             applyFixedPalettePreset(profile)
 
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                console.info("[PaletteTabs][CHECK] palette extracted from image", {
+                editorConsole.info("[PaletteTabs][CHECK] palette extracted from image", {
                     fileName: file.name,
                     profileId: profile.id,
                     colors: profile.colors.length,
@@ -6942,7 +6958,7 @@ function PixelEditorFramer({
             coreLifecycleLog("restore:rejected", { reason: "commit-failed" })
             pendingLoadProjectCommitRef.current = null
 
-            //console.error("[LOAD][L2] commit failed", e)
+            //editorConsole.error("[LOAD][L2] commit failed", e)
             //nextLoadStateRef.current = null
             //lastValidatedSnapshotRef.current = null
             //lastValidatedSnapshotV2Ref.current = null
@@ -6969,7 +6985,7 @@ function PixelEditorFramer({
             )
 
             if (ENABLE_SAVELOAD_CHECKSUM_LOGS) {
-                console.log(
+                editorConsole.log(
                     "[LOAD][CHK_AFTER_COMMIT] got=",
                     got,
                     "expected=",
@@ -6982,12 +6998,12 @@ function PixelEditorFramer({
             }
 
             if (got !== expected) {
-                console.warn(
+                editorConsole.warn(
                     "[LOAD][CHK_MISMATCH] project state mutated after load (forbidden)"
                 )
             }
         } catch (e) {
-            console.warn("[LOAD][CHK_AFTER_COMMIT] failed", e)
+            editorConsole.warn("[LOAD][CHK_AFTER_COMMIT] failed", e)
         }
     }, [postLoadCheckNonce])
 
@@ -8504,7 +8520,7 @@ function PixelEditorFramer({
             const canvasElements = Array.from(document.querySelectorAll("canvas"))
             const editorCanvas = canvasRef.current
 
-            console.info("[METHOD][VISUAL] open", {
+            editorConsole.info("[METHOD][VISUAL] open", {
                 sessionId: methodSession.sessionId,
                 paletteContext: methodSession.frozenPaletteContext,
                 activePaletteTab: methodSession.frozenSource.activePaletteTab,
@@ -8536,7 +8552,7 @@ function PixelEditorFramer({
 
         if (!methodVisualLogWasActiveRef.current) return
         methodVisualLogWasActiveRef.current = false
-        console.info("[METHOD][VISUAL] inactive", {
+        editorConsole.info("[METHOD][VISUAL] inactive", {
             canvasElementCount: document.querySelectorAll("canvas").length,
             editorCanvas: canvasRef.current,
             backgroundRestored: "#e9d8a6",
@@ -9032,7 +9048,7 @@ function PixelEditorFramer({
             // 1) Already processed: skip.
             if (p3LastProcessedKeyRef.current === p3Key) {
                 if (ENABLE_TXN_LOGS) {
-                    console.log(
+                    editorConsole.log(
                         `[IMPORT][SKIP] key=${p3Key} reason=already_processed`
                     )
                 }
@@ -9045,7 +9061,7 @@ function PixelEditorFramer({
             // 2) защита от наложения
             if (p3InFlightKeyRef.current === p3Key) {
                 if (ENABLE_TXN_LOGS) {
-                    console.log(`[IMPORT][SKIP] key=${p3Key} reason=in_flight`)
+                    editorConsole.log(`[IMPORT][SKIP] key=${p3Key} reason=in_flight`)
                 }
                 traceLoad("repixelizeEffect SKIP (in_flight)", { p3Key })
                 return
@@ -9329,7 +9345,7 @@ function PixelEditorFramer({
                 p3LastProcessedKeyRef.current = p3Key
             }
         } catch (e: any) {
-            console.error("[P2][paint-snapshot-requantize] failed", e)
+            editorConsole.error("[P2][paint-snapshot-requantize] failed", e)
             if (txn) {
                 commitImportTxn(txn, { ok: false, note: "failed" })
             }
@@ -10034,7 +10050,7 @@ function PixelEditorFramer({
         if (input) input.value = ""
 
         if (!file) {
-            console.warn("[IMPORT][file] empty selection")
+            editorConsole.warn("[IMPORT][file] empty selection")
             return
         }
 
@@ -13467,7 +13483,7 @@ function beginImportTxn(reason: string): ImportTxn {
             ? performance.now()
             : Date.now()
     if (ENABLE_PREP_LOGS) {
-        console.log(`[IMPORT_TXN][BEGIN] id=${id} reason=${reason}`)
+        editorConsole.log(`[IMPORT_TXN][BEGIN] id=${id} reason=${reason}`)
     }
     return { id, reason, startedAtMs }
 }
@@ -13487,7 +13503,7 @@ function commitImportTxn(
     const noteStr = meta?.note ? ` note=${meta.note}` : ""
 
     if (ENABLE_PREP_LOGS) {
-        console.log(
+        editorConsole.log(
             `[IMPORT_TXN][COMMIT] id=${txn.id} reason=${txn.reason} dtMs=${dt.toFixed(
                 1
             )}${okStr}${noteStr}`
@@ -13941,7 +13957,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     const openSmartReferenceFromEditorTest = React.useCallback(() => {
         const before = captureEditorCommittedState()
         if (ENABLE_ROOT_HISTORY_LOGS) {
-            console.log("H3 editorBefore capture:", before)
+            editorConsole.log("H3 editorBefore capture:", before)
         }
 
         const smartBefore = captureSmartObjectCommittedState()
@@ -13999,7 +14015,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     const handleEditorCommittedStateSettled = React.useCallback(
         (payload: EditorCommittedStateSettledPayload) => {
             if (ENABLE_ROOT_HISTORY_LOGS) {
-                console.log("H3 settled payload:", payload)
+                editorConsole.log("H3 settled payload:", payload)
             }
 
             // Step 6:
@@ -14012,7 +14028,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             })
 
             if (ENABLE_ROOT_HISTORY_LOGS) {
-                console.log(
+                editorConsole.log(
                     "STEP6 committed history entry:",
                     rootHistoryRef.current.committed[
                         rootHistoryRef.current.committed.length - 1
@@ -14368,7 +14384,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     const importImageFileThroughCurrentPipeline = React.useCallback(
         async (file: File) => {
             if (!isLikelyRasterImageFile(file)) {
-                console.warn("[IMPORT][GALLERY] rejected non-image file", {
+                editorConsole.warn("[IMPORT][GALLERY] rejected non-image file", {
                     type: file.type,
                     name: file.name,
                     size: file.size,
@@ -14388,7 +14404,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 setCropFlowSource("gallery")
                 openCropFlow(sourceImage)
             } catch (e: any) {
-                console.warn("[IMPORT][GALLERY] decodeToSourceImage failed", e)
+                editorConsole.warn("[IMPORT][GALLERY] decodeToSourceImage failed", e)
                 failImport(
                     getFileIntakeUserMessage(
                         e,
@@ -14443,7 +14459,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         if (looksLikeCancelGhost) return
 
         if (!isLikelyRasterImageFile(file)) {
-            console.error("[CAMERA][head] rejected non-image file", {
+            editorConsole.error("[CAMERA][head] rejected non-image file", {
                 type: file.type,
                 name: file.name,
                 size: file.size,
@@ -14464,7 +14480,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             setCropFlowSource("camera")
             openCropFlow(sourceImage)
         } catch (err) {
-            console.error("[CAMERA][head] decodeToSourceImage failed", err)
+            editorConsole.error("[CAMERA][head] decodeToSourceImage failed", err)
             failImport(CAMERA_IMPORT_ERROR_TEXT)
         }
     }
@@ -14531,7 +14547,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     const showImportError =
         onShowImportError ??
         ((message: string) => {
-            console.error("[IMPORT ERROR]", message)
+            editorConsole.error("[IMPORT ERROR]", message)
         })
 
     const failImport = React.useCallback(
@@ -14613,7 +14629,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         const ctorName = (data as any)?.constructor?.name || ""
 
         if (ctorName && ctorName !== "Uint8ClampedArray") {
-            console.warn(
+            editorConsole.warn(
                 `[IMPORT][A0] ${label}: data is ${ctorName} (expected Uint8ClampedArray)`
             )
         }
@@ -14661,10 +14677,10 @@ export default function PIXTUDIO_Mobile_MVP() {
                 commitImportTxn(txn, { ok: true, note: "ok" })
             }
         } catch (e: any) {
-            console.error("[IMPORT][A0] apply failed", e)
+            editorConsole.error("[IMPORT][A0] apply failed", e)
 
             if (ENABLE_PREP_LOGS) {
-                console.log("[IMPORT][A0] decision snapshot", {
+                editorConsole.log("[IMPORT][A0] decision snapshot", {
                     hasPrepared: !!d?.preparedImageData,
                     w: d?.preparedImageData?.width,
                     h: d?.preparedImageData?.height,
@@ -14702,7 +14718,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             setImportStatus("idle")
             setImportError(null)
         } catch (e: any) {
-            console.error("[IMPORT][A0] artifact apply failed", e)
+            editorConsole.error("[IMPORT][A0] artifact apply failed", e)
 
             // В E1B можно НЕ трогать старый UX ошибок (путь ещё не активен),
             // но хотя бы чистим pending, чтобы не зависать.
@@ -14734,7 +14750,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             setImportStatus("idle")
             setImportError(null)
         } catch (e: any) {
-            console.error("[IMPORT][P5] cropResult->artifact failed", e)
+            editorConsole.error("[IMPORT][P5] cropResult->artifact failed", e)
             failImportInFlow("Failed to bake import artifact.")
         } finally {
             setPendingCropResult(null)
@@ -15174,7 +15190,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     function resetImportUi(reason: string) {
         if (ENABLE_PREP_LOGS) {
-            console.log("[IMPORT][ui] reset", reason)
+            editorConsole.log("[IMPORT][ui] reset", reason)
         }
 
         setImportStatus("idle")
@@ -15206,7 +15222,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             // Не трогаем UI, если этот decode уже устарел
             if (jobId !== cropDecodeJobRef.current) return
 
-            console.error("[IMPORT][decode] processing failed", err)
+            editorConsole.error("[IMPORT][decode] processing failed", err)
             failImportInFlow("Failed to open image.")
         }
 
@@ -15363,7 +15379,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const p = cropPending
         if (!p) {
-            console.error("[IMPORT][confirmCrop] missing crop parameters", {
+            editorConsole.error("[IMPORT][confirmCrop] missing crop parameters", {
                 p,
             })
             failImportInFlow("Crop parameters missing.")
@@ -15373,13 +15389,13 @@ export default function PIXTUDIO_Mobile_MVP() {
         const prepared = applyGeometry()
 
         if (!prepared) {
-            console.error("[IMPORT][confirmCrop] applyGeometry returned null")
+            editorConsole.error("[IMPORT][confirmCrop] applyGeometry returned null")
             failImportInFlow("Failed to apply crop geometry.")
             return
         }
 
         if (ENABLE_PREP_LOGS) {
-            console.log("[CROP][prepared]", {
+            editorConsole.log("[CROP][prepared]", {
                 w: prepared.width,
                 h: prepared.height,
                 a0: (() => {
@@ -15790,7 +15806,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             }
 
             // No camera API -> show the same import error overlay (OK only)
-            console.warn("[CAMERA][head] no getUserMedia on desktop")
+            editorConsole.warn("[CAMERA][head] no getUserMedia on desktop")
             failImport(CAMERA_IMPORT_ERROR_TEXT)
             return
         }
@@ -15798,7 +15814,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         // Mobile: use hidden <input capture> to open native camera UI
         const el = cameraInputRef.current
         if (!el) {
-            console.warn("[CAMERA][head] cameraInputRef is null")
+            editorConsole.warn("[CAMERA][head] cameraInputRef is null")
             failImport(CAMERA_IMPORT_ERROR_TEXT)
             return
         }
@@ -15808,7 +15824,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             el.value = ""
             el.click()
         } catch (err) {
-            console.error("[CAMERA][head] click failed", err)
+            editorConsole.error("[CAMERA][head] click failed", err)
             failImport(CAMERA_IMPORT_ERROR_TEXT)
         }
     }
@@ -15908,7 +15924,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                     }
                     onEditorCommittedStateBridgeReady={(bridge) => {
                         if (ENABLE_ROOT_HISTORY_LOGS) {
-                            console.log("H3 bridge ready:", bridge)
+                            editorConsole.log("H3 bridge ready:", bridge)
                         }
                         editorCommittedStateBridgeRef.current = bridge
                     }}
@@ -16509,3 +16525,4 @@ export default function PIXTUDIO_Mobile_MVP() {
         </>
     )
 }
+

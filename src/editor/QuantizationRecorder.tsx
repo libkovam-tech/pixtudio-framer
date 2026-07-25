@@ -111,6 +111,7 @@ const TEXT_LIGHT = "#ffffff"
 const TEXT_MUTED = "rgba(255,255,255,0.86)"
 const TEXT_DIM = "rgba(255,255,255,0.74)"
 const TEXT_GREEN = "#69f17c"
+const ENABLE_QUANTIZATION_RECORDER_CONSOLE_OUTPUT = false
 const QUANTIZATION_EXPORT_DEBUG = false
 const ENABLE_QUANTIZATION_RECORDER_SAVE_DEBUG_OVERLAY = false
 const AUDIO_FADE_SECONDS = 0.5
@@ -119,6 +120,19 @@ const EXPORT_PROGRESS_PNG_MAX = 42
 const EXPORT_PROGRESS_ENCODE_START = 56
 const EXPORT_PROGRESS_ENCODE_MAX = 96
 const RECORDER_TRANSPARENT_MATTE = "#FFFFFF"
+
+const recorderConsole = {
+    info: (...args: unknown[]) => {
+        if (ENABLE_QUANTIZATION_RECORDER_CONSOLE_OUTPUT) {
+            globalThis.console.info(...args)
+        }
+    },
+    error: (...args: unknown[]) => {
+        if (ENABLE_QUANTIZATION_RECORDER_CONSOLE_OUTPUT) {
+            globalThis.console.error(...args)
+        }
+    },
+}
 
 const okCancelButtonStyle: React.CSSProperties = {
     width: 50,
@@ -505,7 +519,7 @@ async function ensureFFmpegLoaded() {
         const ffmpeg = ffmpegSingleton ?? new FFmpeg()
         if (!ffmpeg.loaded) {
             if (QUANTIZATION_EXPORT_DEBUG) {
-                console.info("[QuantizationRecorder] About to call ffmpeg.load()", {
+                recorderConsole.info("[QuantizationRecorder] About to call ffmpeg.load()", {
                     classWorkerURL: FFMPEG_CUSTOM_WORKER_URL,
                     coreURL: FFMPEG_CUSTOM_CORE_URL,
                     wasmURL: FFMPEG_CUSTOM_WASM_URL,
@@ -517,7 +531,7 @@ async function ensureFFmpegLoaded() {
                 wasmURL: FFMPEG_CUSTOM_WASM_URL,
             })
             if (QUANTIZATION_EXPORT_DEBUG) {
-                console.info("[QuantizationRecorder] ffmpeg.load() resolved")
+                recorderConsole.info("[QuantizationRecorder] ffmpeg.load() resolved")
             }
         }
         ffmpegSingleton = ffmpeg
@@ -992,19 +1006,19 @@ export default function QuantizationRecorder({
     React.useEffect(() => {
         let active = true
         if (QUANTIZATION_EXPORT_DEBUG) {
-            console.info("[QuantizationRecorder] Starting ffmpeg preload")
+            recorderConsole.info("[QuantizationRecorder] Starting ffmpeg preload")
         }
         void ensureFFmpegLoaded()
             .then(() => {
                 if (!active) return
                 if (QUANTIZATION_EXPORT_DEBUG) {
-                    console.info("[QuantizationRecorder] ffmpeg preload completed")
+                    recorderConsole.info("[QuantizationRecorder] ffmpeg preload completed")
                 }
             })
             .catch((error) => {
                 if (!active) return
                 if (QUANTIZATION_EXPORT_DEBUG) {
-                    console.error("[QuantizationRecorder] ffmpeg preload failed", error)
+                    recorderConsole.error("[QuantizationRecorder] ffmpeg preload failed", error)
                 }
                 setPlainStatus("Export unavailable")
             })
@@ -1108,10 +1122,10 @@ export default function QuantizationRecorder({
         (message, payload) => {
             if (!QUANTIZATION_EXPORT_DEBUG) return
             if (payload) {
-                console.info("[QuantizationRecorder]", message, payload)
+                recorderConsole.info("[QuantizationRecorder]", message, payload)
                 return
             }
-            console.info("[QuantizationRecorder]", message)
+            recorderConsole.info("[QuantizationRecorder]", message)
         },
         []
     )
@@ -1454,7 +1468,7 @@ export default function QuantizationRecorder({
                     )
                 }
                 if (QUANTIZATION_EXPORT_DEBUG) {
-                    console.info("[QuantizationRecorder][ffmpeg-log]", clean)
+                    recorderConsole.info("[QuantizationRecorder][ffmpeg-log]", clean)
                 }
             }
             progressListener = ({
@@ -1479,7 +1493,7 @@ export default function QuantizationRecorder({
                     )
                 )
                 if (QUANTIZATION_EXPORT_DEBUG) {
-                    console.info("[QuantizationRecorder][ffmpeg-progress]", {
+                    recorderConsole.info("[QuantizationRecorder][ffmpeg-progress]", {
                         progress,
                         time,
                     })
@@ -1610,7 +1624,7 @@ export default function QuantizationRecorder({
             )
         } catch (error) {
             if (QUANTIZATION_EXPORT_DEBUG) {
-                console.error("[QuantizationRecorder] Export failed", error)
+                recorderConsole.error("[QuantizationRecorder] Export failed", error)
             }
             showGenericAlert()
             setPlainStatus("Export failed")
@@ -2240,3 +2254,4 @@ export default function QuantizationRecorder({
         </>
     )
 }
+
