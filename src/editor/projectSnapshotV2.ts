@@ -1,4 +1,13 @@
 import type { SmartReferenceAdjustments } from "./SmartReferenceEditor.tsx"
+import {
+    AUTO_PALETTE_CONTEXT_KIND,
+    FIXED_PALETTE_CONTEXT_KIND,
+    resolveMethodProfile,
+    resolveMethodProfilesByPaletteContext,
+    type MethodProfile,
+    type MethodProfilesByPaletteContext,
+    type ResolvedMethodProfilesByPaletteContext,
+} from "./QuantizationCore.ts"
 
 export const PROJECT_SNAPSHOT_V2_MAGIC = "PIXTUDIO" as const
 export const PROJECT_SNAPSHOT_V2_VERSION = 2 as const
@@ -21,6 +30,8 @@ export const PROJECT_SNAPSHOT_V2_REQUIRED_ROOT_KEYS = [
 
 export const PROJECT_SNAPSHOT_V2_OPTIONAL_ROOT_KEYS = [
     "autoOverrides",
+    "methodProfilesByPaletteContext",
+    "methodProfile",
     "smartObjectState",
     "quantizationProfile",
 ] as const
@@ -48,6 +59,20 @@ export type ProjectSnapshotV2 = {
         }>
     }
     paletteCount?: number
+    methodProfilesByPaletteContext?: {
+        auto?: {
+            methodId: string
+            colorSpaceId: string
+        }
+        fixed?: {
+            methodId: string
+            colorSpaceId: string
+        }
+    }
+    methodProfile?: {
+        methodId: string
+        colorSpaceId: string
+    }
     quantizationProfile?:
         | { kind: "extract" }
         | {
@@ -96,6 +121,7 @@ export type ProjectSnapshotV2BuildInput = Omit<
 export type ProjectSnapshotV2QuantizationProfileInput = NonNullable<
     ProjectSnapshotV2["quantizationProfile"]
 >
+export type ProjectSnapshotV2MethodProfileInput = MethodProfile
 export type ProjectSnapshotV2ResolvedQuantizationProfile =
     | { kind: "extract" }
     | {
@@ -108,6 +134,8 @@ export type ProjectSnapshotV2ResolvedQuantizationProfile =
           applicationProfileId?: string
           applicationColors?: string[]
       }
+export type ProjectSnapshotV2MethodProfilesByPaletteContextInput =
+    MethodProfilesByPaletteContext
 export type ProjectSnapshotV2RuntimeSwatch = {
     id: string
     color: string
@@ -145,6 +173,7 @@ export type ProjectSnapshotV2ForSaveInput<TTransparent> = {
         ReadonlyArray<ProjectSnapshotV2SavePixel<TTransparent>>
     >
     autoOverrides?: AutoSwatchOverridesMapV2 | null
+    methodProfilesByPaletteContext?: ProjectSnapshotV2MethodProfilesByPaletteContextInput | null
     quantizationProfile?: ProjectSnapshotV2QuantizationProfileInput
     smartReferenceBytes?: Uint8ClampedArray | null
     smartAdjustments?: SmartReferenceAdjustments | null
@@ -420,6 +449,46 @@ export function serializeQuantizationProfileForSnapshot(
     return serialized
 }
 
+export function serializeMethodProfileForSnapshot(
+    profile: ProjectSnapshotV2MethodProfileInput | null | undefined
+): ProjectSnapshotV2["methodProfile"] {
+    return { ...resolveMethodProfile(profile, AUTO_PALETTE_CONTEXT_KIND) }
+}
+
+export function serializeMethodProfilesByPaletteContextForSnapshot(
+    profiles: ProjectSnapshotV2MethodProfilesByPaletteContextInput | null | undefined
+): ProjectSnapshotV2["methodProfilesByPaletteContext"] {
+    const resolved = resolveMethodProfilesByPaletteContext(profiles)
+    return {
+        [AUTO_PALETTE_CONTEXT_KIND]: {
+            ...resolved[AUTO_PALETTE_CONTEXT_KIND],
+        },
+        [FIXED_PALETTE_CONTEXT_KIND]: {
+            ...resolved[FIXED_PALETTE_CONTEXT_KIND],
+        },
+    }
+}
+
+export function resolveProjectSnapshotV2MethodProfile(
+    snapshot: Pick<ValidatedSnapshotV2, "methodProfile">
+): MethodProfile {
+    return resolveMethodProfile(snapshot.methodProfile, AUTO_PALETTE_CONTEXT_KIND)
+}
+
+export function resolveProjectSnapshotV2MethodProfilesByPaletteContext(
+    snapshot: Pick<
+        ValidatedSnapshotV2,
+        "methodProfilesByPaletteContext" | "methodProfile"
+    >
+): ResolvedMethodProfilesByPaletteContext {
+    return resolveMethodProfilesByPaletteContext({
+        ...snapshot.methodProfilesByPaletteContext,
+        [AUTO_PALETTE_CONTEXT_KIND]:
+            snapshot.methodProfilesByPaletteContext?.[AUTO_PALETTE_CONTEXT_KIND] ??
+            snapshot.methodProfile,
+    })
+}
+
 export function buildProjectSnapshotV2SavePalette(
     autoSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>,
     userSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>,
@@ -541,6 +610,10 @@ export function buildProjectSnapshotV2ForSave<TTransparent>(
         gridSize: input.gridSize,
         palette: { swatches: savePalette.swatches },
         paletteCount: clampInt(input.paletteCount, paletteMin, paletteMax),
+        methodProfilesByPaletteContext:
+            serializeMethodProfilesByPaletteContextForSnapshot(
+                input.methodProfilesByPaletteContext
+            ),
         quantizationProfile: serializeQuantizationProfileForSnapshot(
             input.quantizationProfile,
             normalizeColor
@@ -830,6 +903,8 @@ export function canonicalizeSnapshotV2(
             PROJECT_SNAPSHOT_V2_PALETTE_MAX
         )
     }
+    canonical.methodProfilesByPaletteContext =
+        resolveProjectSnapshotV2MethodProfilesByPaletteContext(s)
     if (smartObjectStateCanon) {
         canonical.smartObjectState = smartObjectStateCanon
     }

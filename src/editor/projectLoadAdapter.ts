@@ -1,8 +1,13 @@
 import type { QuantizationProfile, PaletteTab } from "./paletteQuantizationEngine.ts"
+import type {
+    MethodProfilesByPaletteContext,
+    ResolvedMethodProfilesByPaletteContext,
+} from "./QuantizationCore.ts"
 import {
     applyProjectSnapshotV2AutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
     decodeProjectSnapshotRefBytes,
+    resolveProjectSnapshotV2MethodProfilesByPaletteContext,
     resolveProjectSnapshotV2QuantizationProfile,
     type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
@@ -34,6 +39,7 @@ export type ProjectLoadEditorState<TTransparent> = {
     autoSwatches: ProjectLoadSwatch[]
     userSwatches: ProjectLoadSwatch[]
     selectedSwatch: string | "transparent"
+    methodProfilesByPaletteContext?: MethodProfilesByPaletteContext
     quantizationProfile?: QuantizationProfile
     importedPalettePresets?: ProjectLoadImportedPalettePreset[]
     hiddenPresetIds?: string[]
@@ -46,6 +52,7 @@ export type ProjectLoadNextState<TTransparent> = {
     project: ProjectLoadEditorState<TTransparent>
     smartObjectBaseForRestore: ImageData | null
     paletteOrderIds: string[]
+    methodProfilesByPaletteContext: ResolvedMethodProfilesByPaletteContext
     quantizationProfile: QuantizationProfile
 }
 
@@ -108,6 +115,8 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
         validated,
         options
     )
+    const resolvedMethodProfilesByPaletteContext =
+        resolveProjectSnapshotV2MethodProfilesByPaletteContext(validated)
 
     const project: ProjectLoadEditorState<TTransparent> = {
         gridSize: runtimeLayers.gridSize,
@@ -120,6 +129,10 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
         autoSwatches: nextAutoEffective,
         userSwatches: runtimeLayers.userSwatches,
         selectedSwatch: runtimeLayers.selectedSwatch,
+        methodProfilesByPaletteContext: {
+            auto: { ...resolvedMethodProfilesByPaletteContext.auto },
+            fixed: { ...resolvedMethodProfilesByPaletteContext.fixed },
+        },
         quantizationProfile: options.cloneQuantizationProfile(
             resolvedQuantizationProfile
         ),
@@ -141,6 +154,7 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
         project,
         smartObjectBaseForRestore: original,
         paletteOrderIds: runtimeLayers.paletteOrderIds,
+        methodProfilesByPaletteContext: resolvedMethodProfilesByPaletteContext,
         quantizationProfile: resolvedQuantizationProfile,
     }
 }

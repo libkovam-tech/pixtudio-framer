@@ -285,18 +285,67 @@ describe("palette quantization engine", () => {
         expect(QUANTIZATION_PROFILES.bw.colors).toEqual(BLACK_WHITE_2)
     })
 
-    it("uses the old Crop luminance rules for grayscale and B/W profiles", () => {
-        const gray = quantizeWithFixedProfile(
-            [["rgb(255, 0, 0)", "rgb(0, 255, 0)"]],
-            QUANTIZATION_PROFILES.grayscale
+    it("routes monochrome fixed profiles through the shared fixed mapper", () => {
+        expect(
+            quantizeWithFixedProfile(
+                [["rgb(255, 0, 0)", "rgb(0, 255, 0)"]],
+                QUANTIZATION_PROFILES.grayscale
+            )
+        ).toEqual(
+            quantizeWithFixedPalette(
+                [["rgb(255, 0, 0)", "rgb(0, 255, 0)"]],
+                GRAYSCALE_32
+            )
         )
-        const bw = quantizeWithFixedProfile(
-            [["rgb(255, 0, 0)", "rgb(0, 255, 0)"]],
-            QUANTIZATION_PROFILES.bw
+        expect(
+            quantizeWithFixedProfile(
+                [["rgb(255, 0, 0)", "rgb(0, 255, 0)"]],
+                QUANTIZATION_PROFILES.bw
+            )
+        ).toEqual(
+            quantizeWithFixedPalette(
+                [["rgb(255, 0, 0)", "rgb(0, 255, 0)"]],
+                BLACK_WHITE_2
+            )
         )
+    })
 
-        expect(gray[0][0]).not.toBe(gray[0][1])
-        expect(bw).toEqual([["#000000", "#FFFFFF"]])
+    it("uses custom monochrome application colors during world quantization", () => {
+        const customGray = {
+            kind: "fixed" as const,
+            source: "imported" as const,
+            id: "grayscale-custom",
+            name: "GRAY Custom",
+            colors: ["#000000", "#FFFFFF", "#00FFFD"],
+            applicationSource: "builtin" as const,
+            applicationProfileId: "grayscale-32",
+            applicationColors: ["#000000", "#FFFFFF", "#00FFFD"],
+        }
+        const customBw = {
+            kind: "fixed" as const,
+            source: "imported" as const,
+            id: "black-white-custom",
+            name: "B/W Custom",
+            colors: ["#000000", "#FFFFFF", "#00FFFD"],
+            applicationSource: "builtin" as const,
+            applicationProfileId: "black-white-2",
+            applicationColors: ["#000000", "#FFFFFF", "#00FFFD"],
+        }
+
+        for (const profile of [customGray, customBw]) {
+            const world = buildDerivedWorld({
+                profile,
+                sourcePixels: [["rgb(0, 255, 253)"]],
+                overlayPixels: [[null]],
+                previousSwatches: [],
+                userSwatches: [],
+                paletteCountTarget: profile.colors.length,
+            })
+
+            expect(world.autoSwatches[2]?.color).toBe("#00FFFD")
+            expect(world.imagePixels).toEqual([["auto-2"]])
+            expect(world.canvasPixels).toEqual([["auto-2"]])
+        }
     })
 
     it("uses builtin application colors for imported custom profiles with a builtin base", () => {

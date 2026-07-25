@@ -18,11 +18,17 @@ import {
     mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides,
+    resolveProjectSnapshotV2MethodProfile,
+    resolveProjectSnapshotV2MethodProfilesByPaletteContext,
     resolveProjectSnapshotV2QuantizationProfile,
     serializeQuantizationProfileForSnapshot,
     validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
 } from "./projectSnapshotV2.ts"
+import {
+    DEFAULT_METHOD_PROFILE,
+    DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
+} from "./QuantizationCore.ts"
 
 function canonicalProject(): ProjectSnapshotV2 {
     return {
@@ -266,6 +272,10 @@ describe("ProjectSnapshotV2 invariants", () => {
         expect(snapshot.autoOverrides).toEqual({
             "auto-transparent": { isTransparent: true },
         })
+        expect(snapshot.methodProfile).toBeUndefined()
+        expect(snapshot.methodProfilesByPaletteContext).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
         expect(snapshot.quantizationProfile).toEqual({
             kind: "fixed",
             source: "imported",
@@ -275,6 +285,73 @@ describe("ProjectSnapshotV2 invariants", () => {
         })
         expect(snapshot.ref?.b64).toBe("AP8QgA==")
         expect(snapshot.smartObjectState?.adjustments.whiteBalance).toBe(0.5)
+    })
+
+    it("loads missing or invalid context METHOD profiles as default profiles", () => {
+        const legacyParsed = parseProjectSnapshotV2Json(
+            JSON.stringify(canonicalProject())
+        )
+
+        expect(legacyParsed.ok).toBe(true)
+        if (!legacyParsed.ok) return
+        expect(resolveProjectSnapshotV2MethodProfile(legacyParsed.snapshot)).toEqual(
+            DEFAULT_METHOD_PROFILE
+        )
+        expect(
+            resolveProjectSnapshotV2MethodProfilesByPaletteContext(
+                legacyParsed.snapshot
+            )
+        ).toEqual(DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT)
+        expect(legacyParsed.canonical.methodProfile).toBeUndefined()
+        expect(legacyParsed.canonical.methodProfilesByPaletteContext).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+
+        const invalidParsed = parseProjectSnapshotV2Json(
+            JSON.stringify({
+                ...canonicalProject(),
+                methodProfilesByPaletteContext: {
+                    auto: {
+                        methodId: "unknown-method",
+                        colorSpaceId: "unknown-space",
+                    },
+                    fixed: {
+                        methodId: "default",
+                        colorSpaceId: "default",
+                    },
+                },
+            })
+        )
+
+        expect(invalidParsed.ok).toBe(true)
+        if (!invalidParsed.ok) return
+        expect(resolveProjectSnapshotV2MethodProfile(invalidParsed.snapshot)).toEqual(
+            DEFAULT_METHOD_PROFILE
+        )
+        expect(
+            resolveProjectSnapshotV2MethodProfilesByPaletteContext(
+                invalidParsed.snapshot
+            )
+        ).toEqual(DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT)
+        expect(invalidParsed.canonical.methodProfilesByPaletteContext).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+    })
+
+    it("migrates legacy methodProfile into the auto palette context", () => {
+        const parsed = parseProjectSnapshotV2Json(
+            JSON.stringify({
+                ...canonicalProject(),
+                methodProfile: DEFAULT_METHOD_PROFILE,
+            })
+        )
+
+        expect(parsed.ok).toBe(true)
+        if (!parsed.ok) return
+        expect(parsed.canonical.methodProfile).toBeUndefined()
+        expect(parsed.canonical.methodProfilesByPaletteContext).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
     })
 
     it("serializes quantization profile markers for saves", () => {

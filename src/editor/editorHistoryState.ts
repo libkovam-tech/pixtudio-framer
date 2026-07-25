@@ -2,6 +2,13 @@ import {
     EXTRACT_QUANTIZATION_PROFILE,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
+import {
+    resolveMethodProfile,
+    resolveMethodProfilesByPaletteContext,
+    type MethodProfile,
+    type MethodProfilesByPaletteContext,
+    type ResolvedMethodProfilesByPaletteContext,
+} from "./QuantizationCore.ts"
 
 export type FixedQuantizationProfileForHistory = Extract<
     QuantizationProfile,
@@ -43,6 +50,8 @@ export type EditorCommittedState<
     autoSwatches: TSwatch[]
     userSwatches: TSwatch[]
     selectedSwatch: string | "transparent"
+    methodProfilesByPaletteContext?: MethodProfilesByPaletteContext
+    methodProfile?: MethodProfile
     quantizationProfile?: QuantizationProfile
     importedPalettePresets?: TImportedPreset[]
     hiddenPresetIds?: string[]
@@ -77,6 +86,22 @@ export function cloneQuantizationProfileForHistory(
         ...profile,
         colors: profile.colors.slice(),
         applicationColors: profile.applicationColors?.slice(),
+    }
+}
+
+export function cloneMethodProfileForHistory(
+    profile: MethodProfile | undefined
+): MethodProfile {
+    return { ...resolveMethodProfile(profile) }
+}
+
+export function cloneMethodProfilesByPaletteContextForHistory(
+    profiles: MethodProfilesByPaletteContext | undefined
+): ResolvedMethodProfilesByPaletteContext {
+    const resolved = resolveMethodProfilesByPaletteContext(profiles)
+    return {
+        auto: { ...resolved.auto },
+        fixed: { ...resolved.fixed },
     }
 }
 
@@ -127,6 +152,29 @@ export function areCommittedQuantizationProfilesEqual(
     return areColorArraysEqual(aa.applicationColors, bb.applicationColors)
 }
 
+export function areCommittedMethodProfilesEqual(
+    a: MethodProfile | undefined,
+    b: MethodProfile | undefined
+): boolean {
+    const aa = resolveMethodProfile(a)
+    const bb = resolveMethodProfile(b)
+    return aa.methodId === bb.methodId && aa.colorSpaceId === bb.colorSpaceId
+}
+
+export function areCommittedMethodProfilesByPaletteContextEqual(
+    a: MethodProfilesByPaletteContext | undefined,
+    b: MethodProfilesByPaletteContext | undefined
+): boolean {
+    const aa = resolveMethodProfilesByPaletteContext(a)
+    const bb = resolveMethodProfilesByPaletteContext(b)
+    return (
+        aa.auto.methodId === bb.auto.methodId &&
+        aa.auto.colorSpaceId === bb.auto.colorSpaceId &&
+        aa.fixed.methodId === bb.fixed.methodId &&
+        aa.fixed.colorSpaceId === bb.fixed.colorSpaceId
+    )
+}
+
 export function areImportedPalettePresetsEqual<
     TPreset extends ImportedPalettePresetForHistory,
 >(a: TPreset[] | undefined, b: TPreset[] | undefined): boolean {
@@ -174,6 +222,20 @@ export function areEditorCommittedStatesEqual<
         !areCommittedQuantizationProfilesEqual(
             a.quantizationProfile,
             b.quantizationProfile
+        )
+    ) {
+        return false
+    }
+    const aMethodProfiles = a.methodProfilesByPaletteContext ?? {
+        auto: a.methodProfile,
+    }
+    const bMethodProfiles = b.methodProfilesByPaletteContext ?? {
+        auto: b.methodProfile,
+    }
+    if (
+        !areCommittedMethodProfilesByPaletteContextEqual(
+            aMethodProfiles,
+            bMethodProfiles
         )
     ) {
         return false

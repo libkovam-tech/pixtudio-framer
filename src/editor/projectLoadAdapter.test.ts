@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import { EXTRACT_QUANTIZATION_PROFILE } from "./paletteQuantizationEngine.ts"
 import {
+    DEFAULT_METHOD_PROFILE,
+    DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
+} from "./QuantizationCore.ts"
+import {
     PROJECT_SNAPSHOT_V2_MAGIC,
     PROJECT_SNAPSHOT_V2_VERSION,
     V2_CELL_NULL,
@@ -64,6 +68,15 @@ describe("projectLoadAdapter", () => {
 
         expect(result.smartObjectBaseForRestore).toBeNull()
         expect(result.paletteOrderIds).toEqual(["auto-0", "auto-1", "user-2"])
+        expect(result.methodProfilesByPaletteContext).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+        expect(result.project.methodProfilesByPaletteContext).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+        expect(result.project.methodProfilesByPaletteContext?.auto).toEqual(
+            DEFAULT_METHOD_PROFILE
+        )
         expect(result.quantizationProfile).toEqual({
             kind: "fixed",
             source: "imported",

@@ -79,6 +79,7 @@ import {
     prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
 import { PalettePanel } from "./PalettePanel.tsx"
+import { MethodPanel } from "./MethodPanel.tsx"
 import {
     buildPalettePresentationModel,
     type FixedPaletteProfile,
@@ -112,6 +113,7 @@ import {
 } from "./paintReference.ts"
 import {
     areEditorCommittedStatesEqual,
+    cloneMethodProfilesByPaletteContextForHistory,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
@@ -120,6 +122,31 @@ import {
     type EditorCommittedState,
     type ImageDataSampleSource,
 } from "./editorHistoryState.ts"
+import {
+    AUTO_PALETTE_CONTEXT_KIND,
+    DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
+    FIXED_PALETTE_CONTEXT_KIND,
+    doesPaletteContextAllowMethodPreview,
+    resolveMethodProfilesByPaletteContext,
+    runDefaultPaletteQuantization,
+    runQuantization,
+    type MethodProfile,
+    type MethodProfilesByPaletteContext,
+    type PaletteContextKind,
+    type ResolvedMethodProfilesByPaletteContext,
+} from "./QuantizationCore.ts"
+import {
+    applyMethodSession,
+    canApplyMethodSession,
+    cancelMethodSession,
+    completeMethodSessionPreview,
+    createMethodSession,
+    failMethodSessionPreview,
+    requestMethodSessionPreview,
+    selectMethodSessionProfile,
+    type MethodSessionPreviewRequest,
+    type MethodSessionState,
+} from "./MethodSession.ts"
 import { handleEditorHistoryShortcut } from "./editorHistoryShortcuts.ts"
 import {
     type SpaceHandState,
@@ -131,13 +158,13 @@ import {
 import {
     EXTRACT_QUANTIZATION_PROFILE,
     QUANTIZATION_PROFILES,
-    extractPalette,
     getFixedProfilePaletteForApplication,
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
     type DerivedWorld,
     type PaletteTab,
     type PaletteTabsState,
+    type QuantizationPixel,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
 import {
@@ -184,6 +211,7 @@ import {
     HandIconOff,
     SvgSmartObject,
     SvgQuantizationRecorderButton,
+    SvgMethodButton,
 } from "./SvgIcons.tsx"
 
 import { track } from "./analytics.ts"
@@ -1903,7 +1931,11 @@ function quantizePixels(
     targetColors: number,
     excludedColors: string[] = []
 ) {
-    return extractPalette(pixels, targetColors, { excludedColors })
+    return runDefaultPaletteQuantization({
+        pixels,
+        targetColors,
+        excludedColors,
+    })
 }
 
 function generatePalette(count: number) {
@@ -3104,6 +3136,7 @@ type UserActionCommitInput = {
 
 type EditorActionTransactionKind =
     | "editor-action"
+    | "method-apply"
     | "palette-preset-apply"
     | "palette-tab-switch"
     | "palette-vocabulary-extension"
@@ -3543,6 +3576,22 @@ function PixelEditorFramer({
     )
     const [quantizationProfile, setQuantizationProfile] =
         React.useState<QuantizationProfile>(EXTRACT_QUANTIZATION_PROFILE)
+    const [
+        methodProfilesByPaletteContext,
+        setMethodProfilesByPaletteContext,
+    ] = React.useState<ResolvedMethodProfilesByPaletteContext>(() =>
+        resolveMethodProfilesByPaletteContext(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+    )
+    const [methodSession, setMethodSession] =
+        React.useState<EditorMethodSession | null>(null)
+    const methodSessionRef = React.useRef<EditorMethodSession | null>(null)
+    React.useEffect(() => {
+        methodSessionRef.current = methodSession
+    }, [methodSession])
+    const methodPreviewControllerRef =
+        React.useRef<MethodPreviewController | null>(null)
     const [paletteTabsState, setPaletteTabsState] = React.useState<
         PaletteTabsState<PixelValue>
     >({
@@ -3589,33 +3638,65 @@ function PixelEditorFramer({
         setImportedPalettePresets(reset.importedPalettePresets)
     }
 
+    function resetMethodForNewImport() {
+        methodSessionRef.current = null
+        setMethodSession(null)
+        setMethodProfilesByPaletteContext(
+            resolveMethodProfilesByPaletteContext(
+                DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+            )
+        )
+    }
+
     function quantizePixelsForActiveProfile(
         pixels: (string | null)[][],
         targetColors: number
     ) {
-        if (quantizationProfile.kind === "fixed") {
-            return {
-                pixels: quantizeWithFixedProfile(
-                    pixels,
-                    quantizationProfile
-                ),
-                palette: getFixedProfilePaletteForApplication(quantizationProfile),
-            }
-        }
+        const paletteContext =
+            quantizationProfile.kind === "fixed"
+                ? FIXED_PALETTE_CONTEXT_KIND
+                : AUTO_PALETTE_CONTEXT_KIND
+        const overlayPlaceholder = pixels.map((row) =>
+            row.map(() => null as PixelValue)
+        )
+        const result = runQuantization<PixelValue>({
+            sourcePixels: pixels,
+            overlayPixels: overlayPlaceholder,
+            previousSwatches: autoSwatches,
+            userSwatches,
+            paletteCount: targetColors,
+            methodProfile: methodProfilesByPaletteContext[paletteContext],
+            paletteContext,
+            fixedPaletteProfile:
+                quantizationProfile.kind === "fixed"
+                    ? quantizationProfile
+                    : undefined,
+            excludedColors: deletedAutoPaletteColors,
+        })
+        const colorById = new Map(
+            result.autoSwatches.map((swatch) => [swatch.id, swatch.color])
+        )
 
-        return quantizePixels(pixels, targetColors, deletedAutoPaletteColors)
+        return {
+            pixels: result.imagePixels.map((row) =>
+                row.map((pixel) =>
+                    pixel == null ? null : (colorById.get(pixel) ?? null)
+                )
+            ),
+            palette: result.autoSwatches.map((swatch) => swatch.color),
+        }
     }
 
     React.useEffect(() => {
         if (!ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) return
 
-        const extractSmoke = extractPalette(
-            [
+        const extractSmoke = runDefaultPaletteQuantization({
+            pixels: [
                 ["rgb(0, 0, 0)", "rgb(255, 255, 255)"],
                 ["rgb(255, 0, 0)", null],
             ],
-            2
-        )
+            targetColors: 2,
+        })
         const fixedSmoke = quantizeWithFixedPalette(
             [["rgb(250, 10, 10)", "rgb(8, 12, 250)", null]],
             ["#FF0000", "#0000FF"]
@@ -4018,6 +4099,7 @@ function PixelEditorFramer({
             imagePixels,
             overlayPixels,
             autoOverrides,
+            methodProfilesByPaletteContext,
             quantizationProfile,
             smartReferenceBytes: smartReferenceBaseForSave?.data ?? null,
             smartAdjustments: smartAdjustmentsForSave,
@@ -5035,8 +5117,43 @@ function PixelEditorFramer({
     // EditorCommittedState contract.
     type ProjectState = EditorCommittedState
 
+    type MethodFrozenSource = {
+        activePaletteTab: PaletteTab
+        paletteContext: PaletteContextKind
+        world: DerivedWorld<PixelValue>
+        sourcePixels: QuantizationPixel[][]
+        previousSwatches: Swatch[]
+        userSwatches: Swatch[]
+        paletteCount: number
+        fixedPaletteProfile?: FixedQuantizationProfile
+        excludedColors: string[]
+    }
+
+    type MethodPreviewState = {
+        autoSwatches: Swatch[]
+        imagePixels: PixelValue[][]
+        overlayPixels: PixelValue[][]
+        canvasPixels: PixelValue[][]
+    }
+
+    type EditorMethodSession = MethodSessionState<
+        ProjectState,
+        MethodFrozenSource,
+        MethodPreviewState
+    >
+
+    type EditorMethodPreviewRequest =
+        MethodSessionPreviewRequest<MethodFrozenSource>
+
+    type MethodPreviewController = {
+        openFromCurrentPaletteTab: () => void
+        cancel: () => void
+        apply: () => void
+    }
+
     type PendingLoadProjectCommit = {
         project: ProjectState
+        methodProfilesByPaletteContext: MethodProfilesByPaletteContext
         quantizationProfile: QuantizationProfile
         canonicalChecksum?: string
         fileName?: string
@@ -5092,6 +5209,288 @@ function PixelEditorFramer({
         })
     }
 
+    function getMethodPaletteContextForTab(
+        tab: PaletteTab
+    ): PaletteContextKind {
+        return tab === "presets"
+            ? FIXED_PALETTE_CONTEXT_KIND
+            : AUTO_PALETTE_CONTEXT_KIND
+    }
+
+    function cloneDerivedWorldForMethodSession(
+        world: DerivedWorld<PixelValue>
+    ): DerivedWorld<PixelValue> {
+        return {
+            profile: cloneQuantizationProfileForHistory(world.profile),
+            referenceSignature: world.referenceSignature ?? null,
+            autoSwatches: cloneSwatches(world.autoSwatches),
+            imagePixels: clonePixelsGrid(world.imagePixels),
+            overlayPixels: clonePixelsGrid(world.overlayPixels),
+            canvasPixels: clonePixelsGrid(world.canvasPixels),
+        }
+    }
+
+    function cloneProjectStateForMethodSession(
+        state: ProjectState
+    ): ProjectState {
+        return {
+            ...state,
+            imagePixels: clonePixelsGrid(state.imagePixels),
+            overlayPixels: clonePixelsGrid(state.overlayPixels),
+            autoSwatches: cloneSwatches(state.autoSwatches),
+            userSwatches: cloneSwatches(state.userSwatches),
+            methodProfilesByPaletteContext:
+                cloneMethodProfilesByPaletteContextForHistory(
+                    state.methodProfilesByPaletteContext ?? {
+                        auto: state.methodProfile,
+                    }
+                ),
+            quantizationProfile: state.quantizationProfile
+                ? cloneQuantizationProfileForHistory(state.quantizationProfile)
+                : undefined,
+            importedPalettePresets: cloneImportedPalettePresetsForHistory(
+                state.importedPalettePresets ?? []
+            ),
+            hiddenPresetIds: (state.hiddenPresetIds ?? []).slice(),
+            deletedAutoPaletteColors: (
+                state.deletedAutoPaletteColors ?? []
+            ).slice(),
+            autoOverrides: { ...state.autoOverrides },
+        }
+    }
+
+    function cloneMethodFrozenSource(
+        source: MethodFrozenSource
+    ): MethodFrozenSource {
+        return {
+            activePaletteTab: source.activePaletteTab,
+            paletteContext: source.paletteContext,
+            world: cloneDerivedWorldForMethodSession(source.world),
+            sourcePixels: clonePixelsGrid(source.sourcePixels),
+            previousSwatches: cloneSwatches(source.previousSwatches),
+            userSwatches: cloneSwatches(source.userSwatches),
+            paletteCount: source.paletteCount,
+            fixedPaletteProfile: source.fixedPaletteProfile
+                ? {
+                      ...source.fixedPaletteProfile,
+                      colors: source.fixedPaletteProfile.colors.slice(),
+                      applicationColors:
+                          source.fixedPaletteProfile.applicationColors?.slice(),
+                  }
+                : undefined,
+            excludedColors: source.excludedColors.slice(),
+        }
+    }
+
+    function resolveMethodPixelValueToColor(
+        value: PixelValue,
+        swatchById: Map<string, Swatch>
+    ): QuantizationPixel {
+        if (value == null || value === TRANSPARENT_PIXEL) return null
+        const swatch = swatchById.get(value)
+        if (!swatch || swatch.isTransparent) return null
+        return swatch.color || null
+    }
+
+    function resolveMethodPixelGridToColors(
+        pixels: PixelValue[][],
+        swatches: Swatch[]
+    ): QuantizationPixel[][] {
+        const swatchById = new Map<string, Swatch>()
+        for (const swatch of swatches) swatchById.set(swatch.id, swatch)
+        return pixels.map((row) =>
+            row.map((value) => resolveMethodPixelValueToColor(value, swatchById))
+        )
+    }
+
+    function buildMethodPreviewFromFrozenSource(
+        request: EditorMethodPreviewRequest
+    ): MethodPreviewState {
+        const result = runQuantization<PixelValue>({
+            sourcePixels: request.frozenSource.sourcePixels,
+            overlayPixels: request.frozenSource.world.overlayPixels,
+            previousSwatches: request.frozenSource.previousSwatches,
+            userSwatches: request.frozenSource.userSwatches,
+            paletteCount: request.frozenSource.paletteCount,
+            methodProfile: request.selectedProfile,
+            paletteContext: request.frozenSource.paletteContext,
+            fixedPaletteProfile: request.frozenSource.fixedPaletteProfile,
+            excludedColors: request.frozenSource.excludedColors,
+            requestId: request.requestId,
+        })
+        return {
+            autoSwatches: cloneSwatches(result.autoSwatches),
+            imagePixels: clonePixelsGrid(result.imagePixels),
+            overlayPixels: clonePixelsGrid(result.overlayPixels),
+            canvasPixels: clonePixelsGrid(result.canvasPixels),
+        }
+    }
+
+    function applyMethodPreviewState(preview: MethodPreviewState) {
+        setAutoSwatches(cloneSwatches(preview.autoSwatches))
+        setImagePixels(clonePixelsGrid(preview.imagePixels))
+        setOverlayPixels(clonePixelsGrid(preview.overlayPixels))
+        setCanvasPixels(clonePixelsGrid(preview.canvasPixels))
+    }
+
+    function runMethodPreviewRequest(request: EditorMethodPreviewRequest) {
+        const currentSession = methodSessionRef.current
+        if (!currentSession || currentSession.sessionId !== request.sessionId) {
+            return
+        }
+
+        let preview: MethodPreviewState
+        try {
+            preview = buildMethodPreviewFromFrozenSource(request)
+        } catch (error) {
+            const failed = failMethodSessionPreview(currentSession, {
+                sessionId: request.sessionId,
+                requestId: request.requestId,
+                paletteContext: request.frozenPaletteContext,
+                selectedProfile: request.selectedProfile,
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "METHOD preview failed",
+            })
+            if (failed === currentSession) return
+            methodSessionRef.current = failed
+            setMethodSession(failed)
+            return
+        }
+
+        const completed = completeMethodSessionPreview(currentSession, {
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            paletteContext: request.frozenPaletteContext,
+            selectedProfile: request.selectedProfile,
+            preview,
+            renderedProfile: request.selectedProfile,
+        })
+        if (completed === currentSession) return
+
+        methodSessionRef.current = completed
+        setMethodSession(completed)
+        applyMethodPreviewState(preview)
+    }
+
+    function selectMethodModeProfile(profile: MethodProfile) {
+        const session = methodSessionRef.current
+        if (!session || !profile) return
+
+        const transition = selectMethodSessionProfile(session, profile)
+        methodSessionRef.current = transition.session
+        setMethodSession(transition.session)
+        runMethodPreviewRequest(transition.request)
+    }
+
+    function openMethodModeFromCurrentPaletteTab() {
+        if (methodSessionRef.current) return
+
+        const activePaletteTab = paletteTabsState.activeTab
+        const paletteContext = getMethodPaletteContextForTab(activePaletteTab)
+        if (!doesPaletteContextAllowMethodPreview(paletteContext)) return
+        if (
+            activePaletteTab === "presets" &&
+            (quantizationProfile.kind !== "fixed" || !activePresetButton)
+        ) {
+            return
+        }
+
+        const before = latestProjectStateRef.current ?? makeProjectState()
+        const frozenWorld = makeCurrentDerivedWorldSnapshot()
+        const methodSourcePixels = originalImageData
+            ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
+            : resolveMethodPixelGridToColors(frozenWorld.canvasPixels, [
+                  ...frozenWorld.autoSwatches,
+                  ...userSwatches,
+              ])
+        const frozenSource: MethodFrozenSource = {
+            activePaletteTab,
+            paletteContext,
+            world: frozenWorld,
+            sourcePixels: methodSourcePixels,
+            previousSwatches: frozenWorld.autoSwatches,
+            userSwatches,
+            paletteCount: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            fixedPaletteProfile:
+                frozenWorld.profile.kind === "fixed"
+                    ? frozenWorld.profile
+                    : quantizationProfile.kind === "fixed"
+                      ? quantizationProfile
+                      : undefined,
+            excludedColors: deletedAutoPaletteColors.slice(),
+        }
+        const session = createMethodSession<
+            ProjectState,
+            MethodFrozenSource,
+            MethodPreviewState
+        >({
+            beforeState: before,
+            frozenSource,
+            paletteContext,
+            methodProfilesByPaletteContext,
+            cloneBeforeState: cloneProjectStateForMethodSession,
+            cloneFrozenSource: cloneMethodFrozenSource,
+        })
+        const transition = requestMethodSessionPreview(session)
+
+        methodSessionRef.current = transition.session
+        setMethodSession(transition.session)
+        runMethodPreviewRequest(transition.request)
+    }
+
+    function cancelMethodMode() {
+        const session = methodSessionRef.current
+        if (!session) return
+
+        const cancellation = cancelMethodSession(session)
+        methodSessionRef.current = null
+        setMethodSession(null)
+        applyProjectState(cancellation.beforeState)
+    }
+
+    function applyMethodMode() {
+        const session = methodSessionRef.current
+        if (!session) return
+
+        const result = applyMethodSession(session)
+        if (!result.ok) return
+
+        const nextMethodProfilesByPaletteContext =
+            cloneMethodProfilesByPaletteContextForHistory({
+                ...methodProfilesByPaletteContext,
+                ...result.methodProfilesByPaletteContextPatch,
+            })
+        const before = result.beforeState
+        const afterState: ProjectState = {
+            ...makeProjectState(),
+            methodProfilesByPaletteContext:
+                nextMethodProfilesByPaletteContext,
+        }
+        const appliedWorld = makeCurrentDerivedWorldSnapshot()
+
+        setMethodProfilesByPaletteContext(nextMethodProfilesByPaletteContext)
+        setPaletteTabsState((prev) =>
+            preparePaletteTabWorldCommit({
+                state: prev,
+                activeTab: session.frozenSource.activePaletteTab,
+                world: appliedWorld,
+            })
+        )
+        methodSessionRef.current = null
+        setMethodSession(null)
+        latestProjectStateRef.current = afterState
+        beginEditorActionTransaction("method-apply", before)
+        pushCommit(before, { afterState })
+    }
+
+    methodPreviewControllerRef.current = {
+        openFromCurrentPaletteTab: openMethodModeFromCurrentPaletteTab,
+        cancel: cancelMethodMode,
+        apply: applyMethodMode,
+    }
+
     function buildPaletteWorldForTab(
         tab: PaletteTab,
         staleWorld?: DerivedWorld<PixelValue> | null
@@ -5106,6 +5505,7 @@ function PixelEditorFramer({
             previousSwatches: autoSwatches,
             userSwatches,
             paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
+            methodProfilesByPaletteContext,
             excludedColors: deletedAutoPaletteColors,
             pixelizeReference: (snapshot, nextGridSize) =>
                 pixelizeFromImageDominant(snapshot, nextGridSize, 16),
@@ -5230,6 +5630,8 @@ function PixelEditorFramer({
     }
 
     function switchPaletteTab(nextTab: PaletteTab) {
+        if (methodSessionRef.current) return
+
         const currentTab = paletteTabsState.activeTab
         if (currentTab === nextTab) return
 
@@ -5407,6 +5809,7 @@ function PixelEditorFramer({
                 overlayPixels,
                 previousSwatches: autoSwatches,
                 userSwatches,
+                methodProfilesByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
                     pixelizeFromImageDominant(snapshot, nextGridSize, 16),
                 autoSwatches: nextAuto,
@@ -5474,6 +5877,7 @@ function PixelEditorFramer({
                 overlayPixels,
                 previousSwatches: autoSwatches,
                 userSwatches,
+                methodProfilesByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
                     pixelizeFromImageDominant(snapshot, nextGridSize, 16),
                 referenceSignature: imageDataSampleSignature,
@@ -5786,6 +6190,10 @@ function PixelEditorFramer({
             selectedSwatch,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
+            methodProfilesByPaletteContext:
+                cloneMethodProfilesByPaletteContextForHistory(
+                    methodProfilesByPaletteContext
+                ),
             quantizationProfile:
                 cloneQuantizationProfileForHistory(quantizationProfile),
             importedPalettePresets:
@@ -6096,6 +6504,7 @@ function PixelEditorFramer({
         hasImportContext,
         originalImageData,
         autoOverrides,
+        methodProfilesByPaletteContext,
         quantizationProfile,
         importedPalettePresets,
         hiddenPresetIds,
@@ -6175,6 +6584,12 @@ function PixelEditorFramer({
 
         const nextProfile =
             state.quantizationProfile ?? EXTRACT_QUANTIZATION_PROFILE
+        const nextMethodProfilesByPaletteContext =
+            cloneMethodProfilesByPaletteContextForHistory(
+                state.methodProfilesByPaletteContext ?? {
+                    auto: state.methodProfile,
+                }
+            )
         const restoredImportedPresets =
             ensureActiveImportedPalettePresetRegistered(
                 state.importedPalettePresets ?? [],
@@ -6184,6 +6599,7 @@ function PixelEditorFramer({
             cloneImportedPalettePresetsForHistory(restoredImportedPresets)
         )
         setHiddenPresetIds((state.hiddenPresetIds ?? []).slice())
+        setMethodProfilesByPaletteContext(nextMethodProfilesByPaletteContext)
         setQuantizationProfile(nextProfile)
         setActivePresetButton(
             nextProfile.kind === "fixed" ? nextProfile.id : null
@@ -6220,6 +6636,10 @@ function PixelEditorFramer({
             ...state,
             autoSwatches: cloneSwatches(autoEffective),
             userSwatches: cloneSwatches(state.userSwatches),
+            methodProfilesByPaletteContext:
+                cloneMethodProfilesByPaletteContextForHistory(
+                    nextMethodProfilesByPaletteContext
+                ),
             quantizationProfile: cloneQuantizationProfileForHistory(nextProfile),
             importedPalettePresets: cloneImportedPalettePresetsForHistory(
                 restoredImportedPresets
@@ -6474,6 +6894,8 @@ function PixelEditorFramer({
             const fixedProject = prepareLoadedProjectForCommit(next.project)
             pendingLoadProjectCommitRef.current = {
                 project: fixedProject,
+                methodProfilesByPaletteContext:
+                    next.methodProfilesByPaletteContext,
                 quantizationProfile: next.quantizationProfile,
                 canonicalChecksum: payload.canonicalChecksum,
                 fileName: payload.fileName,
@@ -7289,6 +7711,10 @@ function PixelEditorFramer({
 
     function handlePointerDown(e: any) {
         if (overlayMode) return
+        if (methodSessionRef.current) {
+            e.preventDefault()
+            return
+        }
 
         e.preventDefault()
         trackMobileTouchPointer(e)
@@ -7460,6 +7886,10 @@ function PixelEditorFramer({
 
     function handlePointerMove(e: any) {
         if (overlayMode) return
+        if (methodSessionRef.current) {
+            e.preventDefault()
+            return
+        }
 
         e.preventDefault()
         trackMobileTouchPointer(e)
@@ -8050,7 +8480,72 @@ function PixelEditorFramer({
 
     const rows = overlayPixels.length
     const cols = rows > 0 ? overlayPixels[0].length : 0
-    const bg = "#e9d8a6"
+    const isMethodModeActive = methodSession !== null
+    const editorControlsDisabled = !!overlayMode || isMethodModeActive
+    const currentMethodPaletteContext = getMethodPaletteContextForTab(
+        paletteTabsState.activeTab
+    )
+    const hasMethodPaletteContextSource =
+        paletteTabsState.activeTab !== "presets" ||
+        (quantizationProfile.kind === "fixed" && !!activePresetButton)
+    const canOpenMethodMode =
+        !editorControlsDisabled &&
+        hasMethodPaletteContextSource &&
+        doesPaletteContextAllowMethodPreview(currentMethodPaletteContext)
+    const methodButtonTitle = hasMethodPaletteContextSource
+        ? "Method"
+        : "Select a palette preset first"
+    const methodVisualLogWasActiveRef = React.useRef(false)
+
+    React.useEffect(() => {
+        if (isMethodModeActive && methodSession) {
+            if (methodVisualLogWasActiveRef.current) return
+            methodVisualLogWasActiveRef.current = true
+            const canvasElements = Array.from(document.querySelectorAll("canvas"))
+            const editorCanvas = canvasRef.current
+
+            console.info("[METHOD][VISUAL] open", {
+                sessionId: methodSession.sessionId,
+                paletteContext: methodSession.frozenPaletteContext,
+                activePaletteTab: methodSession.frozenSource.activePaletteTab,
+                canvasInvariant: {
+                    sameEditorCanvasVisible:
+                        !!editorCanvas && canvasElements.includes(editorCanvas),
+                    canvasElementCount: canvasElements.length,
+                    editorCanvas,
+                    canvasElements,
+                },
+                createdObjects: [
+                    "MethodSession",
+                    "MethodPanel",
+                    "MethodPreviewState",
+                ],
+                mutedOrHidden: [
+                    "top toolbar",
+                    "brush controls",
+                    "grid controls",
+                    "palette panel",
+                    "palette tabs",
+                    "palette swatches",
+                    "recorder/smart-object/action tabs",
+                ],
+                controlsDisabled: editorControlsDisabled,
+            })
+            return
+        }
+
+        if (!methodVisualLogWasActiveRef.current) return
+        methodVisualLogWasActiveRef.current = false
+        console.info("[METHOD][VISUAL] inactive", {
+            canvasElementCount: document.querySelectorAll("canvas").length,
+            editorCanvas: canvasRef.current,
+            backgroundRestored: "#e9d8a6",
+        })
+    }, [editorControlsDisabled, isMethodModeActive, methodSession])
+    const bg = isMethodModeActive ? "#001014" : "#e9d8a6"
+    const canvasBorderColor = isMethodModeActive
+        ? "rgba(255,255,255,0.74)"
+        : pixtudioInk(0.55)
     const textColor = PIXTUDIO_INK
     const canvasMax = 640
     const editorContentWidth = isMobileUI
@@ -8313,6 +8808,7 @@ function PixelEditorFramer({
             setUserSwatches([])
             setSelectedSwatch("auto-0")
             resetPalettePresetsForNewImport()
+            resetMethodForNewImport()
 
             // Blank import = a new empty session.
             if (!initialImageData) {
@@ -8446,6 +8942,7 @@ function PixelEditorFramer({
         selectedSwatch,
         autoOverrides,
         quantizationProfile,
+        methodProfilesByPaletteContext,
     ])
 
     const [repixelizeKick, setRepixelizeKick] = React.useState(0)
@@ -9367,7 +9864,7 @@ function PixelEditorFramer({
     }
 
     function handleCanvasViewportPointerMove(e: any) {
-        if (isMobileUI || overlayMode) return
+        if (isMobileUI || overlayMode || methodSessionRef.current) return
 
         updatePointerFromEvent(e, true)
         updatePipetteHoverFromEvent(e)
@@ -9384,6 +9881,8 @@ function PixelEditorFramer({
         if (e && typeof e.preventDefault === "function") {
             e.preventDefault()
         }
+
+        if (methodSessionRef.current) return
 
         if (
             isCanvasTouchZoomEvent(e)
@@ -10855,7 +11354,7 @@ function PixelEditorFramer({
             <div
                 style={{
                     width: editorContentWidth,
-                    display: "flex",
+                    display: isMethodModeActive ? "none" : "flex",
                     justifyContent: "center",
                     marginTop: isMobileUI ? 6 : 0,
                     marginBottom: isMobileUI ? 6 : 12,
@@ -11126,7 +11625,7 @@ function PixelEditorFramer({
                         width: "100%",
                         maxWidth: canvasMax,
                         aspectRatio: "1 / 1",
-                        border: `2px solid ${pixtudioInk(0.55)}`,
+                        border: `2px solid ${canvasBorderColor}`,
                         background: "#ffffff",
                         backgroundClip: "padding-box",
                         display: "flex",
@@ -11250,6 +11749,19 @@ function PixelEditorFramer({
                 }}
             >
                 <div style={{ width: "100%", maxWidth: canvasMax }}>
+                    {isMethodModeActive && methodSession ? (
+                        <MethodPanel
+                            paletteContext={methodSession.frozenPaletteContext}
+                            selectedProfile={methodSession.selectedProfile}
+                            status={methodSession.status}
+                            canApply={canApplyMethodSession(methodSession)}
+                            isMobileUI={isMobileUI}
+                            onSelectProfile={selectMethodModeProfile}
+                            onCancel={cancelMethodMode}
+                            onApply={applyMethodMode}
+                        />
+                    ) : (
+                        <>
                     {/* BRUSH SIZE + Smart Object */}
                     <div style={{ marginBottom: 18 }}>
                         <div
@@ -11493,7 +12005,7 @@ function PixelEditorFramer({
                                                 "--px-thumb-color": "#2F6BFF",
                                             } as React.CSSProperties
                                         }
-                                        disabled={!!overlayMode}
+                                        disabled={editorControlsDisabled}
                                     />
                                 </div>
                             </div>
@@ -11506,6 +12018,41 @@ function PixelEditorFramer({
                                     flex: "0 0 auto",
                                 }}
                             >
+                                <button
+                                    type="button"
+                                    onClick={openMethodModeFromCurrentPaletteTab}
+                                    disabled={!canOpenMethodMode}
+                                    aria-label="METHOD"
+                                    title={methodButtonTitle}
+                                    className="pxUiAnim"
+                                    style={{
+                                        width: 60,
+                                        height: 60,
+                                        flex: "0 0 60px",
+                                        alignSelf: "flex-start",
+                                        border: "0",
+                                        borderRadius: 0,
+                                        background: "transparent",
+                                        padding: 0,
+                                        margin: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        cursor: canOpenMethodMode
+                                            ? "pointer"
+                                            : "default",
+                                        opacity: canOpenMethodMode ? 1 : 0.45,
+                                    }}
+                                >
+                                    <SvgMethodButton
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            display: "block",
+                                        }}
+                                    />
+                                </button>
+
                                 <button
                                     type="button"
                                     onClick={openQuantizationRecorder}
@@ -11681,7 +12228,7 @@ function PixelEditorFramer({
                                             "--px-thumb-color": "#79c7b2",
                                         } as React.CSSProperties
                                     }
-                                    disabled={!!overlayMode}
+                                    disabled={editorControlsDisabled}
                                 />
                             </div>
                         </div>
@@ -11694,7 +12241,7 @@ function PixelEditorFramer({
                             }
                             bg={bg}
                             checkerBackground={checkerBackground}
-                            disabled={!!overlayMode}
+                            disabled={editorControlsDisabled}
                             importedPresetProfiles={
                                 palettePresentation.importedPresetProfiles
                             }
@@ -11754,6 +12301,8 @@ function PixelEditorFramer({
                             onSwitchPaletteTab={switchPaletteTab}
                         />
                     </div>
+                        </>
+                    )}
                 </div>
 
                 {/* ------------------- MANUAL SCREEN (fullscreen) ------------------- */}

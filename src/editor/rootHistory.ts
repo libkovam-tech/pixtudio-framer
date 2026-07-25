@@ -3,6 +3,7 @@ export type RootHistoryEntryKind =
     | "palette-preset-apply"
     | "palette-tab-switch"
     | "palette-vocabulary-extension"
+    | "method-apply"
     | "smart-object-apply"
     | "unknown"
 

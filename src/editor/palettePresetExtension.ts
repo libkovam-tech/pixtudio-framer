@@ -1,5 +1,4 @@
 import {
-    buildDerivedWorld,
     buildDrawingPaletteWorld,
     EXTRACT_QUANTIZATION_PROFILE,
     getFixedProfilePaletteForDisplay,
@@ -9,6 +8,10 @@ import {
     type PaletteTab,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
+import {
+    runQuantization,
+    type MethodProfilesByPaletteContext,
+} from "./QuantizationCore.ts"
 import {
     appendDeletedAutoPaletteColor,
     prepareSwatchDelete,
@@ -495,6 +498,7 @@ type PaletteReferenceWorldInput<
     previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     paletteCountTarget: number
+    methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
     excludedColors?: string[]
     pixelizeReference: (
         referenceSnapshot: TReference,
@@ -973,15 +977,55 @@ function preparePaletteWorldFromReference<
         input.referenceSnapshot,
         input.gridSize
     )
-    const world = buildDerivedWorld<TPixel>({
-        profile: input.profile,
-        sourcePixels,
-        overlayPixels: input.overlayPixels,
-        previousSwatches: cloneSwatches(input.previousSwatches),
-        userSwatches: cloneSwatches(input.userSwatches),
-        paletteCountTarget: input.paletteCountTarget,
-        excludedColors: input.excludedColors,
-    })
+    const buildWorldFromCoreResult = (
+        result: ReturnType<typeof runQuantization<TPixel>>
+    ) => {
+        return {
+            autoSwatches: result.autoSwatches,
+            imagePixels: result.imagePixels,
+            overlayPixels: result.overlayPixels,
+            canvasPixels: result.canvasPixels,
+        }
+    }
+    const world =
+        input.profile.kind === "extract"
+            ? {
+                  ...buildWorldFromCoreResult(
+                      runQuantization<TPixel>({
+                          sourcePixels,
+                          overlayPixels: input.overlayPixels,
+                          previousSwatches: cloneSwatches(
+                              input.previousSwatches
+                          ),
+                          userSwatches: cloneSwatches(input.userSwatches),
+                          paletteCount: input.paletteCountTarget,
+                          methodProfile:
+                              input.methodProfilesByPaletteContext?.auto,
+                          paletteContext: "auto",
+                          excludedColors: input.excludedColors,
+                      })
+                  ),
+                  profile: input.profile,
+              }
+            : {
+                  ...buildWorldFromCoreResult(
+                      runQuantization<TPixel>({
+                          sourcePixels,
+                          overlayPixels: input.overlayPixels,
+                          previousSwatches: cloneSwatches(
+                              input.previousSwatches
+                          ),
+                          userSwatches: cloneSwatches(input.userSwatches),
+                          paletteCount: input.paletteCountTarget,
+                          methodProfile:
+                              input.methodProfilesByPaletteContext?.fixed,
+                          paletteContext: "fixed",
+                          fixedPaletteProfile: input.profile,
+                          excludedColors: input.excludedColors,
+                      })
+                  ),
+                  profile: input.profile,
+              }
 
     return {
         ...world,
@@ -1019,6 +1063,7 @@ export function preparePaletteTabReferenceWorld<
     previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     paletteCountTarget: number
+    methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
     excludedColors?: string[]
     pixelizeReference: (
         referenceSnapshot: TReference,
@@ -1037,6 +1082,8 @@ export function preparePaletteTabReferenceWorld<
             previousSwatches: input.previousSwatches,
             userSwatches: input.userSwatches,
             paletteCountTarget: input.paletteCountTarget,
+            methodProfilesByPaletteContext:
+                input.methodProfilesByPaletteContext,
             excludedColors: input.excludedColors,
             pixelizeReference: input.pixelizeReference,
             referenceSignature: input.referenceSignature,
@@ -1058,6 +1105,8 @@ export function preparePaletteTabReferenceWorld<
               overlayPixels: input.overlayPixels,
               previousSwatches: input.previousSwatches,
               userSwatches: input.userSwatches,
+              methodProfilesByPaletteContext:
+                  input.methodProfilesByPaletteContext,
               pixelizeReference: input.pixelizeReference,
               referenceSignature: input.referenceSignature,
           })
@@ -1156,6 +1205,7 @@ export function prepareFixedPalettePresetProjectApplication<
     importedPalettePresets: ReadonlyArray<TImportedPreset>
     hiddenPresetIds: ReadonlyArray<string>
     deletedAutoPaletteColors: ReadonlyArray<string>
+    methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
     autoOverrides: EditorCommittedState<
         TPixel,
         FixedPaletteAutoSwatch,
@@ -1174,6 +1224,8 @@ export function prepareFixedPalettePresetProjectApplication<
         overlayPixels: input.overlayPixels,
         previousSwatches: input.previousSwatches,
         userSwatches: input.userSwatches,
+        methodProfilesByPaletteContext:
+            input.methodProfilesByPaletteContext,
         pixelizeReference: input.pixelizeReference,
         referenceSignature: input.referenceSignature,
         selectedSwatch: input.selectedSwatch,
@@ -1633,6 +1685,14 @@ export function extendFixedPaletteProfile<
         profile: {
             ...profile,
             colors: [...profile.colors, nextColor],
+            applicationColors: profile.applicationColors
+                ? [
+                      ...profile.applicationColors.map(
+                          normalizeEditablePaletteColor
+                      ),
+                      nextColor,
+                  ]
+                : undefined,
         },
         colorIndex: profile.colors.length,
         added: true,
@@ -1670,6 +1730,11 @@ export function removeFixedPaletteProfileColor<
         profile: {
             ...profile,
             colors: profile.colors.filter((_, index) => index !== colorIndex),
+            applicationColors: profile.applicationColors
+                ? profile.applicationColors.filter(
+                      (_, index) => index !== colorIndex
+                  )
+                : undefined,
         },
         removed: true,
     }
@@ -2105,6 +2170,7 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromRefe
     importedPalettePresets: ReadonlyArray<TImportedPreset>
     hiddenPresetIds: ReadonlyArray<string>
     deletedAutoPaletteColors: ReadonlyArray<string>
+    methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
     autoOverrides: EditorCommittedState<
         TPixel,
         TSwatch,
@@ -2123,6 +2189,8 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromRefe
         overlayPixels: input.overlayPixels,
         previousSwatches: input.previousSwatches,
         userSwatches: input.userSwatches,
+        methodProfilesByPaletteContext:
+            input.methodProfilesByPaletteContext,
         pixelizeReference: input.pixelizeReference,
         referenceSignature: input.referenceSignature,
     })

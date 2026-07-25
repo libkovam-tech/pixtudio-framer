@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest"
 
 import { EXTRACT_QUANTIZATION_PROFILE } from "./paletteQuantizationEngine.ts"
 import {
+    DEFAULT_METHOD_PROFILE,
+    DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
+} from "./QuantizationCore.ts"
+import {
     areEditorCommittedStatesEqual,
+    cloneMethodProfileForHistory,
+    cloneMethodProfilesByPaletteContextForHistory,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
@@ -114,6 +120,43 @@ describe("editor history state", () => {
                 })
             )
         ).toBe(false)
+    })
+
+    it("treats missing and invalid METHOD context profiles as defaults", () => {
+        const base = committedState()
+
+        expect(cloneMethodProfileForHistory(undefined)).toEqual(
+            DEFAULT_METHOD_PROFILE
+        )
+        expect(cloneMethodProfilesByPaletteContextForHistory(undefined)).toEqual(
+            DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+        expect(
+            areEditorCommittedStatesEqual(
+                base,
+                committedState({
+                    methodProfilesByPaletteContext:
+                        DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
+                })
+            )
+        ).toBe(true)
+        expect(
+            areEditorCommittedStatesEqual(
+                base,
+                committedState({
+                    methodProfilesByPaletteContext: {
+                        auto: {
+                            methodId: "other-method",
+                            colorSpaceId: "default",
+                        },
+                        fixed: {
+                            methodId: "default",
+                            colorSpaceId: "default",
+                        },
+                    },
+                })
+            )
+        ).toBe(true)
     })
 
     it("compares committed quantization profile and imported preset state", () => {

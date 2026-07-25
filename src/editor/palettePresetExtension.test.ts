@@ -42,6 +42,12 @@ import {
     upsertImportedPalettePreset,
 } from "./palettePresetExtension.ts"
 import { prepareImportedPaletteColorsForApplication } from "./importedPaletteStrategy.ts"
+import {
+    FIXED_PALETTE_CONTEXT_KIND,
+    FIXED_PALETTE_MAPPING_METHOD_ID,
+    HSL_COLOR_SPACE_ID,
+    runQuantization,
+} from "./QuantizationCore.ts"
 
 describe("palette preset extension", () => {
     const profile = {
@@ -452,6 +458,69 @@ describe("palette preset extension", () => {
         expect(result.projectState.importedPalettePresets).not.toBe(
             importedPalettePresets
         )
+    })
+
+    it("uses the fixed METHOD profile when rebuilding a fixed preset from a reference", () => {
+        const referenceSnapshot = {
+            width: 2,
+            height: 2,
+            data: new Uint8ClampedArray(16),
+        }
+        const sourcePixels = [
+            ["#001219", "#E9D8A6"],
+            ["#BB3E03", "#94D2BD"],
+        ]
+        const overlayPixels = [
+            [null, null],
+            [null, null],
+        ]
+        const fixedMethodProfile = {
+            methodId: FIXED_PALETTE_MAPPING_METHOD_ID,
+            colorSpaceId: HSL_COLOR_SPACE_ID,
+        }
+
+        const result = prepareFixedPalettePresetProjectApplication({
+            profile,
+            referenceSnapshot,
+            gridSize: 2,
+            overlayPixels,
+            previousSwatches: [],
+            userSwatches: [],
+            methodProfilesByPaletteContext: {
+                fixed: fixedMethodProfile,
+            },
+            pixelizeReference: () => sourcePixels,
+            referenceSignature: () => "reference-fixed-hsl",
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-0", "auto-1"],
+            ],
+            selectedSwatch: "auto-0",
+            preferredSwatch: null,
+            projectPaletteCount: 8,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets: [],
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+        const expected = runQuantization({
+            sourcePixels,
+            overlayPixels,
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCount: profile.colors.length,
+            methodProfile: fixedMethodProfile,
+            paletteContext: FIXED_PALETTE_CONTEXT_KIND,
+            fixedPaletteProfile: profile,
+        })
+
+        expect(result.kind).toBe("reference")
+        if (result.kind !== "reference") throw new Error("expected reference")
+        expect(result.projectState.imagePixels).toEqual(expected.imagePixels)
+        expect(result.projectState.autoSwatches).toEqual(expected.autoSwatches)
     })
 
     it("applies fixed presets without inheriting dirty auto swatch edit artifacts", () => {
@@ -1398,6 +1467,50 @@ describe("palette preset extension", () => {
         expect(result?.overlayPixels[0]?.[1]).toBe("user-0")
     })
 
+    it("passes the saved auto METHOD profile into reference-world quantization", () => {
+        const sourcePixels = [
+            ["#000000", "#101010"],
+            ["#F0F0F0", "#FF0000"],
+        ]
+        const methodProfilesByPaletteContext = {
+            auto: {
+                methodId: "k-means",
+                colorSpaceId: "hsl",
+            },
+        }
+
+        const result = preparePaletteTabReferenceWorld({
+            tab: "size",
+            currentProfile: profile,
+            referenceSnapshot: "reference-size",
+            gridSize: 2,
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCountTarget: 3,
+            methodProfilesByPaletteContext,
+            pixelizeReference: () => sourcePixels,
+        })
+        const expected = runQuantization({
+            sourcePixels,
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            previousSwatches: [],
+            userSwatches: [],
+            paletteCount: 3,
+            methodProfile: methodProfilesByPaletteContext.auto,
+            paletteContext: "auto",
+        })
+
+        expect(result?.autoSwatches).toEqual(expected.autoSwatches)
+        expect(result?.imagePixels).toEqual(expected.imagePixels)
+    })
+
     it("prepares presets tab reference worlds from stale fixed profiles first", () => {
         const staleProfile = {
             ...profile,
@@ -1567,6 +1680,31 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("extends custom fixed palette application colors when adding vocabulary", () => {
+        const customProfile = {
+            kind: "fixed" as const,
+            source: "imported" as const,
+            id: "sunset-custom",
+            name: "SUNSET Custom",
+            colors: ["#001219", "#E9D8A6"],
+            applicationSource: "builtin" as const,
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#001219", "#E9D8A6"],
+        }
+
+        const result = extendFixedPaletteProfile(customProfile, "#ffffff")
+
+        expect(result).toEqual({
+            profile: {
+                ...customProfile,
+                colors: ["#001219", "#E9D8A6", "#FFFFFF"],
+                applicationColors: ["#001219", "#E9D8A6", "#FFFFFF"],
+            },
+            colorIndex: 2,
+            added: true,
+        })
+    })
+
     it("reuses an existing color instead of adding a duplicate", () => {
         const result = extendFixedPaletteProfile(profile, "#e9d8a6")
 
@@ -1601,6 +1739,27 @@ describe("palette preset extension", () => {
             profile: {
                 ...profile,
                 colors: ["#E9D8A6"],
+            },
+            removed: true,
+        })
+    })
+
+    it("removes custom fixed palette application colors with display colors", () => {
+        const customProfile = {
+            ...profile,
+            applicationSource: "builtin" as const,
+            applicationProfileId: "sunset-10",
+            applicationColors: ["#001219", "#E9D8A6", "#FFFFFF"],
+            colors: ["#001219", "#E9D8A6", "#FFFFFF"],
+        }
+
+        const result = removeFixedPaletteProfileColor(customProfile, 2)
+
+        expect(result).toEqual({
+            profile: {
+                ...customProfile,
+                colors: ["#001219", "#E9D8A6"],
+                applicationColors: ["#001219", "#E9D8A6"],
             },
             removed: true,
         })

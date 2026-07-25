@@ -397,6 +397,7 @@ export function PalettePanel({
                 />
                 <button
                     type="button"
+                    disabled={disabled}
                     onClick={() => onSwitchPaletteTab("size")}
                     style={{
                         height: "100%",
@@ -412,7 +413,7 @@ export function PalettePanel({
                         letterSpacing: 0.4,
                         textAlign: "left",
                         padding: 0,
-                        cursor: "pointer",
+                        cursor: disabled ? "default" : "pointer",
                         boxSizing: "border-box",
                     }}
                 >
@@ -424,6 +425,7 @@ export function PalettePanel({
 
                 <button
                     type="button"
+                    disabled={disabled}
                     onClick={() => onSwitchPaletteTab("presets")}
                     style={{
                         height: "100%",
@@ -439,7 +441,7 @@ export function PalettePanel({
                         letterSpacing: 0.4,
                         textAlign: "left",
                         padding: isMobileUI ? "0 10px" : "0 0 0 44px",
-                        cursor: "pointer",
+                        cursor: disabled ? "default" : "pointer",
                         boxSizing: "border-box",
                     }}
                 >

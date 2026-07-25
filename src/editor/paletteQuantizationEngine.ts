@@ -219,10 +219,6 @@ function rgbToCss({ r, g, b }: Rgb): string {
     return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`
 }
 
-function luma255({ r, g, b }: Rgb): number {
-    return Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)
-}
-
 function colorDistanceSq(a: Rgb, b: Rgb): number {
     const dr = a.r - b.r
     const dg = a.g - b.g
@@ -299,56 +295,15 @@ function quantizeWithFixedPaletteRgbBaseline(
 }
 void quantizeWithFixedPaletteRgbBaseline
 
-function quantizeWithGrayscaleProfile(
-    pixels: QuantizationPixel[][]
-): QuantizationPixel[][] {
-    const parsedPalette = GRAYSCALE_32.map(parseRgbColor)
-    return pixels.map((row) =>
-        row.map((color) => {
-            if (color == null) return null
-            const gray = luma255(parseRgbColor(color))
-            let bestIndex = 0
-            let bestDistance = Number.POSITIVE_INFINITY
-            for (let i = 0; i < parsedPalette.length; i++) {
-                const distance = Math.abs(gray - parsedPalette[i].r)
-                if (distance < bestDistance) {
-                    bestDistance = distance
-                    bestIndex = i
-                }
-            }
-            return GRAYSCALE_32[bestIndex]
-        })
-    )
-}
-
-function quantizeWithBlackWhiteProfile(
-    pixels: QuantizationPixel[][]
-): QuantizationPixel[][] {
-    return pixels.map((row) =>
-        row.map((color) => {
-            if (color == null) return null
-            const gray = luma255(parseRgbColor(color))
-            return gray / 255 < 0.5 ? BLACK_WHITE_2[0] : BLACK_WHITE_2[1]
-        })
-    )
-}
-
 export function quantizeWithFixedProfile(
     pixels: QuantizationPixel[][],
     profile: Extract<QuantizationProfile, { kind: "fixed" }>
 ): QuantizationPixel[][] {
     const applicationSource = profile.applicationSource ?? profile.source
-    const applicationProfileId = profile.applicationProfileId ?? profile.id
     const applicationColors = getFixedProfilePaletteForApplication(profile)
 
     if (applicationSource === "imported") {
         return applyImportedPaletteToPixels(pixels, applicationColors)
-    }
-    if (applicationProfileId === "grayscale-32") {
-        return quantizeWithGrayscaleProfile(pixels)
-    }
-    if (applicationProfileId === "black-white-2") {
-        return quantizeWithBlackWhiteProfile(pixels)
     }
     return quantizeWithFixedPalette(pixels, applicationColors)
 }

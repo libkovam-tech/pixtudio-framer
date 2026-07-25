@@ -186,6 +186,32 @@ describe("root history coordinator", () => {
         expect(redoEntry?.editorAfter?.userSwatches).toEqual(["user-1"])
     })
 
+    it("records METHOD apply as exactly one undoable history entry", () => {
+        const history = createRootHistoryState<EditorState, SmartState>()
+
+        rootHistoryBegin(history, {
+            kind: "method-apply",
+            editorBefore: editor("before-method"),
+            smartBefore: smart(7),
+        })
+        rootHistoryFinalize(history, smart(7))
+        const entry = rootHistoryCommit(history, editor("after-method"), {
+            isEditorEqual: (a, b) => a?.label === b?.label,
+            isSmartEqual: (a, b) => a?.revision === b?.revision,
+        })
+
+        expect(entry).toEqual({
+            kind: "method-apply",
+            editorBefore: editor("before-method"),
+            editorAfter: editor("after-method"),
+            smartBefore: smart(7),
+            smartAfter: smart(7),
+        })
+        expect(history.committed).toHaveLength(1)
+        expect(history.pending).toBeNull()
+        expect(rootHistoryCanUndo(history)).toBe(true)
+    })
+
     it("coalesces a restored palette tab world into the next preset apply", () => {
         const history = createRootHistoryState<EditorState, SmartState>()
 
