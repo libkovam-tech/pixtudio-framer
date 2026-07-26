@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node tools/prerender-routes.mjs",
+    "build": "vite build && node tools/prerender-routes.mjs && node tools/inject-csp-script-hashes.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "npm run build && node tests/e2e/run-playwright.mjs",
+    "e2e:prod": "node tests/e2e/run-playwright-prod.mjs",
     "e2e:update": "npm run build && node tests/e2e/run-playwright.mjs --update-snapshots",
     "typecheck": "tsc -b"
   },

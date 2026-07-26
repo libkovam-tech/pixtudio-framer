@@ -27,7 +27,7 @@ describe("Quantization Recorder paths", () => {
 })
 
 describe("Quantization Recorder export pipeline", () => {
-    it("encodes MP4 directly from the PNG sequence when conversion is enabled", async () => {
+    it("encodes MP4 directly from the PNG sequence", async () => {
         const writeFile = vi.fn(async () => true)
         const exec = vi.fn().mockResolvedValueOnce(0)
         const readFile = vi
@@ -99,41 +99,6 @@ describe("Quantization Recorder export pipeline", () => {
         expect(deleteFile).toHaveBeenCalledWith("frame-00001.png")
         expect(deleteFile).toHaveBeenCalledWith("quantization-frames.txt")
         expect(deleteFile).toHaveBeenCalledWith("quantization-preview.mp4")
-    })
-
-    it("can stop after WEBM stage when MP4 conversion is disabled", async () => {
-        const writeFile = vi.fn(async () => true)
-        const exec = vi.fn().mockResolvedValueOnce(0)
-        const readFile = vi
-            .fn()
-            .mockResolvedValue(new Uint8Array([9, 9, 9, 9]))
-        const deleteFile = vi.fn(async () => true)
-
-        const result = await runQuantizationExportPipeline({
-            ffmpeg: {
-                writeFile,
-                exec,
-                readFile,
-                deleteFile,
-            },
-            pngFrames: [
-                {
-                    name: "frame-00000.png",
-                    bytes: new Uint8Array([11, 22]),
-                },
-            ],
-            frameDurationSec: 1,
-            fps: 30,
-            videoDurationSec: 1,
-            enableMp4Conversion: false,
-        })
-
-        expect(exec).toHaveBeenCalledTimes(1)
-        expect(result.format).toBe("webm")
-        expect(result.filename).toBe("pixtudio-quantization.webm")
-        expect(result.mimeType).toBe("video/webm")
-        expect(Array.from(result.bytes)).toEqual([9, 9, 9, 9])
-        expect(deleteFile).toHaveBeenCalledWith("quantization-preview.webm")
     })
 
     it("adds audio with fade in and fade out when a track is provided", async () => {

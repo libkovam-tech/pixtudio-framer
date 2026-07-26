@@ -14,6 +14,7 @@ import SmartReferenceEditor, {
 import QuantizationRecorder, {
     type QuantizationRecorderFrame,
     type QuantizationRecorderSeed,
+    type QuantizationRecorderSettings,
 } from "./QuantizationRecorder.tsx"
 import {
     buildPixelArtXlsxBlob,
@@ -80,6 +81,7 @@ import {
 } from "./palettePresetExtension.ts"
 import { PalettePanel } from "./PalettePanel.tsx"
 import { MethodPanel } from "./MethodPanel.tsx"
+import { shouldForceDownloadFallbackForHealthSmoke } from "./healthSmokeMode.ts"
 import {
     buildPalettePresentationModel,
     type FixedPaletteProfile,
@@ -4762,6 +4764,8 @@ function PixelEditorFramer({
     )
     const [quantizationRecorderSeed, setQuantizationRecorderSeed] =
         React.useState<QuantizationRecorderSeed | null>(null)
+    const [quantizationRecorderSettings, setQuantizationRecorderSettings] =
+        React.useState<QuantizationRecorderSettings | null>(null)
 
     // =====================
     // GRID POLICY (A0: infra only, NO-OP)
@@ -5402,6 +5406,7 @@ function PixelEditorFramer({
 
     function openMethodModeFromCurrentPaletteTab() {
         if (methodSessionRef.current) return
+        if (!originalImageData && countNonNullCells(canvasPixels) === 0) return
 
         const activePaletteTab = paletteTabsState.activeTab
         const paletteContext = getMethodPaletteContextForTab(activePaletteTab)
@@ -8501,11 +8506,14 @@ function PixelEditorFramer({
     const currentMethodPaletteContext = getMethodPaletteContextForTab(
         paletteTabsState.activeTab
     )
+    const hasMethodSourceContent =
+        !!originalImageData || countNonNullCells(canvasPixels) > 0
     const hasMethodPaletteContextSource =
         paletteTabsState.activeTab !== "presets" ||
         (quantizationProfile.kind === "fixed" && !!activePresetButton)
     const canOpenMethodMode =
         !editorControlsDisabled &&
+        hasMethodSourceContent &&
         hasMethodPaletteContextSource &&
         doesPaletteContextAllowMethodPreview(currentMethodPaletteContext)
     const methodButtonTitle = hasMethodPaletteContextSource
@@ -10646,6 +10654,7 @@ function PixelEditorFramer({
 
         const anyWin = window as any
         const canSaveAs =
+            !shouldForceDownloadFallbackForHealthSmoke() &&
             supportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"
@@ -10752,6 +10761,7 @@ function PixelEditorFramer({
         const anyWin = window as any
 
         const canSaveAs =
+            !shouldForceDownloadFallbackForHealthSmoke() &&
             supportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"
@@ -13419,6 +13429,8 @@ function PixelEditorFramer({
                         >
                             <QuantizationRecorder
                                 seed={quantizationRecorderSeed}
+                                initialSettings={quantizationRecorderSettings}
+                                onApplySettings={setQuantizationRecorderSettings}
                                 onClose={closeQuantizationRecorder}
                             />
                         </div>,
@@ -14118,6 +14130,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const anyWin = window as any
         const canSaveAs =
+            !shouldForceDownloadFallbackForHealthSmoke() &&
             rootSupportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"

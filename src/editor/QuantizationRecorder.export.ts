@@ -24,7 +24,7 @@ export type RecorderExportResult = {
     bytes: Uint8Array
     mimeType: string
     filename: string
-    format: "webm" | "mp4"
+    format: "mp4"
 }
 
 const MP4_UPSCALE_FACTOR = 4
@@ -52,7 +52,6 @@ export async function runQuantizationExportPipeline(params: {
     fps: number
     videoDurationSec: number
     audioFadeSec?: number
-    enableMp4Conversion?: boolean
     onStageChange?: (stage: string) => void
     onDebugLog?: RecorderExportDebugLog
     cleanupNames?: string[]
@@ -65,7 +64,6 @@ export async function runQuantizationExportPipeline(params: {
         fps,
         videoDurationSec,
         audioFadeSec,
-        enableMp4Conversion = true,
         onStageChange,
         onDebugLog,
         cleanupNames = [],
@@ -77,7 +75,6 @@ export async function runQuantizationExportPipeline(params: {
 
     const manifestName = "quantization-frames.txt"
     const mp4Name = "quantization-preview.mp4"
-    const webmName = "quantization-preview.webm"
     const textEncoder = new TextEncoder()
     const mp4ScaleFilter = `fps=${fps},scale=iw*${MP4_UPSCALE_FACTOR}:ih*${MP4_UPSCALE_FACTOR}:flags=neighbor,format=yuv420p`
 
@@ -88,7 +85,6 @@ export async function runQuantizationExportPipeline(params: {
         hasAudioTrack: Boolean(audioTrack),
         videoDurationSec,
         audioFadeSec: audioTrack ? audioFadeSec ?? null : null,
-        enableMp4Conversion,
     })
 
     for (const frame of pngFrames) {
@@ -115,119 +111,6 @@ export async function runQuantizationExportPipeline(params: {
         manifestName,
         textEncoder.encode(buildConcatManifest(pngFrames, frameDurationSec))
     )
-
-    if (!enableMp4Conversion) {
-        onStageChange?.("Building WEBM...")
-        onDebugLog?.("Launching WEBM command", {
-            args: [
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                manifestName,
-                "-vf",
-                `fps=${fps}`,
-                "-an",
-                "-c:v",
-                "libvpx-vp9",
-                "-pix_fmt",
-                "yuv444p",
-                "-quality",
-                "best",
-                "-lossless",
-                "1",
-                "-deadline",
-                "best",
-                "-cpu-used",
-                "0",
-                "-row-mt",
-                "0",
-                "-tile-columns",
-                "0",
-                "-frame-parallel",
-                "0",
-                "-auto-alt-ref",
-                "0",
-                webmName,
-            ],
-        })
-        const webmExit = await ffmpeg.exec([
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            manifestName,
-            "-vf",
-            `fps=${fps}`,
-            "-an",
-            "-c:v",
-            "libvpx-vp9",
-            "-pix_fmt",
-            "yuv444p",
-            "-quality",
-            "best",
-            "-lossless",
-            "1",
-            "-deadline",
-            "best",
-            "-cpu-used",
-            "0",
-            "-row-mt",
-            "0",
-            "-tile-columns",
-            "0",
-            "-frame-parallel",
-            "0",
-            "-auto-alt-ref",
-            "0",
-            webmName,
-        ])
-        onDebugLog?.("WEBM command completed", { exitCode: webmExit })
-
-        if (webmExit !== 0) {
-            throw new Error("WEBM assembly failed inside ffmpeg.")
-        }
-
-        if (audioTrack) {
-            onDebugLog?.(
-                "Audio track ignored because MP4 conversion is disabled"
-            )
-        }
-
-        onStageChange?.("Exporting WEBM...")
-        const webmData = (await ffmpeg.readFile(webmName)) as Uint8Array
-        onDebugLog?.("WEBM file read from ffmpeg FS", {
-            bytes: webmData.byteLength,
-        })
-
-        const cleanupList = [
-            ...pngFrames.map((frame) => frame.name),
-            manifestName,
-            webmName,
-            ...(audioTrack ? [audioTrack.name] : []),
-            ...cleanupNames,
-        ]
-
-        await Promise.all(
-            cleanupList.map(async (name) => {
-                try {
-                    await ffmpeg.deleteFile(name)
-                    onDebugLog?.("Deleted temporary file", { name })
-                } catch {
-                    // ignore cleanup errors
-                }
-            })
-        )
-
-        return {
-            bytes: new Uint8Array(webmData),
-            mimeType: "video/webm",
-            filename: "pixtudio-quantization.webm",
-            format: "webm",
-        }
-    }
 
     const mp4Args = audioTrack
         ? [
@@ -306,7 +189,6 @@ export async function runQuantizationExportPipeline(params: {
     const cleanupList = [
         ...pngFrames.map((frame) => frame.name),
         manifestName,
-        webmName,
         mp4Name,
         ...(audioTrack ? [audioTrack.name] : []),
         ...cleanupNames,

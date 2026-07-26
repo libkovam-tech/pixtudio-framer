@@ -20,6 +20,7 @@ import {
     buildRecorderSteps,
     type DirectionMode,
 } from "./QuantizationRecorder.steps.ts"
+import { shouldForceDownloadFallbackForHealthSmoke } from "./healthSmokeMode.ts"
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 type FrozenSwatch = {
@@ -61,6 +62,21 @@ export type QuantizationRecorderSeed = {
     ) => Promise<void>
 }
 
+export type QuantizationRecorderSettings = {
+    includeGridRange: boolean
+    includePaletteRange: boolean
+    gridFrom: number
+    gridTo: number
+    gridSingle: number
+    paletteFrom: number
+    paletteTo: number
+    paletteSingle: number
+    direction: DirectionMode
+    durationSeconds: number
+    audioTrackFile: File | null
+    audioTrackLabel: string | null
+}
+
 type SaveFileHandleLike = {
     createWritable: () => Promise<{
         write: (data: Blob) => Promise<void>
@@ -84,6 +100,8 @@ type SavePickerWindowLike = Window & {
 
 type QuantizationRecorderProps = {
     seed: QuantizationRecorderSeed
+    initialSettings?: QuantizationRecorderSettings | null
+    onApplySettings?: (settings: QuantizationRecorderSettings) => void
     onClose: () => void
 }
 
@@ -93,7 +111,6 @@ type GeneratedRecorderFrame = QuantizationRecorderFrame & {
 
 const CANVAS_TARGET = 256
 const EXPORT_FPS = 30
-const ENABLE_MP4_CONVERSION = true
 const APP_BASE_URL =
     typeof import.meta.env.BASE_URL === "string" && import.meta.env.BASE_URL.length > 0
         ? import.meta.env.BASE_URL
@@ -317,6 +334,77 @@ function clampInt(n: number, min: number, max: number) {
     return Math.min(max, Math.max(min, Math.round(n)))
 }
 
+function createDefaultRecorderSettings(
+    seed: QuantizationRecorderSeed
+): QuantizationRecorderSettings {
+    return {
+        includeGridRange: true,
+        includePaletteRange: true,
+        gridFrom: Math.max(seed.gridBounds.min, 2),
+        gridTo: Math.min(seed.gridBounds.max, 128),
+        gridSingle: Math.max(seed.gridBounds.min, 2),
+        paletteFrom: Math.max(seed.paletteBounds.min, 2),
+        paletteTo: Math.min(seed.paletteBounds.max, 32),
+        paletteSingle: Math.max(seed.paletteBounds.min, 2),
+        direction: "both-ways",
+        durationSeconds: 20,
+        audioTrackFile: null,
+        audioTrackLabel: null,
+    }
+}
+
+function resolveRecorderSettings(
+    seed: QuantizationRecorderSeed,
+    settings?: QuantizationRecorderSettings | null
+): QuantizationRecorderSettings {
+    const defaults = createDefaultRecorderSettings(seed)
+    if (!settings) return defaults
+
+    const includeGridRange =
+        settings.includeGridRange || !settings.includePaletteRange
+    const includePaletteRange =
+        settings.includePaletteRange || !settings.includeGridRange
+
+    return {
+        includeGridRange,
+        includePaletteRange,
+        gridFrom: clampInt(
+            settings.gridFrom,
+            seed.gridBounds.min,
+            seed.gridBounds.max
+        ),
+        gridTo: clampInt(
+            settings.gridTo,
+            seed.gridBounds.min,
+            seed.gridBounds.max
+        ),
+        gridSingle: clampInt(
+            settings.gridSingle,
+            seed.gridBounds.min,
+            seed.gridBounds.max
+        ),
+        paletteFrom: clampInt(
+            settings.paletteFrom,
+            seed.paletteBounds.min,
+            seed.paletteBounds.max
+        ),
+        paletteTo: clampInt(
+            settings.paletteTo,
+            seed.paletteBounds.min,
+            seed.paletteBounds.max
+        ),
+        paletteSingle: clampInt(
+            settings.paletteSingle,
+            seed.paletteBounds.min,
+            seed.paletteBounds.max
+        ),
+        direction: settings.direction,
+        durationSeconds: Math.max(0.25, settings.durationSeconds),
+        audioTrackFile: settings.audioTrackFile,
+        audioTrackLabel: settings.audioTrackLabel,
+    }
+}
+
 function clampUnit(n: number) {
     return Math.min(1, Math.max(0, n))
 }
@@ -334,34 +422,18 @@ function computeExportSize(gridSize: number) {
 }
 
 function getExportFilename() {
-    return ENABLE_MP4_CONVERSION
-        ? "pixtudio-quantization.mp4"
-        : "pixtudio-quantization.webm"
+    return "pixtudio-quantization.mp4"
 }
 
 function getSavePickerOptionsForFilename(filename: string) {
-    const lower = filename.toLowerCase()
-    const isMp4 = lower.endsWith(".mp4")
-    const isWebm = lower.endsWith(".webm")
-
     const pickerOpts: SavePickerOptionsLike = {
         suggestedName: filename,
-    }
-
-    if (isMp4) {
-        pickerOpts.types = [
+        types: [
             {
                 description: "MP4 Video",
                 accept: { "video/mp4": [".mp4"] },
             },
-        ]
-    } else if (isWebm) {
-        pickerOpts.types = [
-            {
-                description: "WebM Video",
-                accept: { "video/webm": [".webm"] },
-            },
-        ]
+        ],
     }
 
     return pickerOpts
@@ -568,6 +640,7 @@ async function requestEarlySaveTarget(
     if (typeof window === "undefined") return null
     const savePickerWindow = window as SavePickerWindowLike
     const canSaveAs =
+        !shouldForceDownloadFallbackForHealthSmoke() &&
         window.isSecureContext &&
         typeof savePickerWindow.showSaveFilePicker === "function"
 
@@ -833,32 +906,48 @@ function CommittedNumberInput({
 
 export default function QuantizationRecorder({
     seed,
+    initialSettings,
+    onApplySettings,
     onClose,
 }: QuantizationRecorderProps) {
-    const audioInputRef = React.useRef<HTMLInputElement | null>(null)
-    const [includeGridRange, setIncludeGridRange] = React.useState(true)
-    const [includePaletteRange, setIncludePaletteRange] = React.useState(true)
-    const [gridFrom, setGridFrom] = React.useState(
-        Math.max(seed.gridBounds.min, 2)
+    const resolvedInitialSettings = React.useMemo(
+        () => resolveRecorderSettings(seed, initialSettings),
+        [initialSettings, seed]
     )
-    const [gridTo, setGridTo] = React.useState(Math.min(seed.gridBounds.max, 128))
+    const audioInputRef = React.useRef<HTMLInputElement | null>(null)
+    const [includeGridRange, setIncludeGridRange] = React.useState(
+        resolvedInitialSettings.includeGridRange
+    )
+    const [includePaletteRange, setIncludePaletteRange] = React.useState(
+        resolvedInitialSettings.includePaletteRange
+    )
+    const [gridFrom, setGridFrom] = React.useState(
+        resolvedInitialSettings.gridFrom
+    )
+    const [gridTo, setGridTo] = React.useState(resolvedInitialSettings.gridTo)
     const [gridSingle, setGridSingle] = React.useState(
-        Math.max(seed.gridBounds.min, 2)
+        resolvedInitialSettings.gridSingle
     )
     const [paletteFrom, setPaletteFrom] = React.useState(
-        Math.max(seed.paletteBounds.min, 2)
+        resolvedInitialSettings.paletteFrom
     )
     const [paletteTo, setPaletteTo] = React.useState(
-        Math.min(seed.paletteBounds.max, 32)
+        resolvedInitialSettings.paletteTo
     )
     const [paletteSingle, setPaletteSingle] = React.useState(
-        Math.max(seed.paletteBounds.min, 2)
+        resolvedInitialSettings.paletteSingle
     )
-    const [direction, setDirection] = React.useState<DirectionMode>("both-ways")
-    const [durationSeconds, setDurationSeconds] = React.useState(20)
-    const [audioTrackFile, setAudioTrackFile] = React.useState<File | null>(null)
+    const [direction, setDirection] = React.useState<DirectionMode>(
+        resolvedInitialSettings.direction
+    )
+    const [durationSeconds, setDurationSeconds] = React.useState(
+        resolvedInitialSettings.durationSeconds
+    )
+    const [audioTrackFile, setAudioTrackFile] = React.useState<File | null>(
+        resolvedInitialSettings.audioTrackFile
+    )
     const [audioTrackLabel, setAudioTrackLabel] = React.useState<string | null>(
-        null
+        resolvedInitialSettings.audioTrackLabel
     )
 
     const [frames, setFrames] = React.useState<GeneratedRecorderFrame[]>([])
@@ -1062,8 +1151,7 @@ export default function QuantizationRecorder({
             const target = exportPercentRef.current
             const current = exportDisplayedPercentRef.current
             let next = current
-            const isEncodingStage =
-                stage.includes("Encoding MP4") || stage.includes("Building WEBM")
+            const isEncodingStage = stage.includes("Encoding MP4")
             exportHeartbeatTickRef.current += 1
 
             if (isEncodingStage) {
@@ -1313,6 +1401,42 @@ export default function QuantizationRecorder({
         setIncludePaletteRange((prev) => !prev)
     }, [includeGridRange, includePaletteRange])
 
+    const getCurrentSettings = React.useCallback(
+        (): QuantizationRecorderSettings => ({
+            includeGridRange,
+            includePaletteRange,
+            gridFrom,
+            gridTo,
+            gridSingle,
+            paletteFrom,
+            paletteTo,
+            paletteSingle,
+            direction,
+            durationSeconds,
+            audioTrackFile,
+            audioTrackLabel,
+        }),
+        [
+            audioTrackFile,
+            audioTrackLabel,
+            direction,
+            durationSeconds,
+            gridFrom,
+            gridSingle,
+            gridTo,
+            includeGridRange,
+            includePaletteRange,
+            paletteFrom,
+            paletteSingle,
+            paletteTo,
+        ]
+    )
+
+    const handleApplySettings = React.useCallback(() => {
+        onApplySettings?.(getCurrentSettings())
+        onClose()
+    }, [getCurrentSettings, onApplySettings, onClose])
+
     const updateGridFrom = React.useCallback(
         (value: number) =>
             setGridFrom(
@@ -1376,6 +1500,7 @@ export default function QuantizationRecorder({
                 saveDebugLog
             )
             if (
+                !shouldForceDownloadFallbackForHealthSmoke() &&
                 typeof window !== "undefined" &&
                 window.isSecureContext &&
                 typeof (window as SavePickerWindowLike).showSaveFilePicker ===
@@ -1586,7 +1711,6 @@ export default function QuantizationRecorder({
             const exportResult: RecorderExportResult =
                 await runQuantizationExportPipeline({
                     ...exportParams,
-                    enableMp4Conversion: ENABLE_MP4_CONVERSION,
                 })
             exportDebugLog("Export pipeline produced output bytes", {
                 bytes: exportResult.bytes.byteLength,
@@ -1616,9 +1740,7 @@ export default function QuantizationRecorder({
             }
 
             updateExportStatus(
-                exportResult.format === "webm"
-                    ? "WEBM export finished"
-                    : "Export finished",
+                "Export finished",
                 100,
                 { immediate: true }
             )
@@ -2177,8 +2299,8 @@ export default function QuantizationRecorder({
 
                         <button
                             type="button"
-                            onClick={onClose}
-                            aria-label="OK"
+                            onClick={handleApplySettings}
+                            aria-label="Apply settings"
                             className="pxUiAnim"
                             style={bottomActionButtonStyle}
                         >

@@ -186,6 +186,7 @@ export function JsonLd({
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined
+    if (import.meta.env.PROD) return undefined
 
     Array.from(document.head.children).forEach((element) => {
       if (element.id === id) element.remove()

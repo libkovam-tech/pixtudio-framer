@@ -18,6 +18,7 @@ import {
     SvgCameraNewButton,
     SvgSmartObject,
     SvgExportSOButton,
+    SvgMethodButton,
     SvgQuantizationRecorderButton,
 } from "./SvgIcons.tsx"
 
@@ -248,6 +249,29 @@ function HandIconInline({ style }: { style?: React.CSSProperties }) {
     return (
         <span style={s}>
             <HandIconOff size={size} />
+        </span>
+    )
+}
+
+function MethodIconInline({ style }: { style?: React.CSSProperties }) {
+    return (
+        <span
+            style={{
+                width: 24,
+                height: 24,
+                display: "grid",
+                placeItems: "center",
+                transform: "translateX(-3px)",
+                ...style,
+            }}
+        >
+            <SvgMethodButton
+                style={{
+                    width: 24,
+                    height: 24,
+                    display: "block",
+                }}
+            />
         </span>
     )
 }
@@ -893,6 +917,101 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             Drawing is disabled while this tool is active.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "method",
+                title: "Method",
+                navLabel: "Method",
+                icon: <MethodIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Method controls how PIXTUDIO turns the reference
+                            image into the pixels and palette you see on the
+                            canvas. It is useful when the current conversion is
+                            close, but the color choices, shadows, skin tones,
+                            gradients, or details need a different kind of
+                            judgment.
+                        </SectionCopy>
+                        <SectionCopy>
+                            A Method setting is a pair: a <b>method</b> and a{" "}
+                            <b>color space</b>. The method decides how colors
+                            are grouped or mapped. The color space decides how
+                            PIXTUDIO measures the distance between colors before
+                            making that decision.
+                        </SectionCopy>
+                        <SectionCopy>
+                            In <b>Auto Palette</b>, Method can create a new
+                            palette from the source image. This is the place to
+                            explore different looks: smoother portraits, cleaner
+                            graphic shapes, stronger separation between close
+                            tones, or more expressive color choices.
+                        </SectionCopy>
+                        <SectionCopy>
+                            In <b>Palette Presets</b> or a custom fixed
+                            palette, the palette remains the source of truth.
+                            Method does not invent new colors there; it maps the
+                            image into the colors already present in the active
+                            palette. This includes Gray and Black/White presets.
+                        </SectionCopy>
+                        <BulletList
+                            items={[
+                                <>
+                                    <b>Default</b> is the simplest, most stable
+                                    option. Use it when the current result is
+                                    already clear and you only need predictable
+                                    behavior.
+                                </>,
+                                <>
+                                    <b>PIXTUDIO</b> is the editor&apos;s
+                                    authorial method. It is designed as a strong
+                                    all-purpose creative choice and can work
+                                    with multiple color spaces.
+                                </>,
+                                <>
+                                    <b>K-Means</b>, <b>K-Medoids</b>,{" "}
+                                    <b>Median Cut</b>, <b>Octree</b>,{" "}
+                                    <b>Fuzzy C-Means</b>, and{" "}
+                                    <b>Wu&apos;s Color Quantizer</b> offer
+                                    different ways to group colors. Some favor
+                                    clean clusters, some preserve extremes, and
+                                    some keep broad areas more even.
+                                </>,
+                            ]}
+                        />
+                        <SectionCopy>
+                            Color spaces are best treated as different lenses.
+                            <b> OKLAB</b> and <b>CIELAB</b> often feel natural
+                            for perceptual color differences. <b>HSV</b>,{" "}
+                            <b>HSL</b>, and <b>HSI</b> can produce more graphic
+                            or poster-like separations. <b>YUV</b>,{" "}
+                            <b>YCbCr</b>, <b>YIQ</b>, <b>DIN99</b>, and{" "}
+                            <b>CAM16-UCS</b> can be useful when brightness,
+                            chroma, or close low-contrast colors need a
+                            different interpretation.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Not every method works with every color space. When
+                            a combination is unavailable, PIXTUDIO disables the
+                            button instead of applying a hidden fallback. The
+                            active pair stays visible, so you always know which
+                            combination produced the preview.
+                        </SectionCopy>
+                        <SectionCopy>
+                            Opening Method starts a temporary preview session.
+                            You can try different pairs freely: <b>Cancel</b>{" "}
+                            returns to the previous result, while <b>Apply</b>{" "}
+                            commits the visible preview to the project as one
+                            undoable change.
+                        </SectionCopy>
+                        <SectionCopy muted>
+                            A practical workflow: adjust the source image in
+                            Smart Object first, then open Method, compare a few
+                            pairs, apply the best one, and finally tune
+                            individual swatches by hand if needed.
                         </SectionCopy>
                     </SectionStack>
                 ),
