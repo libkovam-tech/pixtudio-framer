@@ -28,20 +28,40 @@ const fatalConsolePatterns = [
 
 test.describe.configure({ mode: "serial" })
 
-test("prod_public_routes return healthy responses", async ({ request }) => {
-    for (const route of [
-        "/",
-        "/editor/",
-        "/pixel-art-from-photos/",
-        "/how-it-works/",
-    ]) {
-        const response = await request.get(route)
-        expect(response.status(), route).toBe(200)
-    }
+test("prod_public_routes open in a real browser context", async ({ page }) => {
+    const errors = collectFatalBrowserErrors(page)
 
-    const ping = await request.get("/api/ping")
-    expect(ping.status()).toBe(200)
-    expect((await ping.text()).trim()).toBe("ok")
+    await expectBrowserRouteHealthy(
+        page,
+        "/",
+        page.getByRole("link", { name: "Try PIXTUDIO Now" }).first()
+    )
+    await expectBrowserRouteHealthy(
+        page,
+        "/editor/",
+        page.getByRole("button", { name: "Open File" })
+    )
+    await expectBrowserRouteHealthy(
+        page,
+        "/pixel-art-from-photos/",
+        page.getByRole("heading", { name: "Pixel Art from Photos" })
+    )
+    await expectBrowserRouteHealthy(
+        page,
+        "/how-it-works/",
+        page.getByRole("button", { name: "Start with a Photo" })
+    )
+
+    const ping = await page.evaluate(async () => {
+        const response = await fetch("/api/ping", { cache: "no-store" })
+        return {
+            status: response.status,
+            text: (await response.text()).trim(),
+        }
+    })
+    expect(ping.status).toBe(200)
+    expect(ping.text).toBe("ok")
+    expect(errors.flush()).toEqual([])
 })
 
 test("prod_boot opens the public app and editor without fatal browser errors", async ({
@@ -285,6 +305,18 @@ async function setCheckboxChecked(checkbox: Locator, checked: boolean) {
 async function prodSettle(page: Page) {
     await page.evaluate(() => document.fonts?.ready)
     await page.waitForTimeout(250)
+}
+
+async function expectBrowserRouteHealthy(
+    page: Page,
+    route: string,
+    readyMarker: Locator
+) {
+    const response = await page.goto(route, { waitUntil: "domcontentloaded" })
+    expect(response?.status(), route).toBe(200)
+    await expect(page.locator("body")).toBeVisible()
+    await expect(readyMarker).toBeVisible({ timeout: 20_000 })
+    await prodSettle(page)
 }
 
 function collectFatalBrowserErrors(page: Page) {
