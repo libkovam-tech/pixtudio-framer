@@ -103,10 +103,10 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     ],
   },
   {
-    title: "User Manual",
+    title: "Try Pixelization Method",
     paragraphs: [
-      "Tap the Manual icon in the top menu.",
-      "Open the full in-app guide that explains every tool and button — always there when you need help.",
+      "Tap the METHOD button below the canvas after importing an image or drawing something.",
+      "Compare pixelization methods and color spaces, preview the result, then apply the pair you like. Auto palettes can be rebuilt; fixed palettes map the image into your current colors.",
     ],
   },
 ]
@@ -123,7 +123,7 @@ const HOW_BLUEPRINT_CARD_CLASSES = [
   "siteHowItWorksBlueprintCardApplyCustomPalette",
   "siteHowItWorksBlueprintCardFineTuneSourceImage",
   "siteHowItWorksBlueprintCardRecordPixelizationVideo",
-  "siteHowItWorksBlueprintCardUserManual",
+  "siteHowItWorksBlueprintCardPixelizationMethod",
 ] as const
 
 const HOW_TO_STEP_ORDER = [0, 1, 2, 6, 7, 8, 9, 10, 3, 4, 5, 11] as const
@@ -158,7 +158,7 @@ export default function HowItWorksPage() {
           name: "How PIXTUDIO Works",
           url: toAbsoluteSiteUrl("/how-it-works/"),
           description:
-            "Explore PIXTUDIO scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording the pixelization process.",
+            "Explore PIXTUDIO scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, trying pixelization methods, and recording the pixelization process.",
           image: SITE_OG_IMAGE_URL,
           isPartOf: { "@id": SITE_SCHEMA_IDS.website },
           publisher: { "@id": SITE_SCHEMA_IDS.organization },
@@ -180,7 +180,7 @@ export default function HowItWorksPage() {
           "@id": howToId,
           name: "How to create pixel art with PIXTUDIO",
           description:
-            "Import or capture a source image, tune colors and palettes, record the process if needed, then save or export the finished pixel art from PIXTUDIO.",
+            "Import or capture a source image, tune colors and palettes, try pixelization methods, record the process if needed, then save or export the finished pixel art from PIXTUDIO.",
           image: SITE_OG_IMAGE_URL,
           step: HOW_TO_STEP_ORDER.map((itemIndex, stepIndex) => {
             const item = HOW_MODAL_COPY[itemIndex]

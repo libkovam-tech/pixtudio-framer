@@ -6,6 +6,16 @@ const host = "127.0.0.1"
 const port = 4173
 const baseUrl = `http://${host}:${port}`
 const args = process.argv.slice(2)
+const localSpecFiles = [
+  "tests/e2e/method-smoke.spec.ts",
+  "tests/e2e/method-stress.spec.ts",
+  "tests/e2e/method-visual-regression.spec.ts",
+  "tests/e2e/p0.spec.ts",
+  "tests/e2e/p1.spec.ts",
+  "tests/e2e/p2.spec.ts",
+  "tests/e2e/preset-vocabulary-extension.spec.ts",
+]
+const localArgs = [...localSpecFiles, ...args]
 
 const server = spawn(process.execPath, ["tests/e2e/serve-dist.mjs"], {
   cwd: process.cwd(),
@@ -27,7 +37,7 @@ server.on("exit", () => {
 
 try {
   await waitForServer(baseUrl, 30_000)
-  const exitCode = await runPlaywright(args)
+  const exitCode = await runPlaywright(localArgs)
   await stopServer()
   process.exit(exitCode)
 } catch (error) {

@@ -1559,8 +1559,8 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   --how-card-image: url("./assets/how-it-works-square/Record-Pixelization-Video.png");
 }
 
-.siteHowItWorksBlueprintCardUserManual {
-  --how-card-image: url("./assets/how-it-works-square/User-Manual.png");
+.siteHowItWorksBlueprintCardPixelizationMethod {
+  --how-card-image: url("./assets/how-it-works-square/Try-Pixelization-Methods.png");
 }
 
 .siteHowItWorksBlueprintCard:focus-visible {

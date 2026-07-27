@@ -45,7 +45,7 @@ export const SITE_ROUTE_SEO = {
   how: {
     title: "How PIXTUDIO Works — Pixel Art Editor Guide",
     description:
-      "Explore PIXTUDIO feature scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, and recording video.",
+      "Explore PIXTUDIO feature scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting PNG, SVG, XLSX, or ZIP, editing palettes, trying pixelization methods, and recording video.",
     path: "/how-it-works/",
     ogTitle: "How PIXTUDIO Works — Pixel Art Editor Guide",
     ogDescription:

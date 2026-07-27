@@ -21,6 +21,7 @@ import {
     type DirectionMode,
 } from "./QuantizationRecorder.steps.ts"
 import { shouldForceDownloadFallbackForHealthSmoke } from "./healthSmokeMode.ts"
+import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 type FrozenSwatch = {
@@ -733,6 +734,10 @@ function QuantizationRecorderAlert({
 }: {
     onClose: () => void
 }) {
+    useDesktopApplyCancelShortcuts({
+        onApply: onClose,
+    })
+
     const alertBoxWidth = "min(300px, calc(100vw - 48px))"
     const alertBoxHeight = `calc(${alertBoxWidth} * 100 / 300)`
 

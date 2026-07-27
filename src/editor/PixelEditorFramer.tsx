@@ -82,6 +82,7 @@ import {
 import { PalettePanel } from "./PalettePanel.tsx"
 import { MethodPanel } from "./MethodPanel.tsx"
 import { shouldForceDownloadFallbackForHealthSmoke } from "./healthSmokeMode.ts"
+import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
 import {
     buildPalettePresentationModel,
     type FixedPaletteProfile,
@@ -2463,17 +2464,13 @@ function StartScreen({
         (START_BUTTONS_W - START_ACTION_GAP) / 2
     )
     const START_FOOTER_RESERVED_H = 72
-    const ENABLE_LOGO_REPORT_TRIGGER = false
     const START_LOGO_MOBILE_VISUAL_H = Math.round(
         (START_BUTTONS_W * START_LOGO_VISUAL_H) / START_LOGO_VISUAL_W
     )
 
     const taglineRef = React.useRef<HTMLSpanElement | null>(null)
-    const reportCodeInputRef = React.useRef<HTMLInputElement | null>(null)
     const [taglineFontPx, setTaglineFontPx] = React.useState(12)
     const [taglineScaleX, setTaglineScaleX] = React.useState(1)
-    const [isReportCodeOpen, setIsReportCodeOpen] = React.useState(false)
-    const [reportCode, setReportCode] = React.useState("")
 
     useIsomorphicLayoutEffect(() => {
         const el = taglineRef.current
@@ -2545,51 +2542,9 @@ function StartScreen({
         }
     }, [TAGLINE_TEXT, START_BUTTONS_W])
 
-    React.useEffect(() => {
-        if (!isReportCodeOpen) return
-
-        const raf = window.requestAnimationFrame(() => {
-            reportCodeInputRef.current?.focus()
-        })
-
-        return () => window.cancelAnimationFrame(raf)
-    }, [isReportCodeOpen])
-
-    const openReportCodeModal = React.useCallback(() => {
-        setReportCode("")
-        setIsReportCodeOpen(true)
-    }, [])
-
-    const closeReportCodeModal = React.useCallback(() => {
-        setReportCode("")
-        setIsReportCodeOpen(false)
-    }, [])
-
-    const submitReportCode = React.useCallback(() => {
-        const code = reportCode
-
-        closeReportCodeModal()
-
-        fetch("/api/admin/send-analytics-report", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ code }),
-            keepalive: true,
-        }).catch(() => {
-            // Intentionally silent.
-        })
-    }, [closeReportCodeModal, reportCode])
-
     const handleLogoClick = React.useCallback(() => {
-        if (ENABLE_LOGO_REPORT_TRIGGER) {
-            openReportCodeModal()
-            return
-        }
-
         onOpenHome()
-    }, [ENABLE_LOGO_REPORT_TRIGGER, onOpenHome, openReportCodeModal])
+    }, [onOpenHome])
 
     const wrapStyle: React.CSSProperties = {
         height: "100vh",
@@ -2839,141 +2794,6 @@ function StartScreen({
         imageRendering: "pixelated",
     }
 
-    const reportCodeModal = isReportCodeOpen
-        ? ReactDOM.createPortal(
-              <div
-                  style={ALERT_OVERLAY_STYLE}
-                  onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                  }}
-              >
-                  <form
-                      onSubmit={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          submitReportCode()
-                      }}
-                      style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          pointerEvents: "auto",
-                      }}
-                      onClick={(e) => {
-                          e.stopPropagation()
-                      }}
-                  >
-                      <div
-                          style={{
-                              position: "relative",
-                              width: "min(300px, calc(100vw - 48px))",
-                              height: "105px",
-                          }}
-                      >
-                          <div style={{ position: "absolute", inset: 0 }}>
-                              <SvgAlertBacking
-                                  style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      display: "block",
-                                  }}
-                                  ariaLabel="Code modal backing"
-                              />
-                          </div>
-
-                          <div
-                              style={{
-                                  position: "relative",
-                                  width: "100%",
-                                  height: "100%",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  gap: 10,
-                                  padding: "20px 32px",
-                                  boxSizing: "border-box",
-                              }}
-                          >
-                              <div
-                                  style={{
-                                      fontSize: 18,
-                                      fontWeight: 900,
-                                      letterSpacing: 0,
-                                      textAlign: "center",
-                                      color: PIXTUDIO_INK,
-                                  }}
-                              >
-                                  Введите код
-                              </div>
-
-                              <input
-                                  ref={reportCodeInputRef}
-                                  type="password"
-                                  name="pixtudio-analytics-code"
-                                  autoComplete="current-password"
-                                  value={reportCode}
-                                  onChange={(e) =>
-                                      setReportCode(e.currentTarget.value)
-                                  }
-                                  style={{
-                                      width: "100%",
-                                      height: 28,
-                                      border: `2px solid ${pixtudioInk(0.75)}`,
-                                      borderRadius: 0,
-                                      background: "#ffffff",
-                                      color: PIXTUDIO_INK,
-                                      fontSize: 16,
-                                      lineHeight: "24px",
-                                      letterSpacing: 0,
-                                      outline: "none",
-                                      padding: "0 8px",
-                                      boxSizing: "border-box",
-                                      fontFamily:
-                                          "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-                                  }}
-                              />
-                          </div>
-                      </div>
-
-                      <div
-                          style={{
-                              display: "flex",
-                              justifyContent: "center",
-                              pointerEvents: "auto",
-                              flex: "0 0 auto",
-                          }}
-                      >
-                          <button
-                              type="button"
-                              onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  closeReportCodeModal()
-                              }}
-                              style={okCancelButtonStyle}
-                              aria-label="Cancel"
-                              className="pxUiAnim"
-                          >
-                              <SvgCancelButton style={okCancelSvgStyle} />
-                          </button>
-
-                          <button
-                              type="submit"
-                              style={okCancelButtonStyle}
-                              aria-label="OK"
-                              className="pxUiAnim"
-                          >
-                              <SvgOkButton style={okCancelSvgStyle} />
-                          </button>
-                      </div>
-                  </form>
-              </div>,
-              document.body
-          )
-        : null
-
     return (
         <FitToViewport background={bg}>
             <style>{startScreenCss}</style>
@@ -3073,7 +2893,6 @@ function StartScreen({
                     </div>
                 </div>
             </div>
-            {reportCodeModal}
         </FitToViewport>
     )
 }
@@ -10468,6 +10287,12 @@ function PixelEditorFramer({
         setPendingDelete(false)
     }
 
+    useDesktopApplyCancelShortcuts({
+        enabled: isColorModalOpen && !isMobileUI,
+        onApply: handleModalApply,
+        onCancel: handleModalCancel,
+    })
+
     // ------------------- ADD SWATCH -------------------
 
     function closeColorModalAfterCreate() {
@@ -14855,6 +14680,11 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const isMobileUI = isCoarsePointer || isTouchDevice
 
+    useDesktopApplyCancelShortcuts({
+        enabled: !!importErrorModal && !isMobileUI,
+        onApply: dismissImportErrorModal,
+    })
+
     const isMobileOS = React.useMemo(() => {
         if (typeof navigator === "undefined") return false
         const ua = navigator.userAgent || ""
@@ -15428,6 +15258,16 @@ export default function PIXTUDIO_Mobile_MVP() {
             source: cropFlowSource,
         })
     }
+
+    useDesktopApplyCancelShortcuts({
+        enabled:
+            !!cropPending &&
+            !isMobileUI &&
+            importStatus !== "decoding" &&
+            importStatus !== "applying",
+        onApply: confirmCrop,
+        onCancel: cancelCrop,
+    })
 
     function retryImport() {
         // A2: при error даём повторить OK без потери кропа/превью

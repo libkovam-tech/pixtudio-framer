@@ -218,8 +218,8 @@ const howItems = [
     "Create a timelapse video of the pixelization process and export it as MP4.",
   ],
   [
-    "User Manual",
-    "Open the full in-app guide that explains every tool and button.",
+    "Try Pixelization Method",
+    "Compare pixelization methods and color spaces, preview the result, then apply the pair you like. Auto palettes can be rebuilt; fixed palettes map the image into your current colors.",
   ],
 ]
 
@@ -438,7 +438,7 @@ function renderHow() {
   return `
     <main class="prerenderPage" data-prerender-route="/how-it-works/">
       <h1>How PIXTUDIO Works</h1>
-      <p>Explore PIXTUDIO scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, and recording the pixelization process.</p>
+      <p>Explore PIXTUDIO scenarios for opening images and projects, shooting with a camera, drawing from a blank canvas, saving projects, exporting pixel art, editing palettes, trying pixelization methods, and recording the pixelization process.</p>
       <section class="prerenderGrid" aria-label="PIXTUDIO feature scenarios">
         ${renderList(howItems)}
       </section>

@@ -47,11 +47,6 @@ const SITE_MENU_LINKS: SiteMenuLink[] = [
 const SITE_MOBILE_MENU_LINKS: SiteMenuLink[] = [
   ...SITE_MENU_LINKS,
   {
-    page: "learn",
-    label: SITE_PAGE_LABELS.learn,
-    to: "/pixel-art-from-photos/",
-  },
-  {
     page: "links",
     label: SITE_PAGE_LABELS.links,
     to: "/links/",

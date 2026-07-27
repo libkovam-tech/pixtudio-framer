@@ -13,6 +13,7 @@ import {
     type PaletteContextKind,
 } from "./QuantizationCore.ts"
 import { SvgCancelButton, SvgOkButton } from "./SvgIcons.tsx"
+import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
 
 type MethodPanelProps = {
     paletteContext: PaletteContextKind
@@ -250,6 +251,13 @@ export function MethodPanel({
     onCancel,
     onApply,
 }: MethodPanelProps) {
+    useDesktopApplyCancelShortcuts({
+        enabled: !isMobileUI,
+        canApply,
+        onApply,
+        onCancel,
+    })
+
     const methodButtons = [
         getContextDefaultMethodButton(paletteContext),
         ...EXTRA_METHOD_BUTTONS,
