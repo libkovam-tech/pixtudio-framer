@@ -38,7 +38,7 @@ test("prod_public_routes open in a real browser context", async ({ page }) => {
     )
     await expectBrowserRouteHealthy(
         page,
-        "/editor/",
+        editorHealthSmokePath,
         page.getByRole("button", { name: "Open File" })
     )
     await expectBrowserRouteHealthy(
