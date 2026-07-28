@@ -81,7 +81,6 @@ import {
 } from "./palettePresetExtension.ts"
 import { PalettePanel } from "./PalettePanel.tsx"
 import { MethodPanel } from "./MethodPanel.tsx"
-import { shouldForceDownloadFallbackForHealthSmoke } from "./healthSmokeMode.ts"
 import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
 import {
     buildPalettePresentationModel,
@@ -10479,7 +10478,6 @@ function PixelEditorFramer({
 
         const anyWin = window as any
         const canSaveAs =
-            !shouldForceDownloadFallbackForHealthSmoke() &&
             supportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"
@@ -10586,7 +10584,6 @@ function PixelEditorFramer({
         const anyWin = window as any
 
         const canSaveAs =
-            !shouldForceDownloadFallbackForHealthSmoke() &&
             supportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"
@@ -13955,7 +13952,6 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const anyWin = window as any
         const canSaveAs =
-            !shouldForceDownloadFallbackForHealthSmoke() &&
             rootSupportsFileSystemAccess &&
             window.isSecureContext &&
             typeof anyWin.showSaveFilePicker === "function"

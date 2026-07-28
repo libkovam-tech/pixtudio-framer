@@ -20,7 +20,6 @@ import {
     buildRecorderSteps,
     type DirectionMode,
 } from "./QuantizationRecorder.steps.ts"
-import { shouldForceDownloadFallbackForHealthSmoke } from "./healthSmokeMode.ts"
 import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
@@ -641,7 +640,6 @@ async function requestEarlySaveTarget(
     if (typeof window === "undefined") return null
     const savePickerWindow = window as SavePickerWindowLike
     const canSaveAs =
-        !shouldForceDownloadFallbackForHealthSmoke() &&
         window.isSecureContext &&
         typeof savePickerWindow.showSaveFilePicker === "function"
 
@@ -1505,7 +1503,6 @@ export default function QuantizationRecorder({
                 saveDebugLog
             )
             if (
-                !shouldForceDownloadFallbackForHealthSmoke() &&
                 typeof window !== "undefined" &&
                 window.isSecureContext &&
                 typeof (window as SavePickerWindowLike).showSaveFilePicker ===
