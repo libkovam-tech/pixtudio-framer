@@ -5,6 +5,7 @@ import { fixturesDir } from "./helpers"
 
 const prodSmokeFixturePath = path.join(fixturesDir, "prod-smoke-v1.png")
 const editorHealthSmokePath = "/editor/?pixtudio-health-smoke=1"
+const healthSmokeToken = process.env.PIXTUDIO_HEALTH_SMOKE_TOKEN?.trim()
 
 const fatalConsolePatterns = [
     /Content Security Policy/i,
@@ -27,6 +28,20 @@ const fatalConsolePatterns = [
 ]
 
 test.describe.configure({ mode: "serial" })
+
+test.use({
+    extraHTTPHeaders: healthSmokeToken
+        ? { "x-pixtudio-health-smoke": healthSmokeToken }
+        : {},
+})
+
+test.beforeAll(() => {
+    if (process.env.GITHUB_ACTIONS === "true" && !healthSmokeToken) {
+        throw new Error(
+            "Set the PIXTUDIO_HEALTH_SMOKE_TOKEN GitHub Actions secret and the matching Cloudflare skip rule for production health smoke."
+        )
+    }
+})
 
 test("prod_public_routes open in a real browser context", async ({ page }) => {
     const errors = collectFatalBrowserErrors(page)

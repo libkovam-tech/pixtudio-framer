@@ -31,6 +31,8 @@ jobs:
         run: npx playwright install --with-deps chrome
 
       - name: Run production smoke
+        env:
+          PIXTUDIO_HEALTH_SMOKE_TOKEN: ${{ secrets.PIXTUDIO_HEALTH_SMOKE_TOKEN }}
         run: npm run e2e:prod
 
       - name: Upload failure artifacts
