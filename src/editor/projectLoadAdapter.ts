@@ -1,12 +1,15 @@
 import type { QuantizationProfile, PaletteTab } from "./paletteQuantizationEngine.ts"
 import type {
+    DeConfettiByPaletteContext,
     MethodProfilesByPaletteContext,
+    ResolvedDeConfettiByPaletteContext,
     ResolvedMethodProfilesByPaletteContext,
 } from "./QuantizationCore.ts"
 import {
     applyProjectSnapshotV2AutoOverrides,
     buildProjectSnapshotV2RuntimeLayers,
     decodeProjectSnapshotRefBytes,
+    resolveProjectSnapshotV2DeConfettiByPaletteContext,
     resolveProjectSnapshotV2MethodProfilesByPaletteContext,
     resolveProjectSnapshotV2QuantizationProfile,
     type AutoSwatchOverridesMapV2,
@@ -40,6 +43,7 @@ export type ProjectLoadEditorState<TTransparent> = {
     userSwatches: ProjectLoadSwatch[]
     selectedSwatch: string | "transparent"
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext
     quantizationProfile?: QuantizationProfile
     importedPalettePresets?: ProjectLoadImportedPalettePreset[]
     hiddenPresetIds?: string[]
@@ -53,6 +57,7 @@ export type ProjectLoadNextState<TTransparent> = {
     smartObjectBaseForRestore: ImageData | null
     paletteOrderIds: string[]
     methodProfilesByPaletteContext: ResolvedMethodProfilesByPaletteContext
+    deConfettiByPaletteContext: ResolvedDeConfettiByPaletteContext
     quantizationProfile: QuantizationProfile
 }
 
@@ -117,6 +122,8 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
     )
     const resolvedMethodProfilesByPaletteContext =
         resolveProjectSnapshotV2MethodProfilesByPaletteContext(validated)
+    const resolvedDeConfettiByPaletteContext =
+        resolveProjectSnapshotV2DeConfettiByPaletteContext(validated)
 
     const project: ProjectLoadEditorState<TTransparent> = {
         gridSize: runtimeLayers.gridSize,
@@ -132,6 +139,10 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
         methodProfilesByPaletteContext: {
             auto: { ...resolvedMethodProfilesByPaletteContext.auto },
             fixed: { ...resolvedMethodProfilesByPaletteContext.fixed },
+        },
+        deConfettiByPaletteContext: {
+            auto: { ...resolvedDeConfettiByPaletteContext.auto },
+            fixed: { ...resolvedDeConfettiByPaletteContext.fixed },
         },
         quantizationProfile: options.cloneQuantizationProfile(
             resolvedQuantizationProfile
@@ -155,6 +166,7 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
         smartObjectBaseForRestore: original,
         paletteOrderIds: runtimeLayers.paletteOrderIds,
         methodProfilesByPaletteContext: resolvedMethodProfilesByPaletteContext,
+        deConfettiByPaletteContext: resolvedDeConfettiByPaletteContext,
         quantizationProfile: resolvedQuantizationProfile,
     }
 }

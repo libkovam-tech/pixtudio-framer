@@ -107,6 +107,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     paragraphs: [
       "Tap the METHOD button below the canvas after importing an image or drawing something.",
       "Compare pixelization methods and color spaces, preview the result, then apply the pair you like. Auto palettes can be rebuilt; fixed palettes map the image into your current colors.",
+      "Turn on De-Confetti when the image looks right overall, but scattered one-cell specks make the pattern feel noisy. It smooths those isolated artifacts so the final pixel art is easier to read, stitch, or build.",
     ],
   },
 ]

@@ -15,6 +15,7 @@ import {
     createMethodSession,
     failMethodSessionPreview,
     requestMethodSessionPreview,
+    selectMethodSessionDeConfettiSettings,
     selectMethodSessionProfile,
 } from "./MethodSession.ts"
 
@@ -148,6 +149,7 @@ describe("MethodSession", () => {
             paletteContext: "auto",
             frozenPaletteContext: "auto",
             selectedProfile: DEFAULT_METHOD_PROFILE,
+            selectedDeConfetti: { enabled: false, tieBreaker: 0 },
             frozenSource: session.frozenSource,
         })
     })
@@ -333,6 +335,7 @@ describe("MethodSession", () => {
                 methodId: FIXED_PALETTE_MAPPING_METHOD_ID,
                 colorSpaceId: OKLAB_COLOR_SPACE_ID,
             },
+            committedDeConfetti: { enabled: false, tieBreaker: 0 },
         })
     })
 
@@ -387,6 +390,12 @@ describe("MethodSession", () => {
                     methodId: FIXED_PALETTE_MAPPING_METHOD_ID,
                     colorSpaceId: OKLAB_COLOR_SPACE_ID,
                 },
+            },
+            selectedDeConfetti: { enabled: false, tieBreaker: 0 },
+            renderedDeConfetti: { enabled: false, tieBreaker: 0 },
+            committedDeConfetti: { enabled: false, tieBreaker: 0 },
+            deConfettiByPaletteContextPatch: {
+                fixed: { enabled: false, tieBreaker: 0 },
             },
         })
     })
@@ -451,5 +460,46 @@ describe("MethodSession", () => {
             pixels: [["auto-0"]],
         })
         expect(result.preview).toEqual({ pixels: [["preview"]] })
+    })
+
+    it("selects and applies De-Confetti only inside the frozen palette context", () => {
+        const initial = createMethodSession<BeforeState, FrozenSource, Preview>({
+            beforeState: beforeState(),
+            frozenSource: frozenSource(),
+            paletteContext: "auto",
+            deConfettiByPaletteContext: {
+                auto: { enabled: false, tieBreaker: 0 },
+                fixed: { enabled: true, tieBreaker: 3 },
+            },
+        })
+
+        const selected = selectMethodSessionDeConfettiSettings(initial, {
+            enabled: true,
+            tieBreaker: 2,
+        })
+
+        expect(selected.request.selectedDeConfetti).toEqual({
+            enabled: true,
+            tieBreaker: 2,
+        })
+
+        const ready = completeMethodSessionPreview(selected.session, {
+            sessionId: selected.request.sessionId,
+            requestId: selected.request.requestId,
+            paletteContext: selected.request.paletteContext,
+            selectedProfile: selected.request.selectedProfile,
+            selectedDeConfetti: selected.request.selectedDeConfetti,
+            preview: { pixels: [["de-confetti-preview"]] },
+        })
+        const result = applyMethodSession(ready)
+
+        expect(result).toMatchObject({
+            ok: true,
+            deConfettiByPaletteContextPatch: {
+                auto: { enabled: true, tieBreaker: 2 },
+            },
+        })
+        if (!result.ok) throw new Error("expected apply result")
+        expect(result.deConfettiByPaletteContextPatch.fixed).toBeUndefined()
     })
 })

@@ -9,6 +9,8 @@ import {
     getQuantizationMethodStrategy,
     isMethodColorSpaceCompatible,
     type ColorSpaceId,
+    type DeConfettiSettings,
+    type DeConfettiTieBreaker,
     type MethodProfile,
     type PaletteContextKind,
 } from "./QuantizationCore.ts"
@@ -18,10 +20,13 @@ import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
 type MethodPanelProps = {
     paletteContext: PaletteContextKind
     selectedProfile: MethodProfile
+    deConfettiSettings: DeConfettiSettings
     status: "ready" | "pending" | "error"
     canApply: boolean
     isMobileUI: boolean
+    viewportScale?: number
     onSelectProfile: (profile: MethodProfile) => void
+    onSelectDeConfetti: (settings: Partial<DeConfettiSettings>) => void
     onCancel: () => void
     onApply: () => void
 }
@@ -139,6 +144,25 @@ const COLOR_SPACE_BUTTONS: ColorSpaceButtonSlot[] = [
     },
 ]
 
+const DE_CONFETTI_TIE_BREAKERS: Array<{
+    value: DeConfettiTieBreaker
+    label: string
+}> = [
+    { value: 0, label: "A" },
+    { value: 1, label: "B" },
+    { value: 2, label: "C" },
+    { value: 3, label: "D" },
+]
+
+const METHOD_ACTION_BUTTON_SIZE = 82
+const MOBILE_METHOD_ACTION_BUTTON_SIZE = 50
+
+const actionButtonSvgStyle: React.CSSProperties = {
+    width: "100%",
+    height: "100%",
+    display: "block",
+}
+
 function getContextDefaultMethodButton(
     paletteContext: PaletteContextKind
 ): MethodButtonSlot {
@@ -241,13 +265,41 @@ function buttonRowStyle(
     }
 }
 
+function deConfettiCheckboxStyle(isMobileUI: boolean): React.CSSProperties {
+    return {
+        width: isMobileUI ? 22 : 24,
+        height: isMobileUI ? 22 : 24,
+        margin: 0,
+        accentColor: "#ffffff",
+        cursor: "pointer",
+    }
+}
+
+function deConfettiLabelStyle(isMobileUI: boolean): React.CSSProperties {
+    return {
+        display: "flex",
+        alignItems: "center",
+        gap: isMobileUI ? 10 : 12,
+        color: "#ffffff",
+        fontSize: isMobileUI ? 15 : 16,
+        fontWeight: 900,
+        letterSpacing: 0,
+        lineHeight: 1,
+        cursor: "pointer",
+        userSelect: "none",
+    }
+}
+
 export function MethodPanel({
     paletteContext,
     selectedProfile,
+    deConfettiSettings,
     status,
     canApply,
     isMobileUI,
+    viewportScale = 1,
     onSelectProfile,
+    onSelectDeConfetti,
     onCancel,
     onApply,
 }: MethodPanelProps) {
@@ -269,6 +321,15 @@ export function MethodPanel({
         colorSpaceButtons.slice(4, 8),
         colorSpaceButtons.slice(8),
     ]
+    const actionButtonCompensationScale =
+        isMobileUI && viewportScale > 1e-6 ? 1 / viewportScale : 1
+    const actionButtonSize = isMobileUI
+        ? MOBILE_METHOD_ACTION_BUTTON_SIZE * actionButtonCompensationScale
+        : METHOD_ACTION_BUTTON_SIZE
+    const actionButtonGap =
+        (isMobileUI ? 42 : 70) * actionButtonCompensationScale
+    const actionButtonMarginTop =
+        (isMobileUI ? 8 : 10) * actionButtonCompensationScale
     const statusText =
         status === "pending"
             ? "Rendering preview"
@@ -405,6 +466,68 @@ export function MethodPanel({
                 </div>
             </div>
 
+            <div style={{ marginTop: isMobileUI ? 28 : 34 }}>
+                <div style={sectionTitleStyle(isMobileUI)}>DE-CONFETTI</div>
+                <div
+                    style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: isMobileUI ? 14 : 16,
+                    }}
+                >
+                    <label style={deConfettiLabelStyle(isMobileUI)}>
+                        <input
+                            type="checkbox"
+                            checked={deConfettiSettings.enabled}
+                            data-de-confetti-control="enabled"
+                            onChange={(event) =>
+                                onSelectDeConfetti({
+                                    enabled: event.currentTarget.checked,
+                                })
+                            }
+                            style={deConfettiCheckboxStyle(isMobileUI)}
+                        />
+                        <span>
+                            {deConfettiSettings.enabled
+                                ? "Turned ON"
+                                : "Turned OFF"}
+                        </span>
+                    </label>
+
+                    <div style={buttonRowStyle(4, isMobileUI)}>
+                        {DE_CONFETTI_TIE_BREAKERS.map((option) => {
+                            const active =
+                                option.value === deConfettiSettings.tieBreaker
+                            const disabled = !deConfettiSettings.enabled
+
+                            return (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    disabled={disabled}
+                                    data-axis="de-confetti"
+                                    data-de-confetti-tie-breaker={option.value}
+                                    data-active={active ? "true" : "false"}
+                                    onClick={() => {
+                                        if (disabled) return
+                                        onSelectDeConfetti({
+                                            tieBreaker: option.value,
+                                        })
+                                    }}
+                                    style={optionButtonStyle({
+                                        active,
+                                        disabled,
+                                        isMobileUI,
+                                    })}
+                                >
+                                    {option.label}
+                                </button>
+                            )
+                        })}
+                    </div>
+                </div>
+            </div>
+
             <div
                 style={{
                     minHeight: 18,
@@ -424,8 +547,8 @@ export function MethodPanel({
                     display: "flex",
                     justifyContent: "center",
                     alignItems: "center",
-                    gap: isMobileUI ? 42 : 70,
-                    marginTop: isMobileUI ? 8 : 10,
+                    gap: actionButtonGap,
+                    marginTop: actionButtonMarginTop,
                 }}
             >
                 <button
@@ -434,8 +557,8 @@ export function MethodPanel({
                     title={isMobileUI ? undefined : "Cancel"}
                     onClick={onCancel}
                     style={{
-                        width: isMobileUI ? 70 : 82,
-                        height: isMobileUI ? 70 : 82,
+                        width: actionButtonSize,
+                        height: actionButtonSize,
                         border: 0,
                         borderRadius: 0,
                         background: "transparent",
@@ -443,7 +566,7 @@ export function MethodPanel({
                         cursor: "pointer",
                     }}
                 >
-                    <SvgCancelButton style={{ width: "100%", height: "100%" }} />
+                    <SvgCancelButton style={actionButtonSvgStyle} />
                 </button>
 
                 <button
@@ -453,8 +576,8 @@ export function MethodPanel({
                     onClick={onApply}
                     disabled={!canApply}
                     style={{
-                        width: isMobileUI ? 70 : 82,
-                        height: isMobileUI ? 70 : 82,
+                        width: actionButtonSize,
+                        height: actionButtonSize,
                         border: 0,
                         borderRadius: 0,
                         background: "transparent",
@@ -463,7 +586,7 @@ export function MethodPanel({
                         cursor: canApply ? "pointer" : "default",
                     }}
                 >
-                    <SvgOkButton style={{ width: "100%", height: "100%" }} />
+                    <SvgOkButton style={actionButtonSvgStyle} />
                 </button>
             </div>
         </div>

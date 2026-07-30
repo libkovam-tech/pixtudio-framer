@@ -2,7 +2,10 @@ import {
     doesPaletteContextAllowMethodPreview,
     getDefaultMethodProfileForPaletteContext,
     resolveMethodProfile,
+    resolveDeConfettiByPaletteContext,
     resolvePaletteContextKind,
+    type DeConfettiByPaletteContext,
+    type DeConfettiSettings,
     type MethodProfile,
     type MethodProfilesByPaletteContext,
     type PaletteContext,
@@ -26,6 +29,10 @@ export type MethodSessionState<
     renderedProfile: MethodProfile | null
     committedProfile: MethodProfile
     contextDefaultProfile: MethodProfile
+    selectedDeConfetti: DeConfettiSettings
+    renderedDeConfetti: DeConfettiSettings | null
+    committedDeConfetti: DeConfettiSettings
+    contextDefaultDeConfetti: DeConfettiSettings
     requestId: number
     pendingRequestId: number | null
     status: MethodSessionStatus
@@ -39,6 +46,7 @@ export type MethodSessionPreviewRequest<TFrozenSource> = {
     paletteContext: PaletteContextKind
     frozenPaletteContext: PaletteContextKind
     selectedProfile: MethodProfile
+    selectedDeConfetti: DeConfettiSettings
     frozenSource: TFrozenSource
 }
 
@@ -56,7 +64,9 @@ export type MethodSessionCreateInput<TBeforeState, TFrozenSource> = {
     frozenSource: TFrozenSource
     paletteContext: PaletteContext | PaletteContextKind
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext | null
     selectedProfile?: Partial<MethodProfile> | null
+    selectedDeConfetti?: Partial<DeConfettiSettings> | null
     sessionId?: MethodSessionId
     requestId?: number
     cloneBeforeState?: (state: TBeforeState) => TBeforeState
@@ -68,8 +78,10 @@ export type MethodSessionPreviewCompleteInput<TPreview> = {
     requestId: number
     paletteContext: PaletteContext | PaletteContextKind
     selectedProfile: MethodProfile
+    selectedDeConfetti?: DeConfettiSettings
     preview: TPreview
     renderedProfile?: Partial<MethodProfile> | null
+    renderedDeConfetti?: Partial<DeConfettiSettings> | null
 }
 
 export type MethodSessionPreviewFailInput = {
@@ -77,6 +89,7 @@ export type MethodSessionPreviewFailInput = {
     requestId: number
     paletteContext: PaletteContext | PaletteContextKind
     selectedProfile: MethodProfile
+    selectedDeConfetti?: DeConfettiSettings
     error: string
 }
 
@@ -86,6 +99,7 @@ export type MethodSessionCancelResult<TBeforeState> = {
     frozenPaletteContext: PaletteContextKind
     beforeState: TBeforeState
     committedProfile: MethodProfile
+    committedDeConfetti: DeConfettiSettings
 }
 
 export type MethodSessionApplyResult<TBeforeState, TPreview> =
@@ -100,6 +114,10 @@ export type MethodSessionApplyResult<TBeforeState, TPreview> =
           renderedProfile: MethodProfile
           committedProfile: MethodProfile
           methodProfilesByPaletteContextPatch: MethodProfilesByPaletteContext
+          selectedDeConfetti: DeConfettiSettings
+          renderedDeConfetti: DeConfettiSettings
+          committedDeConfetti: DeConfettiSettings
+          deConfettiByPaletteContextPatch: DeConfettiByPaletteContext
       }
     | {
           ok: false
@@ -112,6 +130,12 @@ export type MethodSessionApplyResult<TBeforeState, TPreview> =
 
 function cloneMethodProfile(profile: MethodProfile): MethodProfile {
     return { methodId: profile.methodId, colorSpaceId: profile.colorSpaceId }
+}
+
+function cloneDeConfettiSettings(
+    settings: DeConfettiSettings
+): DeConfettiSettings {
+    return { enabled: settings.enabled, tieBreaker: settings.tieBreaker }
 }
 
 let nextMethodSessionId = 1
@@ -130,6 +154,16 @@ function areMethodProfilesEqual(
     )
 }
 
+function areDeConfettiSettingsEqual(
+    first: DeConfettiSettings,
+    second: DeConfettiSettings
+): boolean {
+    return (
+        first.enabled === second.enabled &&
+        first.tieBreaker === second.tieBreaker
+    )
+}
+
 function cloneOrIdentity<T>(value: T, clone?: (value: T) => T): T {
     return clone ? clone(value) : value
 }
@@ -143,6 +177,9 @@ function makePreviewRequest<TBeforeState, TFrozenSource, TPreview>(
         paletteContext: session.paletteContext,
         frozenPaletteContext: session.frozenPaletteContext,
         selectedProfile: cloneMethodProfile(session.selectedProfile),
+        selectedDeConfetti: cloneDeConfettiSettings(
+            session.selectedDeConfetti
+        ),
         frozenSource: session.frozenSource,
     }
 }
@@ -154,6 +191,7 @@ function isCurrentSessionRequest<TBeforeState, TFrozenSource, TPreview>(
         requestId: number
         paletteContext: PaletteContext | PaletteContextKind
         selectedProfile: MethodProfile
+        selectedDeConfetti?: DeConfettiSettings
     }
 ): boolean {
     if (input.sessionId !== session.sessionId) return false
@@ -164,7 +202,14 @@ function isCurrentSessionRequest<TBeforeState, TFrozenSource, TPreview>(
     ) {
         return false
     }
-    return areMethodProfilesEqual(input.selectedProfile, session.selectedProfile)
+    return (
+        areMethodProfilesEqual(input.selectedProfile, session.selectedProfile) &&
+        (input.selectedDeConfetti == null ||
+            areDeConfettiSettingsEqual(
+                input.selectedDeConfetti,
+                session.selectedDeConfetti
+            ))
+    )
 }
 
 export function createMethodSession<
@@ -187,10 +232,24 @@ export function createMethodSession<
         input.methodProfilesByPaletteContext?.[paletteContext],
         paletteContext
     )
+    const contextDefaultDeConfetti =
+        resolveDeConfettiByPaletteContext()[paletteContext]
+    const committedDeConfetti = resolveDeConfettiByPaletteContext(
+        input.deConfettiByPaletteContext
+    )[paletteContext]
     const selectedProfile = resolveMethodProfile(
         input.selectedProfile ?? committedProfile,
         paletteContext
     )
+    const selectedDeConfetti =
+        input.selectedDeConfetti == null
+            ? committedDeConfetti
+            : resolveDeConfettiByPaletteContext({
+                  [paletteContext]: {
+                      ...committedDeConfetti,
+                      ...input.selectedDeConfetti,
+                  },
+              })[paletteContext]
 
     return {
         sessionId: input.sessionId ?? createMethodSessionId(),
@@ -208,6 +267,12 @@ export function createMethodSession<
         renderedProfile: null,
         committedProfile: cloneMethodProfile(committedProfile),
         contextDefaultProfile: cloneMethodProfile(contextDefaultProfile),
+        selectedDeConfetti: cloneDeConfettiSettings(selectedDeConfetti),
+        renderedDeConfetti: null,
+        committedDeConfetti: cloneDeConfettiSettings(committedDeConfetti),
+        contextDefaultDeConfetti: cloneDeConfettiSettings(
+            contextDefaultDeConfetti
+        ),
         requestId: input.requestId ?? 0,
         pendingRequestId: null,
         status: "ready",
@@ -274,6 +339,7 @@ export function completeMethodSessionPreview<
             requestId: input.requestId,
             paletteContext: input.paletteContext,
             selectedProfile: input.selectedProfile,
+            selectedDeConfetti: input.selectedDeConfetti,
         })
     ) {
         return session
@@ -283,10 +349,20 @@ export function completeMethodSessionPreview<
         input.renderedProfile ?? session.selectedProfile,
         session.frozenPaletteContext
     )
+    const renderedDeConfetti =
+        input.renderedDeConfetti == null
+            ? session.selectedDeConfetti
+            : resolveDeConfettiByPaletteContext({
+                  [session.frozenPaletteContext]: {
+                      ...session.selectedDeConfetti,
+                      ...input.renderedDeConfetti,
+                  },
+              })[session.frozenPaletteContext]
 
     return {
         ...session,
         renderedProfile: cloneMethodProfile(renderedProfile),
+        renderedDeConfetti: cloneDeConfettiSettings(renderedDeConfetti),
         pendingRequestId: null,
         status: "ready",
         error: null,
@@ -308,6 +384,7 @@ export function failMethodSessionPreview<
             requestId: input.requestId,
             paletteContext: input.paletteContext,
             selectedProfile: input.selectedProfile,
+            selectedDeConfetti: input.selectedDeConfetti,
         })
     ) {
         return session
@@ -330,6 +407,9 @@ export function cancelMethodSession<TBeforeState, TFrozenSource, TPreview>(
         frozenPaletteContext: session.frozenPaletteContext,
         beforeState: session.beforeState,
         committedProfile: cloneMethodProfile(session.committedProfile),
+        committedDeConfetti: cloneDeConfettiSettings(
+            session.committedDeConfetti
+        ),
     }
 }
 
@@ -374,6 +454,9 @@ export function applyMethodSession<TBeforeState, TFrozenSource, TPreview>(
     const renderedProfile = cloneMethodProfile(
         session.renderedProfile ?? session.selectedProfile
     )
+    const renderedDeConfetti = cloneDeConfettiSettings(
+        session.renderedDeConfetti ?? session.selectedDeConfetti
+    )
 
     return {
         ok: true,
@@ -388,5 +471,34 @@ export function applyMethodSession<TBeforeState, TFrozenSource, TPreview>(
         methodProfilesByPaletteContextPatch: {
             [session.frozenPaletteContext]: renderedProfile,
         },
+        selectedDeConfetti: cloneDeConfettiSettings(
+            session.selectedDeConfetti
+        ),
+        renderedDeConfetti,
+        committedDeConfetti: renderedDeConfetti,
+        deConfettiByPaletteContextPatch: {
+            [session.frozenPaletteContext]: renderedDeConfetti,
+        },
     }
+}
+
+export function selectMethodSessionDeConfettiSettings<
+    TBeforeState,
+    TFrozenSource,
+    TPreview,
+>(
+    session: MethodSessionState<TBeforeState, TFrozenSource, TPreview>,
+    settings: Partial<DeConfettiSettings> | null | undefined
+): MethodSessionTransition<TBeforeState, TFrozenSource, TPreview> {
+    const selectedDeConfetti = resolveDeConfettiByPaletteContext({
+        [session.frozenPaletteContext]: {
+            ...session.selectedDeConfetti,
+            ...(settings ?? {}),
+        },
+    })[session.frozenPaletteContext]
+
+    return requestMethodSessionPreview({
+        ...session,
+        selectedDeConfetti: cloneDeConfettiSettings(selectedDeConfetti),
+    })
 }

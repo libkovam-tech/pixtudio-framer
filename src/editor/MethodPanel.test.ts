@@ -22,10 +22,12 @@ function renderMethodPanel(
         React.createElement(MethodPanel, {
             paletteContext: "auto",
             selectedProfile: DEFAULT_METHOD_PROFILE,
+            deConfettiSettings: { enabled: false, tieBreaker: 0 },
             status: "ready",
             canApply: true,
             isMobileUI: false,
             onSelectProfile: () => undefined,
+            onSelectDeConfetti: () => undefined,
             onCancel: () => undefined,
             onApply: () => undefined,
             ...input,
@@ -263,6 +265,58 @@ describe("MethodPanel", () => {
         expect(markup).toContain('data-palette-context="fixed"')
         expect(markup).toContain('data-compatible="false"')
         expect(markup).toContain("disabled=\"\"")
+    })
+
+    it("renders De-Confetti below color spaces as an off checkbox with disabled A-D choices", () => {
+        const markup = renderMethodPanel()
+
+        expect(markup).toContain("COLOR SPACES")
+        expect(markup).toContain("DE-CONFETTI")
+        expect(markup.indexOf("DE-CONFETTI")).toBeGreaterThan(
+            markup.indexOf("COLOR SPACES")
+        )
+        expect(markup).toContain('type="checkbox"')
+        expect(markup).toContain('data-de-confetti-control="enabled"')
+        expect(markup).toContain("Turned OFF")
+        for (const option of ["0", "1", "2", "3"]) {
+            const button = markup.match(
+                new RegExp(
+                    `<button[^>]*data-axis="de-confetti"[^>]*data-de-confetti-tie-breaker="${option}"[^>]*>`
+                )
+            )?.[0]
+            expect(button).toContain("disabled")
+        }
+        expect(markup).not.toContain("AREA")
+        expect(markup).not.toContain("PAL")
+        expect(markup).not.toContain("CW")
+        expect(markup).not.toContain("CCW")
+        expect(markup).not.toContain("aggressive")
+        expect(markup).not.toContain("quality")
+    })
+
+    it("enables De-Confetti A-D choices when the checkbox is on", () => {
+        const markup = renderMethodPanel({
+            deConfettiSettings: { enabled: true, tieBreaker: 2 },
+        })
+
+        expect(markup).toContain("Turned ON")
+        expect(markup).toContain('data-axis="de-confetti"')
+        expect(markup).toContain(
+            'data-de-confetti-tie-breaker="2" data-active="true"'
+        )
+        expect(markup).not.toMatch(
+            /data-axis="de-confetti"[^>]*disabled/
+        )
+    })
+
+    it("compensates mobile action buttons for the editor fit scale", () => {
+        const markup = renderMethodPanel({
+            isMobileUI: true,
+            viewportScale: 0.8,
+        })
+
+        expect(markup).toContain("width:62.5px;height:62.5px")
+        expect(markup).toContain("gap:52.5px")
     })
 
     it("evaluates compatibility from method, color space, and palette context", () => {

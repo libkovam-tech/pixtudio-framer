@@ -115,6 +115,7 @@ import {
 } from "./paintReference.ts"
 import {
     areEditorCommittedStatesEqual,
+    cloneDeConfettiByPaletteContextForHistory,
     cloneMethodProfilesByPaletteContextForHistory,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
@@ -126,12 +127,16 @@ import {
 } from "./editorHistoryState.ts"
 import {
     AUTO_PALETTE_CONTEXT_KIND,
+    DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
     FIXED_PALETTE_CONTEXT_KIND,
     doesPaletteContextAllowMethodPreview,
+    resolveDeConfettiByPaletteContext,
     resolveMethodProfilesByPaletteContext,
     runDefaultPaletteQuantization,
     runQuantization,
+    type DeConfettiByPaletteContext,
+    type DeConfettiSettings,
     type MethodProfile,
     type MethodProfilesByPaletteContext,
     type PaletteContextKind,
@@ -145,6 +150,7 @@ import {
     createMethodSession,
     failMethodSessionPreview,
     requestMethodSessionPreview,
+    selectMethodSessionDeConfettiSettings,
     selectMethodSessionProfile,
     type MethodSessionPreviewRequest,
     type MethodSessionState,
@@ -161,7 +167,6 @@ import {
     EXTRACT_QUANTIZATION_PROFILE,
     QUANTIZATION_PROFILES,
     getFixedProfilePaletteForApplication,
-    quantizeWithFixedProfile,
     quantizeWithFixedPalette,
     type DerivedWorld,
     type PaletteTab,
@@ -1943,19 +1948,6 @@ function quantizeToFixedPalette(
     return out
 }
 
-// ---- palette quantization ----
-function quantizePixels(
-    pixels: (string | null)[][],
-    targetColors: number,
-    excludedColors: string[] = []
-) {
-    return runDefaultPaletteQuantization({
-        pixels,
-        targetColors,
-        excludedColors,
-    })
-}
-
 function generatePalette(count: number) {
     const colors: string[] = []
     for (let i = 0; i < count; i++) {
@@ -3213,6 +3205,15 @@ function PixelEditorFramer({
 
     // External FitToViewport scale (viewport -> content)
     const fitScaleRef = React.useRef<number>(1)
+    const [fitScaleForControls, setFitScaleForControls] = React.useState(1)
+
+    const handleEditorFitScaleChange = React.useCallback((s: number) => {
+        const safeScale = Math.max(0.0001, s || 1)
+        fitScaleRef.current = safeScale
+        setFitScaleForControls((prev) =>
+            Math.abs(prev - safeScale) < 0.001 ? prev : safeScale
+        )
+    }, [])
 
     // ------------------- USER ACTION QUEUE (S2) -------------------
 
@@ -3420,6 +3421,12 @@ function PixelEditorFramer({
             DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
         )
     )
+    const [deConfettiByPaletteContext, setDeConfettiByPaletteContext] =
+        React.useState(() =>
+            resolveDeConfettiByPaletteContext(
+                DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT
+            )
+        )
     const [methodSession, setMethodSession] =
         React.useState<EditorMethodSession | null>(null)
     const methodSessionRef = React.useRef<EditorMethodSession | null>(null)
@@ -3482,6 +3489,11 @@ function PixelEditorFramer({
                 DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
             )
         )
+        setDeConfettiByPaletteContext(
+            resolveDeConfettiByPaletteContext(
+                DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT
+            )
+        )
     }
 
     function quantizePixelsForActiveProfile(
@@ -3502,6 +3514,7 @@ function PixelEditorFramer({
             userSwatches,
             paletteCount: targetColors,
             methodProfile: methodProfilesByPaletteContext[paletteContext],
+            deConfettiSettings: deConfettiByPaletteContext[paletteContext],
             paletteContext,
             fixedPaletteProfile:
                 quantizationProfile.kind === "fixed"
@@ -3936,6 +3949,7 @@ function PixelEditorFramer({
             overlayPixels,
             autoOverrides,
             methodProfilesByPaletteContext,
+            deConfettiByPaletteContext,
             quantizationProfile,
             smartReferenceBytes: smartReferenceBaseForSave?.data ?? null,
             smartAdjustments: smartAdjustmentsForSave,
@@ -4992,6 +5006,7 @@ function PixelEditorFramer({
     type PendingLoadProjectCommit = {
         project: ProjectState
         methodProfilesByPaletteContext: MethodProfilesByPaletteContext
+        deConfettiByPaletteContext: DeConfettiByPaletteContext
         quantizationProfile: QuantizationProfile
         canonicalChecksum?: string
         fileName?: string
@@ -5083,6 +5098,10 @@ function PixelEditorFramer({
                         auto: state.methodProfile,
                     }
                 ),
+            deConfettiByPaletteContext:
+                cloneDeConfettiByPaletteContextForHistory(
+                    state.deConfettiByPaletteContext
+                ),
             quantizationProfile: state.quantizationProfile
                 ? cloneQuantizationProfileForHistory(state.quantizationProfile)
                 : undefined,
@@ -5151,6 +5170,7 @@ function PixelEditorFramer({
             userSwatches: request.frozenSource.userSwatches,
             paletteCount: request.frozenSource.paletteCount,
             methodProfile: request.selectedProfile,
+            deConfettiSettings: request.selectedDeConfetti,
             paletteContext: request.frozenSource.paletteContext,
             fixedPaletteProfile: request.frozenSource.fixedPaletteProfile,
             excludedColors: request.frozenSource.excludedColors,
@@ -5186,6 +5206,7 @@ function PixelEditorFramer({
                 requestId: request.requestId,
                 paletteContext: request.frozenPaletteContext,
                 selectedProfile: request.selectedProfile,
+                selectedDeConfetti: request.selectedDeConfetti,
                 error:
                     error instanceof Error
                         ? error.message
@@ -5202,8 +5223,10 @@ function PixelEditorFramer({
             requestId: request.requestId,
             paletteContext: request.frozenPaletteContext,
             selectedProfile: request.selectedProfile,
+            selectedDeConfetti: request.selectedDeConfetti,
             preview,
             renderedProfile: request.selectedProfile,
+            renderedDeConfetti: request.selectedDeConfetti,
         })
         if (completed === currentSession) return
 
@@ -5217,6 +5240,19 @@ function PixelEditorFramer({
         if (!session || !profile) return
 
         const transition = selectMethodSessionProfile(session, profile)
+        methodSessionRef.current = transition.session
+        setMethodSession(transition.session)
+        runMethodPreviewRequest(transition.request)
+    }
+
+    function selectMethodModeDeConfetti(settings: Partial<DeConfettiSettings>) {
+        const session = methodSessionRef.current
+        if (!session) return
+
+        const transition = selectMethodSessionDeConfettiSettings(
+            session,
+            settings
+        )
         methodSessionRef.current = transition.session
         setMethodSession(transition.session)
         runMethodPreviewRequest(transition.request)
@@ -5269,6 +5305,7 @@ function PixelEditorFramer({
             frozenSource,
             paletteContext,
             methodProfilesByPaletteContext,
+            deConfettiByPaletteContext,
             cloneBeforeState: cloneProjectStateForMethodSession,
             cloneFrozenSource: cloneMethodFrozenSource,
         })
@@ -5301,15 +5338,22 @@ function PixelEditorFramer({
                 ...methodProfilesByPaletteContext,
                 ...result.methodProfilesByPaletteContextPatch,
             })
+        const nextDeConfettiByPaletteContext =
+            cloneDeConfettiByPaletteContextForHistory({
+                ...deConfettiByPaletteContext,
+                ...result.deConfettiByPaletteContextPatch,
+            })
         const before = result.beforeState
         const afterState: ProjectState = {
             ...makeProjectState(),
             methodProfilesByPaletteContext:
                 nextMethodProfilesByPaletteContext,
+            deConfettiByPaletteContext: nextDeConfettiByPaletteContext,
         }
         const appliedWorld = makeCurrentDerivedWorldSnapshot()
 
         setMethodProfilesByPaletteContext(nextMethodProfilesByPaletteContext)
+        setDeConfettiByPaletteContext(nextDeConfettiByPaletteContext)
         setPaletteTabsState((prev) =>
             preparePaletteTabWorldCommit({
                 state: prev,
@@ -5345,6 +5389,7 @@ function PixelEditorFramer({
             userSwatches,
             paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
             methodProfilesByPaletteContext,
+            deConfettiByPaletteContext,
             excludedColors: deletedAutoPaletteColors,
             pixelizeReference: (snapshot, nextGridSize) =>
                 pixelizeFromImageDominant(snapshot, nextGridSize, 16),
@@ -5649,6 +5694,7 @@ function PixelEditorFramer({
                 previousSwatches: autoSwatches,
                 userSwatches,
                 methodProfilesByPaletteContext,
+                deConfettiByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
                     pixelizeFromImageDominant(snapshot, nextGridSize, 16),
                 autoSwatches: nextAuto,
@@ -5717,6 +5763,7 @@ function PixelEditorFramer({
                 previousSwatches: autoSwatches,
                 userSwatches,
                 methodProfilesByPaletteContext,
+                deConfettiByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
                     pixelizeFromImageDominant(snapshot, nextGridSize, 16),
                 referenceSignature: imageDataSampleSignature,
@@ -6033,6 +6080,10 @@ function PixelEditorFramer({
                 cloneMethodProfilesByPaletteContextForHistory(
                     methodProfilesByPaletteContext
                 ),
+            deConfettiByPaletteContext:
+                cloneDeConfettiByPaletteContextForHistory(
+                    deConfettiByPaletteContext
+                ),
             quantizationProfile:
                 cloneQuantizationProfileForHistory(quantizationProfile),
             importedPalettePresets:
@@ -6126,6 +6177,16 @@ function PixelEditorFramer({
             const frozenAutoSwatches = cloneSwatches(autoSwatches)
             const frozenUserSwatches = cloneSwatches(userSwatches)
             const frozenAutoOverrides = { ...autoOverrides }
+            const frozenDeletedAutoPaletteColors =
+                deletedAutoPaletteColors.slice()
+            const frozenMethodProfilesByPaletteContext =
+                cloneMethodProfilesByPaletteContextForHistory(
+                    methodProfilesByPaletteContext
+                )
+            const frozenDeConfettiByPaletteContext =
+                cloneDeConfettiByPaletteContextForHistory(
+                    deConfettiByPaletteContext
+                )
             const frozenFixedPaletteColors =
                 quantizationProfile.kind === "fixed"
                     ? getFixedProfilePaletteForApplication(quantizationProfile)
@@ -6172,59 +6233,35 @@ function PixelEditorFramer({
                     16
                 )
 
-                const q =
+                const paletteContext =
                     frozenQuantizationProfile.kind === "fixed"
-                        ? {
-                              pixels: quantizeWithFixedProfile(
-                                  basePixels,
-                                  frozenQuantizationProfile
-                              ),
-                              palette: getFixedProfilePaletteForApplication(
-                                  frozenQuantizationProfile
-                              ),
-                          }
-                        : quantizePixels(basePixels, nextPaletteSize)
-                const finalQuantPixels: (string | null)[][] = q.pixels
-                const finalPalette: string[] = q.palette
-
-                const nextAutoRaw: Swatch[] = finalPalette.map((color, i) => ({
-                    id: `auto-${i}`,
-                    color,
-                    isTransparent: false,
-                    isUser: false,
-                }))
-                const nextAutoWithFixedDisplay =
-                    frozenQuantizationProfile.kind === "fixed"
-                        ? applyFixedPaletteDisplayOverrideSwatches({
-                              profile: frozenQuantizationProfile,
-                              previousAutoSwatches: frozenAutoSwatches,
-                              nextAutoSwatches: nextAutoRaw,
-                          })
-                        : nextAutoRaw
-
-                const colorToId = new Map<string, string>()
-                for (let i = 0; i < finalPalette.length; i++) {
-                    const key =
-                        toHexUpperOrNull(finalPalette[i]) ?? finalPalette[i]
-                    colorToId.set(key, `auto-${i}`)
-                }
-
-                const indexed: PixelValue[][] = finalQuantPixels.map((row) =>
-                    row.map((col) => {
-                        if (col == null) return null
-                        const key = toHexUpperOrNull(col) ?? col
-                        const id = colorToId.get(key)
-                        return (id ?? null) as PixelValue
-                    })
-                )
+                        ? FIXED_PALETTE_CONTEXT_KIND
+                        : AUTO_PALETTE_CONTEXT_KIND
+                const q = runQuantization<PixelValue>({
+                    sourcePixels: basePixels,
+                    overlayPixels: createEmptyPixels(nextGridSize),
+                    previousSwatches: frozenAutoSwatches,
+                    userSwatches: frozenUserSwatches,
+                    paletteCount: nextPaletteSize,
+                    methodProfile:
+                        frozenMethodProfilesByPaletteContext[paletteContext],
+                    deConfettiSettings:
+                        frozenDeConfettiByPaletteContext[paletteContext],
+                    paletteContext,
+                    fixedPaletteProfile:
+                        frozenQuantizationProfile.kind === "fixed"
+                            ? frozenQuantizationProfile
+                            : undefined,
+                    excludedColors: frozenDeletedAutoPaletteColors,
+                })
 
                 const nextAutoEffective = applyAutoOverrides(
-                    nextAutoWithFixedDisplay,
+                    q.autoSwatches,
                     frozenAutoOverrides
                 )
 
                 const collapsed = collapseDuplicateSwatchesAndRemap({
-                    imagePixels: indexed,
+                    imagePixels: q.imagePixels,
                     overlayPixels: createEmptyPixels(nextGridSize),
                     nextAuto: nextAutoEffective,
                     nextUser: frozenUserSwatches,
@@ -6300,7 +6337,10 @@ function PixelEditorFramer({
         }, [
             autoSwatches,
             autoOverrides,
+            deConfettiByPaletteContext,
+            deletedAutoPaletteColors,
             gridSize,
+            methodProfilesByPaletteContext,
             originalImageData,
             paintRefImageData,
             paintUserRefImageData,
@@ -6344,6 +6384,7 @@ function PixelEditorFramer({
         originalImageData,
         autoOverrides,
         methodProfilesByPaletteContext,
+        deConfettiByPaletteContext,
         quantizationProfile,
         importedPalettePresets,
         hiddenPresetIds,
@@ -6429,6 +6470,10 @@ function PixelEditorFramer({
                     auto: state.methodProfile,
                 }
             )
+        const nextDeConfettiByPaletteContext =
+            cloneDeConfettiByPaletteContextForHistory(
+                state.deConfettiByPaletteContext
+            )
         const restoredImportedPresets =
             ensureActiveImportedPalettePresetRegistered(
                 state.importedPalettePresets ?? [],
@@ -6439,6 +6484,7 @@ function PixelEditorFramer({
         )
         setHiddenPresetIds((state.hiddenPresetIds ?? []).slice())
         setMethodProfilesByPaletteContext(nextMethodProfilesByPaletteContext)
+        setDeConfettiByPaletteContext(nextDeConfettiByPaletteContext)
         setQuantizationProfile(nextProfile)
         setActivePresetButton(
             nextProfile.kind === "fixed" ? nextProfile.id : null
@@ -6478,6 +6524,10 @@ function PixelEditorFramer({
             methodProfilesByPaletteContext:
                 cloneMethodProfilesByPaletteContextForHistory(
                     nextMethodProfilesByPaletteContext
+                ),
+            deConfettiByPaletteContext:
+                cloneDeConfettiByPaletteContextForHistory(
+                    nextDeConfettiByPaletteContext
                 ),
             quantizationProfile: cloneQuantizationProfileForHistory(nextProfile),
             importedPalettePresets: cloneImportedPalettePresetsForHistory(
@@ -6735,6 +6785,8 @@ function PixelEditorFramer({
                 project: fixedProject,
                 methodProfilesByPaletteContext:
                     next.methodProfilesByPaletteContext,
+                deConfettiByPaletteContext:
+                    next.deConfettiByPaletteContext,
                 quantizationProfile: next.quantizationProfile,
                 canonicalChecksum: payload.canonicalChecksum,
                 fileName: payload.fileName,
@@ -8785,6 +8837,7 @@ function PixelEditorFramer({
         autoOverrides,
         quantizationProfile,
         methodProfilesByPaletteContext,
+        deConfettiByPaletteContext,
     ])
 
     const [repixelizeKick, setRepixelizeKick] = React.useState(0)
@@ -11163,10 +11216,7 @@ function PixelEditorFramer({
         <FitToViewport
             background={bg}
             topPadding={isMobileUI ? 0 : 20}
-            onScale={(s) => {
-                // FitToViewport может давать любое число, но нам нужна безопасная нижняя граница
-                fitScaleRef.current = Math.max(0.0001, s || 1)
-            }}
+            onScale={handleEditorFitScaleChange}
         >
             <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
             <input
@@ -11601,10 +11651,15 @@ function PixelEditorFramer({
                         <MethodPanel
                             paletteContext={methodSession.frozenPaletteContext}
                             selectedProfile={methodSession.selectedProfile}
+                            deConfettiSettings={
+                                methodSession.selectedDeConfetti
+                            }
                             status={methodSession.status}
                             canApply={canApplyMethodSession(methodSession)}
                             isMobileUI={isMobileUI}
+                            viewportScale={fitScaleForControls}
                             onSelectProfile={selectMethodModeProfile}
+                            onSelectDeConfetti={selectMethodModeDeConfetti}
                             onCancel={cancelMethodMode}
                             onApply={applyMethodMode}
                         />

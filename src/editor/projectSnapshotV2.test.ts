@@ -18,6 +18,7 @@ import {
     mapProjectSnapshotV2PixelToCell,
     parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides,
+    resolveProjectSnapshotV2DeConfettiByPaletteContext,
     resolveProjectSnapshotV2MethodProfile,
     resolveProjectSnapshotV2MethodProfilesByPaletteContext,
     resolveProjectSnapshotV2QuantizationProfile,
@@ -26,6 +27,7 @@ import {
     type ProjectSnapshotV2,
 } from "./projectSnapshotV2.ts"
 import {
+    DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     DEFAULT_METHOD_PROFILE,
     DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
 } from "./QuantizationCore.ts"
@@ -233,6 +235,10 @@ describe("ProjectSnapshotV2 invariants", () => {
             autoOverrides: {
                 "auto-transparent": { isTransparent: true },
             },
+            deConfettiByPaletteContext: {
+                auto: { enabled: true, tieBreaker: 2 },
+                fixed: { enabled: false, tieBreaker: 1 },
+            },
             quantizationProfile: {
                 kind: "fixed",
                 source: "imported",
@@ -276,6 +282,10 @@ describe("ProjectSnapshotV2 invariants", () => {
         expect(snapshot.methodProfilesByPaletteContext).toEqual(
             DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
         )
+        expect(snapshot.deConfettiByPaletteContext).toEqual({
+            auto: { enabled: true, tieBreaker: 2 },
+            fixed: { enabled: false, tieBreaker: 1 },
+        })
         expect(snapshot.quantizationProfile).toEqual({
             kind: "fixed",
             source: "imported",
@@ -305,6 +315,14 @@ describe("ProjectSnapshotV2 invariants", () => {
         expect(legacyParsed.canonical.methodProfile).toBeUndefined()
         expect(legacyParsed.canonical.methodProfilesByPaletteContext).toEqual(
             DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+        expect(
+            resolveProjectSnapshotV2DeConfettiByPaletteContext(
+                legacyParsed.snapshot
+            )
+        ).toEqual(DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT)
+        expect(legacyParsed.canonical.deConfettiByPaletteContext).toEqual(
+            DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT
         )
 
         const invalidParsed = parseProjectSnapshotV2Json(

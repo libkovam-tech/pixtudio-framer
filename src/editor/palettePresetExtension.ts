@@ -10,6 +10,7 @@ import {
 } from "./paletteQuantizationEngine.ts"
 import {
     runQuantization,
+    type DeConfettiByPaletteContext,
     type MethodProfilesByPaletteContext,
 } from "./QuantizationCore.ts"
 import {
@@ -499,6 +500,7 @@ type PaletteReferenceWorldInput<
     userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     paletteCountTarget: number
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext | null
     excludedColors?: string[]
     pixelizeReference: (
         referenceSnapshot: TReference,
@@ -1001,6 +1003,8 @@ function preparePaletteWorldFromReference<
                           paletteCount: input.paletteCountTarget,
                           methodProfile:
                               input.methodProfilesByPaletteContext?.auto,
+                          deConfettiSettings:
+                              input.deConfettiByPaletteContext?.auto,
                           paletteContext: "auto",
                           excludedColors: input.excludedColors,
                       })
@@ -1019,6 +1023,8 @@ function preparePaletteWorldFromReference<
                           paletteCount: input.paletteCountTarget,
                           methodProfile:
                               input.methodProfilesByPaletteContext?.fixed,
+                          deConfettiSettings:
+                              input.deConfettiByPaletteContext?.fixed,
                           paletteContext: "fixed",
                           fixedPaletteProfile: input.profile,
                           excludedColors: input.excludedColors,
@@ -1064,6 +1070,7 @@ export function preparePaletteTabReferenceWorld<
     userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     paletteCountTarget: number
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext | null
     excludedColors?: string[]
     pixelizeReference: (
         referenceSnapshot: TReference,
@@ -1084,6 +1091,8 @@ export function preparePaletteTabReferenceWorld<
             paletteCountTarget: input.paletteCountTarget,
             methodProfilesByPaletteContext:
                 input.methodProfilesByPaletteContext,
+            deConfettiByPaletteContext:
+                input.deConfettiByPaletteContext,
             excludedColors: input.excludedColors,
             pixelizeReference: input.pixelizeReference,
             referenceSignature: input.referenceSignature,
@@ -1107,6 +1116,8 @@ export function preparePaletteTabReferenceWorld<
               userSwatches: input.userSwatches,
               methodProfilesByPaletteContext:
                   input.methodProfilesByPaletteContext,
+              deConfettiByPaletteContext:
+                  input.deConfettiByPaletteContext,
               pixelizeReference: input.pixelizeReference,
               referenceSignature: input.referenceSignature,
           })
@@ -1206,6 +1217,7 @@ export function prepareFixedPalettePresetProjectApplication<
     hiddenPresetIds: ReadonlyArray<string>
     deletedAutoPaletteColors: ReadonlyArray<string>
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext | null
     autoOverrides: EditorCommittedState<
         TPixel,
         FixedPaletteAutoSwatch,
@@ -1226,6 +1238,8 @@ export function prepareFixedPalettePresetProjectApplication<
         userSwatches: input.userSwatches,
         methodProfilesByPaletteContext:
             input.methodProfilesByPaletteContext,
+        deConfettiByPaletteContext:
+            input.deConfettiByPaletteContext,
         pixelizeReference: input.pixelizeReference,
         referenceSignature: input.referenceSignature,
         selectedSwatch: input.selectedSwatch,
@@ -2171,6 +2185,7 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromRefe
     hiddenPresetIds: ReadonlyArray<string>
     deletedAutoPaletteColors: ReadonlyArray<string>
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext | null
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext | null
     autoOverrides: EditorCommittedState<
         TPixel,
         TSwatch,
@@ -2191,6 +2206,8 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromRefe
         userSwatches: input.userSwatches,
         methodProfilesByPaletteContext:
             input.methodProfilesByPaletteContext,
+        deConfettiByPaletteContext:
+            input.deConfettiByPaletteContext,
         pixelizeReference: input.pixelizeReference,
         referenceSignature: input.referenceSignature,
     })

@@ -1,0 +1,24 @@
+{
+  "magic": "PIXTUDIO",
+  "version": 2,
+  "gridSize": 4,
+  "paletteCount": 2,
+  "palette": {
+    "swatches": [
+      { "index": 0, "id": "auto-0", "hex": "#000000", "isUser": false },
+      { "index": 1, "id": "auto-1", "hex": "#FFFFFF", "isUser": false }
+    ]
+  },
+  "importLayer": {
+    "cells": [
+      0, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 0,
+      0, 0, 0, 0
+    ]
+  },
+  "strokeLayer": {
+    "cells": []
+  },
+  "ref": null
+}

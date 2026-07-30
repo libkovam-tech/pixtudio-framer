@@ -12,6 +12,11 @@ import {
     type QuantizationSwatch,
 } from "./paletteQuantizationEngine.ts"
 import {
+    applyDeConfetti,
+    resolveDeConfettiSettings,
+    type DeConfettiSettings,
+} from "./DeConfettiCore.ts"
+import {
     extractPaletteByStrategy,
     quantizeFixedPaletteByColorSpace,
     type PaletteStrategyColorSpaceId,
@@ -53,6 +58,8 @@ export type MethodProfile = {
     colorSpaceId: ColorSpaceId
 }
 
+export type { DeConfettiSettings, DeConfettiTieBreaker } from "./DeConfettiCore.ts"
+
 export type AutoPaletteContext = {
     kind: typeof AUTO_PALETTE_CONTEXT_KIND
 }
@@ -70,6 +77,14 @@ export type MethodProfilesByPaletteContext = Partial<
 
 export type ResolvedMethodProfilesByPaletteContext = Readonly<
     Record<PaletteContextKind, MethodProfile>
+>
+
+export type DeConfettiByPaletteContext = Partial<
+    Record<PaletteContextKind, DeConfettiSettings>
+>
+
+export type ResolvedDeConfettiByPaletteContext = Readonly<
+    Record<PaletteContextKind, DeConfettiSettings>
 >
 
 export type PaletteContextDefinition = {
@@ -144,6 +159,7 @@ export type QuantizationRunInput<
     userSwatches?: QuantizationSwatch[]
     paletteCount: number
     methodProfile?: Partial<MethodProfile> | null
+    deConfettiSettings?: Partial<DeConfettiSettings> | null
     paletteContext?: PaletteContext | PaletteContextKind | null
     fixedPaletteProfile?: Extract<QuantizationProfile, { kind: "fixed" }>
     excludedColors?: string[]
@@ -223,6 +239,18 @@ export const DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT: Readonly<
         methodId: FIXED_PALETTE_MAPPING_METHOD_ID,
         colorSpaceId: OKLAB_COLOR_SPACE_ID,
     },
+}
+
+export const DEFAULT_DE_CONFETTI_SETTINGS: DeConfettiSettings = {
+    enabled: false,
+    tieBreaker: 0,
+}
+
+export const DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT: Readonly<
+    Record<PaletteContextKind, DeConfettiSettings>
+> = {
+    [AUTO_PALETTE_CONTEXT_KIND]: DEFAULT_DE_CONFETTI_SETTINGS,
+    [FIXED_PALETTE_CONTEXT_KIND]: DEFAULT_DE_CONFETTI_SETTINGS,
 }
 
 const PALETTE_CONTEXT_REGISTRY: ReadonlyMap<
@@ -923,6 +951,19 @@ export function resolveMethodProfilesByPaletteContext(
     }
 }
 
+export function resolveDeConfettiByPaletteContext(
+    settingsByContext?: DeConfettiByPaletteContext | null
+): ResolvedDeConfettiByPaletteContext {
+    return {
+        [AUTO_PALETTE_CONTEXT_KIND]: resolveDeConfettiSettings(
+            settingsByContext?.[AUTO_PALETTE_CONTEXT_KIND]
+        ),
+        [FIXED_PALETTE_CONTEXT_KIND]: resolveDeConfettiSettings(
+            settingsByContext?.[FIXED_PALETTE_CONTEXT_KIND]
+        ),
+    }
+}
+
 export function validateQuantizationCoreRegistries(): string[] {
     const errors: string[] = []
     const paletteContexts = getRegisteredPaletteContexts()
@@ -1106,9 +1147,29 @@ export function runQuantization<
         )
     }
 
-    return method.run({
+    const result = method.run({
         ...input,
         methodProfile,
         paletteContextKind,
     })
+    const deConfettiSettings = resolveDeConfettiSettings(
+        input.deConfettiSettings
+    )
+    if (!deConfettiSettings.enabled) return result
+
+    const deConfetti = applyDeConfetti<string>({
+        pixels: result.imagePixels as (string | null)[][],
+        settings: deConfettiSettings,
+        swatches: result.autoSwatches.map((swatch) => ({
+            index: swatch.id,
+            isTransparent: swatch.isTransparent,
+        })),
+    })
+    const imagePixels = deConfetti.pixels as TPixel[][]
+
+    return {
+        ...result,
+        imagePixels,
+        canvasPixels: overlayOverBase(imagePixels, result.overlayPixels),
+    }
 }

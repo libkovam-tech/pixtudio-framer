@@ -994,6 +994,13 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             different interpretation.
                         </SectionCopy>
                         <SectionCopy>
+                            De-Confetti helps clean up isolated single-color
+                            cells that can appear after pixelization. Use it
+                            when the overall result is good, but tiny one-cell
+                            specks make the pattern harder to stitch, place, or
+                            read.
+                        </SectionCopy>
+                        <SectionCopy>
                             Not every method works with every color space. When
                             a combination is unavailable, PIXTUDIO disables the
                             button instead of applying a hidden fallback. The

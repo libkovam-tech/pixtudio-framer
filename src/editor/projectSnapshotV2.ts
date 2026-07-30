@@ -1,9 +1,13 @@
 import type { SmartReferenceAdjustments } from "./SmartReferenceEditor.tsx"
 import {
     AUTO_PALETTE_CONTEXT_KIND,
+    DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     FIXED_PALETTE_CONTEXT_KIND,
+    resolveDeConfettiByPaletteContext,
     resolveMethodProfile,
     resolveMethodProfilesByPaletteContext,
+    type DeConfettiByPaletteContext,
+    type DeConfettiSettings,
     type MethodProfile,
     type MethodProfilesByPaletteContext,
     type ResolvedMethodProfilesByPaletteContext,
@@ -30,6 +34,7 @@ export const PROJECT_SNAPSHOT_V2_REQUIRED_ROOT_KEYS = [
 
 export const PROJECT_SNAPSHOT_V2_OPTIONAL_ROOT_KEYS = [
     "autoOverrides",
+    "deConfettiByPaletteContext",
     "methodProfilesByPaletteContext",
     "methodProfile",
     "smartObjectState",
@@ -68,6 +73,10 @@ export type ProjectSnapshotV2 = {
             methodId: string
             colorSpaceId: string
         }
+    }
+    deConfettiByPaletteContext?: {
+        auto?: DeConfettiSettings
+        fixed?: DeConfettiSettings
     }
     methodProfile?: {
         methodId: string
@@ -136,6 +145,8 @@ export type ProjectSnapshotV2ResolvedQuantizationProfile =
       }
 export type ProjectSnapshotV2MethodProfilesByPaletteContextInput =
     MethodProfilesByPaletteContext
+export type ProjectSnapshotV2DeConfettiByPaletteContextInput =
+    DeConfettiByPaletteContext
 export type ProjectSnapshotV2RuntimeSwatch = {
     id: string
     color: string
@@ -174,6 +185,7 @@ export type ProjectSnapshotV2ForSaveInput<TTransparent> = {
     >
     autoOverrides?: AutoSwatchOverridesMapV2 | null
     methodProfilesByPaletteContext?: ProjectSnapshotV2MethodProfilesByPaletteContextInput | null
+    deConfettiByPaletteContext?: ProjectSnapshotV2DeConfettiByPaletteContextInput | null
     quantizationProfile?: ProjectSnapshotV2QuantizationProfileInput
     smartReferenceBytes?: Uint8ClampedArray | null
     smartAdjustments?: SmartReferenceAdjustments | null
@@ -469,6 +481,20 @@ export function serializeMethodProfilesByPaletteContextForSnapshot(
     }
 }
 
+export function serializeDeConfettiByPaletteContextForSnapshot(
+    settingsByContext: ProjectSnapshotV2DeConfettiByPaletteContextInput | null | undefined
+): ProjectSnapshotV2["deConfettiByPaletteContext"] {
+    const resolved = resolveDeConfettiByPaletteContext(settingsByContext)
+    return {
+        [AUTO_PALETTE_CONTEXT_KIND]: {
+            ...resolved[AUTO_PALETTE_CONTEXT_KIND],
+        },
+        [FIXED_PALETTE_CONTEXT_KIND]: {
+            ...resolved[FIXED_PALETTE_CONTEXT_KIND],
+        },
+    }
+}
+
 export function resolveProjectSnapshotV2MethodProfile(
     snapshot: Pick<ValidatedSnapshotV2, "methodProfile">
 ): MethodProfile {
@@ -486,6 +512,15 @@ export function resolveProjectSnapshotV2MethodProfilesByPaletteContext(
         [AUTO_PALETTE_CONTEXT_KIND]:
             snapshot.methodProfilesByPaletteContext?.[AUTO_PALETTE_CONTEXT_KIND] ??
             snapshot.methodProfile,
+    })
+}
+
+export function resolveProjectSnapshotV2DeConfettiByPaletteContext(
+    snapshot: Pick<ValidatedSnapshotV2, "deConfettiByPaletteContext">
+) {
+    return resolveDeConfettiByPaletteContext({
+        ...DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
+        ...snapshot.deConfettiByPaletteContext,
     })
 }
 
@@ -613,6 +648,10 @@ export function buildProjectSnapshotV2ForSave<TTransparent>(
         methodProfilesByPaletteContext:
             serializeMethodProfilesByPaletteContextForSnapshot(
                 input.methodProfilesByPaletteContext
+            ),
+        deConfettiByPaletteContext:
+            serializeDeConfettiByPaletteContextForSnapshot(
+                input.deConfettiByPaletteContext
             ),
         quantizationProfile: serializeQuantizationProfileForSnapshot(
             input.quantizationProfile,
@@ -905,6 +944,8 @@ export function canonicalizeSnapshotV2(
     }
     canonical.methodProfilesByPaletteContext =
         resolveProjectSnapshotV2MethodProfilesByPaletteContext(s)
+    canonical.deConfettiByPaletteContext =
+        resolveProjectSnapshotV2DeConfettiByPaletteContext(s)
     if (smartObjectStateCanon) {
         canonical.smartObjectState = smartObjectStateCanon
     }

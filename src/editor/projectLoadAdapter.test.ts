@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { EXTRACT_QUANTIZATION_PROFILE } from "./paletteQuantizationEngine.ts"
 import {
+    DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     DEFAULT_METHOD_PROFILE,
     DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
 } from "./QuantizationCore.ts"
@@ -71,8 +72,14 @@ describe("projectLoadAdapter", () => {
         expect(result.methodProfilesByPaletteContext).toEqual(
             DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
         )
+        expect(result.deConfettiByPaletteContext).toEqual(
+            DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT
+        )
         expect(result.project.methodProfilesByPaletteContext).toEqual(
             DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT
+        )
+        expect(result.project.deConfettiByPaletteContext).toEqual(
+            DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT
         )
         expect(result.project.methodProfilesByPaletteContext?.auto).toEqual(
             DEFAULT_METHOD_PROFILE

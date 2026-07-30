@@ -5,6 +5,9 @@ import {
 import {
     resolveMethodProfile,
     resolveMethodProfilesByPaletteContext,
+    resolveDeConfettiByPaletteContext,
+    type DeConfettiByPaletteContext,
+    type DeConfettiSettings,
     type MethodProfile,
     type MethodProfilesByPaletteContext,
     type ResolvedMethodProfilesByPaletteContext,
@@ -52,6 +55,7 @@ export type EditorCommittedState<
     selectedSwatch: string | "transparent"
     methodProfilesByPaletteContext?: MethodProfilesByPaletteContext
     methodProfile?: MethodProfile
+    deConfettiByPaletteContext?: DeConfettiByPaletteContext
     quantizationProfile?: QuantizationProfile
     importedPalettePresets?: TImportedPreset[]
     hiddenPresetIds?: string[]
@@ -99,6 +103,25 @@ export function cloneMethodProfilesByPaletteContextForHistory(
     profiles: MethodProfilesByPaletteContext | undefined
 ): ResolvedMethodProfilesByPaletteContext {
     const resolved = resolveMethodProfilesByPaletteContext(profiles)
+    return {
+        auto: { ...resolved.auto },
+        fixed: { ...resolved.fixed },
+    }
+}
+
+export function cloneDeConfettiSettingsForHistory(
+    settings: DeConfettiSettings | undefined
+): DeConfettiSettings {
+    const resolved = resolveDeConfettiByPaletteContext({
+        auto: settings,
+    }).auto
+    return { ...resolved }
+}
+
+export function cloneDeConfettiByPaletteContextForHistory(
+    settingsByContext: DeConfettiByPaletteContext | undefined
+): Required<DeConfettiByPaletteContext> {
+    const resolved = resolveDeConfettiByPaletteContext(settingsByContext)
     return {
         auto: { ...resolved.auto },
         fixed: { ...resolved.fixed },
@@ -175,6 +198,20 @@ export function areCommittedMethodProfilesByPaletteContextEqual(
     )
 }
 
+export function areCommittedDeConfettiByPaletteContextEqual(
+    a: DeConfettiByPaletteContext | undefined,
+    b: DeConfettiByPaletteContext | undefined
+): boolean {
+    const aa = resolveDeConfettiByPaletteContext(a)
+    const bb = resolveDeConfettiByPaletteContext(b)
+    return (
+        aa.auto.enabled === bb.auto.enabled &&
+        aa.auto.tieBreaker === bb.auto.tieBreaker &&
+        aa.fixed.enabled === bb.fixed.enabled &&
+        aa.fixed.tieBreaker === bb.fixed.tieBreaker
+    )
+}
+
 export function areImportedPalettePresetsEqual<
     TPreset extends ImportedPalettePresetForHistory,
 >(a: TPreset[] | undefined, b: TPreset[] | undefined): boolean {
@@ -236,6 +273,14 @@ export function areEditorCommittedStatesEqual<
         !areCommittedMethodProfilesByPaletteContextEqual(
             aMethodProfiles,
             bMethodProfiles
+        )
+    ) {
+        return false
+    }
+    if (
+        !areCommittedDeConfettiByPaletteContextEqual(
+            a.deConfettiByPaletteContext,
+            b.deConfettiByPaletteContext
         )
     ) {
         return false

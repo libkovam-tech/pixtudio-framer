@@ -12,6 +12,10 @@ const methodSmokePortraitPath = path.join(
     fixturesDir,
     "method-smoke-portrait.png"
 )
+const deConfettiProjectPath = path.join(
+    fixturesDir,
+    "de-confetti-single-cell.pixtudio"
+)
 
 test.beforeEach(async ({ page }) => {
     await installStableVisualEnvironment(page)
@@ -75,6 +79,49 @@ test("METHOD happy path survives import, smart object, apply, history, save/load
     expect(errors.flush()).toEqual([])
 })
 
+test("METHOD De-Confetti removes visible isolated cells and saves the context setting", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openProjectFromStart(page, deConfettiProjectPath)
+    const whiteBefore = await countEditorCanvasRgb(page, [255, 255, 255])
+    expect(whiteBefore).toBeGreaterThan(0)
+
+    await page.getByRole("button", { name: "METHOD" }).click()
+    await expect(page.getByText("DE-CONFETTI")).toBeVisible()
+    await page.locator('input[data-de-confetti-control="enabled"]').click()
+    await page
+        .locator('button[data-axis="de-confetti"][data-de-confetti-tie-breaker="2"]')
+        .click()
+    await settle(page)
+
+    const whitePreview = await countEditorCanvasRgb(page, [255, 255, 255])
+    expect(whitePreview).toBeLessThan(whiteBefore)
+
+    await page.getByRole("button", { name: "Apply METHOD" }).click()
+    await expect(page.getByRole("button", { name: "METHOD" })).toBeVisible()
+    await settle(page)
+    expect(await countEditorCanvasRgb(page, [255, 255, 255])).toBe(whitePreview)
+
+    const save = await downloadProjectSave(page)
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    expect(snapshot.deConfettiByPaletteContext.auto).toEqual({
+        enabled: true,
+        tieBreaker: 2,
+    })
+
+    await openProjectPathFromEditor(page, save.path, save.suggestedFilename)
+    const reopenedSave = await downloadProjectSave(page)
+    const reopenedSnapshot = JSON.parse(await readFile(reopenedSave.path, "utf8"))
+    expect(reopenedSnapshot.deConfettiByPaletteContext.auto).toEqual({
+        enabled: true,
+        tieBreaker: 2,
+    })
+
+    expect(errors.flush()).toEqual([])
+})
+
 async function openSmokePortrait(page: Page) {
     await page.goto("/editor/")
     const fileChooserPromise = page.waitForEvent("filechooser")
@@ -86,6 +133,20 @@ async function openSmokePortrait(page: Page) {
         timeout: 20_000,
     })
     await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByRole("button", { name: "Export" })).toBeVisible({
+        timeout: 20_000,
+    })
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible({ timeout: 20_000 })
+    await settle(page)
+}
+
+async function openProjectFromStart(page: Page, projectPath: string) {
+    await page.goto("/editor/")
+    const fileChooserPromise = page.waitForEvent("filechooser")
+    await page.getByRole("button", { name: "Open File" }).click()
+    const fileChooser = await fileChooserPromise
+    await fileChooser.setFiles(projectPath)
+
     await expect(page.getByRole("button", { name: "Export" })).toBeVisible({
         timeout: 20_000,
     })
@@ -172,6 +233,27 @@ async function readEditorCanvasSignature(page: Page) {
         }
         return hash.toString(16)
     })
+}
+
+async function countEditorCanvasRgb(page: Page, rgb: [number, number, number]) {
+    return page.locator("canvas").first().evaluate((canvas, target) => {
+        const context = canvas.getContext("2d")
+        if (!context) return 0
+
+        const data = context.getImageData(0, 0, canvas.width, canvas.height).data
+        let count = 0
+        for (let i = 0; i < data.length; i += 4) {
+            if (
+                data[i] === target[0] &&
+                data[i + 1] === target[1] &&
+                data[i + 2] === target[2] &&
+                data[i + 3] > 0
+            ) {
+                count += 1
+            }
+        }
+        return count
+    }, rgb)
 }
 
 async function expectEditorCanvasSignature(page: Page, signature: string) {

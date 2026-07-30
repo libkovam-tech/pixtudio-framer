@@ -841,4 +841,61 @@ describe("QuantizationCore", () => {
             result.autoSwatches.map((swatch) => swatch.color.toUpperCase())
         ).not.toContain("#333333")
     })
+
+    it("applies De-Confetti after quantization and before overlay composition", () => {
+        const sourcePixels = [
+            ["#000000", "#000000", "#000000"],
+            ["#000000", "#FFFFFF", "#000000"],
+            ["#000000", "#000000", "#000000"],
+        ]
+        const overlayPixels = [
+            [null, null, null],
+            [null, "user-0", null],
+            [null, null, null],
+        ]
+        const userSwatches = [
+            {
+                id: "user-0",
+                color: "#FF0000",
+                isTransparent: false,
+                isUser: true,
+            },
+        ]
+
+        const result = runQuantization({
+            sourcePixels,
+            overlayPixels,
+            previousSwatches: [],
+            userSwatches,
+            paletteCount: 2,
+            methodProfile: DEFAULT_METHOD_PROFILE,
+            deConfettiSettings: { enabled: true, tieBreaker: 0 },
+        })
+
+        expect(result.imagePixels[1][1]).toBe(result.imagePixels[0][0])
+        expect(result.overlayPixels).toEqual(overlayPixels)
+        expect(result.canvasPixels[1][1]).toBe("user-0")
+    })
+
+    it("leaves quantization output unchanged when De-Confetti is disabled", () => {
+        const input = {
+            sourcePixels: [
+                ["#000000", "#FFFFFF", "#000000"],
+                ["#FFFFFF", "#000000", "#FFFFFF"],
+                ["#000000", "#FFFFFF", "#000000"],
+            ],
+            overlayPixels: SAMPLE_OVERLAY_PIXELS,
+            paletteCount: 2,
+            methodProfile: DEFAULT_METHOD_PROFILE,
+        }
+
+        const disabled = runQuantization({
+            ...input,
+            deConfettiSettings: { enabled: false, tieBreaker: 3 },
+        })
+        const omitted = runQuantization(input)
+
+        expect(disabled.imagePixels).toEqual(omitted.imagePixels)
+        expect(disabled.canvasPixels).toEqual(omitted.canvasPixels)
+    })
 })
