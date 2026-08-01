@@ -13,6 +13,7 @@ import {
     preparePaletteSwatchEditApplication,
     preparePaletteProjectStateRestoreTabs,
     preparePalettePresetSessionReset,
+    preparePresetOverlayCarryToAutoWorld,
     preparePaletteSliderCommitCleanup,
     preparePaletteSwatchDeleteProjectApplication,
     preparePaletteTabWorldCommit,
@@ -23,7 +24,6 @@ import {
     preparePaletteTabSwitch,
     prepareProjectStateFromPaletteWorld,
     preparePaletteSwatchEditProjectApplication,
-    prepareStrokePaintSwatch,
     prepareSwatchesForEdit,
     prepareSwatchDelete,
     prepareUserSwatchCreateProjectApplication,
@@ -882,87 +882,111 @@ describe("palette state", () => {
         ).toBe(false)
     })
 
-    it("keeps auto palette strokes bound to quantization swatches", () => {
-        const result = prepareStrokePaintSwatch({
-            activeTab: "size",
-            selectedSwatch: "auto-0",
-            autoSwatches: [{ id: "auto-0", color: "#112233" }],
-            userSwatches: [],
+    it("carries preset overlay strokes into auto worlds as user swatches", () => {
+        const result = preparePresetOverlayCarryToAutoWorld({
+            targetWorld: {
+                profile: { kind: "extract" as const },
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#111111",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                ],
+                imagePixels: [
+                    ["auto-0", "auto-0"],
+                    ["auto-0", "auto-0"],
+                ],
+                overlayPixels: [
+                    ["auto-0", null],
+                    [null, null],
+                ] as Array<Array<string | null>>,
+                canvasPixels: [
+                    ["auto-0", "auto-0"],
+                    ["auto-0", "auto-0"],
+                ],
+            },
+            sourceWorld: {
+                profile: {
+                    kind: "fixed" as const,
+                    id: "sunset",
+                },
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#AA0000",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                    {
+                        id: "auto-1",
+                        color: "#00AA00",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                ],
+                imagePixels: [
+                    ["auto-0", "auto-0"],
+                    ["auto-0", "auto-0"],
+                ],
+                overlayPixels: [
+                    ["auto-1", "auto-1"],
+                    ["__PX_TRANSPARENT__", "user-keep"],
+                ] as Array<Array<string | null>>,
+                canvasPixels: [
+                    ["auto-1", "auto-1"],
+                    ["__PX_TRANSPARENT__", "user-keep"],
+                ],
+            },
+            userSwatches: [
+                {
+                    id: "user-keep",
+                    color: "#123456",
+                    isTransparent: false,
+                    isUser: true,
+                },
+            ],
+            transparentPixel: "__PX_TRANSPARENT__",
+            shouldCarryCell: (row, column) => row === 1 || column === 1,
             makeUserSwatch: (source) => ({
                 ...source,
-                id: "user-copy",
+                id: `user-from-${source.id}`,
                 isUser: true,
+                isTransparent: false,
             }),
         })
 
-        expect(result.paintSwatch).toBe("auto-0")
-        expect(result.userSwatches).toEqual([])
-        expect(result.createdUserSwatch).toBeNull()
-    })
-
-    it("promotes preset palette strokes into a separate user paint swatch", () => {
-        const result = prepareStrokePaintSwatch({
-            activeTab: "presets",
-            selectedSwatch: "auto-2",
-            autoSwatches: [{ id: "auto-2", color: "#AABBCC" }],
-            userSwatches: [],
-            makeUserSwatch: (source) => ({
-                ...source,
-                id: "user-copy",
-                isUser: true,
-            }),
-        })
-
-        expect(result.paintSwatch).toBe("user-copy")
-        expect(result.createdUserSwatch).toEqual({
-            id: "user-copy",
-            color: "#AABBCC",
-            isUser: true,
-        })
-        expect(result.userSwatches).toEqual([result.createdUserSwatch])
-    })
-
-    it("creates a separate preset user paint swatch even when the color already exists", () => {
-        const result = prepareStrokePaintSwatch({
-            activeTab: "presets",
-            selectedSwatch: "auto-2",
-            autoSwatches: [{ id: "auto-2", color: "#aabbcc" }],
-            userSwatches: [{ id: "user-existing", color: "#AABBCC" }],
-            makeUserSwatch: (source) => ({
-                ...source,
-                id: "user-copy",
-                isUser: true,
-            }),
-        })
-
-        expect(result.paintSwatch).toBe("user-copy")
+        expect(result.carried).toBe(true)
         expect(result.userSwatches).toEqual([
-            { id: "user-existing", color: "#AABBCC" },
-            { id: "user-copy", color: "#aabbcc", isUser: true },
-        ])
-        expect(result.createdUserSwatch).toEqual({
-            id: "user-copy",
-            color: "#aabbcc",
-            isUser: true,
-        })
-    })
-
-    it("does not promote the transparent tool into a user paint swatch", () => {
-        const result = prepareStrokePaintSwatch({
-            activeTab: "presets",
-            selectedSwatch: "transparent",
-            autoSwatches: [{ id: "auto-0", color: "#FFFFFF" }],
-            userSwatches: [],
-            makeUserSwatch: (source) => ({
-                ...source,
-                id: "user-copy",
+            {
+                id: "user-keep",
+                color: "#123456",
+                isTransparent: false,
                 isUser: true,
-            }),
-        })
-
-        expect(result.paintSwatch).toBe("transparent")
-        expect(result.userSwatches).toEqual([])
-        expect(result.createdUserSwatch).toBeNull()
+            },
+            {
+                id: "user-from-auto-1",
+                color: "#00AA00",
+                isTransparent: false,
+                isUser: true,
+            },
+        ])
+        expect(result.world.overlayPixels).toEqual([
+            ["auto-0", "user-from-auto-1"],
+            ["__PX_TRANSPARENT__", "user-keep"],
+        ])
+        expect(result.world.canvasPixels).toEqual([
+            ["auto-0", "user-from-auto-1"],
+            ["__PX_TRANSPARENT__", "user-keep"],
+        ])
+        expect(result.carriedAutoSwatches).toEqual([
+            {
+                sourceAutoId: "auto-1",
+                userSwatchId: "user-from-auto-1",
+                cells: [{ row: 0, column: 1 }],
+            },
+        ])
     })
 
     it("prepares user swatch creation project applications", () => {
@@ -1850,7 +1874,7 @@ describe("palette state", () => {
         ])
     })
 
-    it("prepares active user swatch deletion without remapping its pixels", () => {
+    it("prepares active user swatch deletion without changing base pixels", () => {
         const result = prepareSwatchDelete({
             swatchId: "user-0",
             imagePixels: [["auto-0", "user-0"]],
@@ -1862,7 +1886,7 @@ describe("palette state", () => {
         })
 
         expect(result.removed).toBe(true)
-        expect(result.imagePixels).toEqual([["auto-0", null]])
+        expect(result.imagePixels).toEqual([["auto-0", "user-0"]])
         expect(result.overlayPixels).toEqual([[null, "user-1"]])
         expect(result.autoSwatches.map((swatch) => swatch.id)).toEqual([
             "auto-0",

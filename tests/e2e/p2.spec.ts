@@ -614,6 +614,391 @@ test("palette tab world switches are undoable when they change the canvas", asyn
     expect(errors.flush()).toEqual([])
 })
 
+test("palette strokes survive preset-to-auto round-trips as user swatches", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    const strokeHex = await getFirstNonMonochromeSwatchTitle(page)
+    await clickSwatchByTitle(page, strokeHex)
+    await page.locator("canvas").first().click({ position: { x: 40, y: 40 } })
+    await settle(page)
+
+    const autoStrokeSave = await downloadProjectSave(page)
+    const autoStrokeSnapshot = JSON.parse(
+        await readFile(autoStrokeSave.path, "utf8")
+    )
+    const originalAutoStrokeSwatches = autoStrokeSnapshot.palette.swatches.filter(
+        (swatch: { hex: string; index: number; isUser?: boolean }) =>
+            !swatch.isUser && swatch.hex.toUpperCase() === strokeHex
+    )
+    const originalAutoStrokeIndexes = new Set(
+        originalAutoStrokeSwatches.map(
+            (swatch: { index: number }) => swatch.index
+        )
+    )
+    expect(originalAutoStrokeSwatches.length).toBeGreaterThan(0)
+    expect(
+        autoStrokeSnapshot.strokeLayer.cells.some(
+            (cell: { swatchIndex: number }) =>
+                originalAutoStrokeIndexes.has(cell.swatchIndex)
+        )
+    ).toBe(true)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+    const presetStrokeHex = (await getVisibleSwatchTitle(page, 1)).toUpperCase()
+    await clickSwatchByTitle(page, presetStrokeHex)
+    await page.locator("canvas").first().click({ position: { x: 180, y: 80 } })
+    await settle(page)
+
+    const presetSave = await downloadProjectSave(page)
+    const presetSnapshot = JSON.parse(await readFile(presetSave.path, "utf8"))
+    const presetDrawnSwatch = getNearbyStrokeCellSwatch(
+        presetSnapshot,
+        canvasPointToGridCell(180, 80, presetSnapshot.gridSize),
+        presetStrokeHex
+    )
+    expect(presetDrawnSwatch?.hex.toUpperCase()).toBe(presetStrokeHex)
+    expect(presetDrawnSwatch?.isUser).not.toBe(true)
+    expect(
+        presetSnapshot.palette.swatches.some(
+            (swatch: { hex: string; isUser?: boolean }) =>
+                !!swatch.isUser &&
+                swatch.hex.toUpperCase() === presetStrokeHex
+        )
+    ).toBe(false)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+
+    const save = await downloadProjectSave(page)
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    const restoredAutoStrokeSwatch = getNearbyStrokeCellSwatch(
+        snapshot,
+        canvasPointToGridCell(40, 40, snapshot.gridSize),
+        strokeHex
+    )
+    const carriedPresetStrokeSwatch = getNearbyStrokeCellSwatch(
+        snapshot,
+        canvasPointToGridCell(180, 80, snapshot.gridSize),
+        presetStrokeHex
+    )
+
+    expect(restoredAutoStrokeSwatch?.hex.toUpperCase()).toBe(strokeHex)
+    expect(restoredAutoStrokeSwatch?.isUser).not.toBe(true)
+    expect(carriedPresetStrokeSwatch?.hex.toUpperCase()).toBe(presetStrokeHex)
+    expect(carriedPresetStrokeSwatch?.isUser).toBe(true)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await settle(page)
+
+    const roundTripPresetSave = await downloadProjectSave(page)
+    const roundTripPresetSnapshot = JSON.parse(
+        await readFile(roundTripPresetSave.path, "utf8")
+    )
+    const roundTripPresetStrokeSwatch = getNearbyStrokeCellSwatch(
+        roundTripPresetSnapshot,
+        canvasPointToGridCell(180, 80, roundTripPresetSnapshot.gridSize),
+        presetStrokeHex
+    )
+    expect(roundTripPresetStrokeSwatch?.hex.toUpperCase()).toBe(presetStrokeHex)
+    expect(roundTripPresetStrokeSwatch?.isUser).not.toBe(true)
+    await expect(page.locator(`button[title="${presetStrokeHex}"]`)).toHaveCount(
+        1
+    )
+    expect(errors.flush()).toEqual([])
+})
+
+test("auto user swatch strokes survive immediate fixed preset application", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    const strokeHex = "#6DFF4A"
+    const strokePoint = { x: 260, y: 140 }
+    const autoBeforeSave = await downloadProjectSave(page)
+    const autoBeforeSnapshot = JSON.parse(
+        await readFile(autoBeforeSave.path, "utf8")
+    )
+    const strokeCell = canvasPointToGridCell(
+        strokePoint.x,
+        strokePoint.y,
+        autoBeforeSnapshot.gridSize
+    )
+
+    await page.locator('button[title="Add swatch"]').first().click()
+    await page.getByLabel("HEX input").fill(strokeHex)
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+
+    await clickSwatchByTitle(page, strokeHex)
+    await page.locator("canvas").first().click({ position: strokePoint })
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+
+    const presetSave = await downloadProjectSave(page)
+    const presetSnapshot = JSON.parse(await readFile(presetSave.path, "utf8"))
+    const presetStrokeSwatch = getNearbyStrokeCellSwatch(
+        presetSnapshot,
+        strokeCell,
+        strokeHex
+    )
+    expect(presetStrokeSwatch?.hex.toUpperCase()).toBe(strokeHex)
+    expect(presetStrokeSwatch?.isUser).toBe(true)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("auto strokes survive switching through an existing preset to another preset", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+
+    const autoStrokeHex = await getFirstNonMonochromeSwatchTitle(page)
+    const autoStrokePoint = { x: 40, y: 40 }
+    await clickSwatchByTitle(page, autoStrokeHex)
+    await page.locator("canvas").first().click({ position: autoStrokePoint })
+    await settle(page)
+
+    const userStrokeHex = "#6DFF4A"
+    const userStrokePoint = { x: 260, y: 140 }
+    await page.locator('button[title="Add swatch"]').first().click()
+    await page.getByLabel("HEX input").fill(userStrokeHex)
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+
+    await clickSwatchByTitle(page, userStrokeHex)
+    await page.locator("canvas").first().click({ position: userStrokePoint })
+    await settle(page)
+
+    const autoSave = await downloadProjectSave(page)
+    const autoSnapshot = JSON.parse(await readFile(autoSave.path, "utf8"))
+    const autoStrokeCell = canvasPointToGridCell(
+        autoStrokePoint.x,
+        autoStrokePoint.y,
+        autoSnapshot.gridSize
+    )
+    const userStrokeCell = canvasPointToGridCell(
+        userStrokePoint.x,
+        userStrokePoint.y,
+        autoSnapshot.gridSize
+    )
+    expect(
+        getNearbyStrokeCellSwatch(autoSnapshot, autoStrokeCell, autoStrokeHex)
+            ?.hex
+    ).toBe(autoStrokeHex)
+    expect(
+        getNearbyStrokeCellSwatch(autoSnapshot, userStrokeCell, userStrokeHex)
+            ?.hex
+    ).toBe(userStrokeHex)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    const enteredPresetSave = await downloadProjectSave(page)
+    const enteredPresetSnapshot = JSON.parse(
+        await readFile(enteredPresetSave.path, "utf8")
+    )
+    expect(
+        getNearbyAnyStrokeCellSwatch(enteredPresetSnapshot, autoStrokeCell)
+    ).not.toBeNull()
+    expect(
+        getNearbyStrokeCellSwatch(
+            enteredPresetSnapshot,
+            userStrokeCell,
+            userStrokeHex
+        )?.hex
+    ).toBe(userStrokeHex)
+
+    await page.getByRole("button", { name: /^GRAY\b/ }).click()
+    await settle(page)
+
+    const presetSave = await downloadProjectSave(page)
+    const presetSnapshot = JSON.parse(await readFile(presetSave.path, "utf8"))
+    const presetAutoStrokeSwatch = getNearbyAnyStrokeCellSwatch(
+        presetSnapshot,
+        autoStrokeCell
+    )
+    const presetUserStrokeSwatch = getNearbyStrokeCellSwatch(
+        presetSnapshot,
+        userStrokeCell,
+        userStrokeHex
+    )
+    expect(presetAutoStrokeSwatch).not.toBeNull()
+    expect(presetUserStrokeSwatch?.hex.toUpperCase()).toBe(userStrokeHex)
+    expect(presetUserStrokeSwatch?.isUser).toBe(true)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("deleting a preset stroke guest in auto removes the preset stroke only", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+
+    const presetStrokeHex = (await getVisibleSwatchTitle(page, 1)).toUpperCase()
+    await clickSwatchByTitle(page, presetStrokeHex)
+    await page.locator("canvas").first().click({ position: { x: 180, y: 80 } })
+    await settle(page)
+
+    const presetSave = await downloadProjectSave(page)
+    const presetSnapshot = JSON.parse(await readFile(presetSave.path, "utf8"))
+    const presetStrokeCell = canvasPointToGridCell(
+        180,
+        80,
+        presetSnapshot.gridSize
+    )
+    const presetStrokeSwatch = getNearbyStrokeCellSwatch(
+        presetSnapshot,
+        presetStrokeCell,
+        presetStrokeHex
+    )
+    expect(presetStrokeSwatch?.hex.toUpperCase()).toBe(presetStrokeHex)
+    expect(presetStrokeSwatch?.isUser).not.toBe(true)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+
+    const autoGuestSwatch = page
+        .locator(`button[title="${presetStrokeHex}"]`)
+        .last()
+    await expect(autoGuestSwatch).toBeVisible()
+    await autoGuestSwatch.click({ button: "right" })
+    await expect(page.getByText("SWATCH EDIT")).toBeVisible()
+    await page.getByLabel("Delete swatch").check()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByText("SWATCH EDIT")).toHaveCount(0)
+    await settle(page)
+
+    const autoAfterDeleteSave = await downloadProjectSave(page)
+    const autoAfterDeleteSnapshot = JSON.parse(
+        await readFile(autoAfterDeleteSave.path, "utf8")
+    )
+    expect(
+        getNearbyStrokeCellSwatch(
+            autoAfterDeleteSnapshot,
+            presetStrokeCell,
+            presetStrokeHex
+        )
+    ).toBeNull()
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await settle(page)
+
+    await expect(page.getByRole("button", { name: /^SUNSET\b/ })).toBeVisible()
+    await expect(page.locator('button[title="#9B2226"]').first()).toBeVisible()
+    await expect(page.locator(`button[title="${presetStrokeHex}"]`)).toHaveCount(
+        1
+    )
+
+    const presetAfterDeleteSave = await downloadProjectSave(page)
+    const presetAfterDeleteSnapshot = JSON.parse(
+        await readFile(presetAfterDeleteSave.path, "utf8")
+    )
+    expect(
+        getNearbyStrokeCellSwatch(
+            presetAfterDeleteSnapshot,
+            presetStrokeCell,
+            presetStrokeHex
+        )
+    ).toBeNull()
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("deleting an auto user stroke from presets does not leave an auto hole", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    const strokeHex = "#F72B55"
+    const strokePoint = { x: 260, y: 140 }
+    const autoBeforeSave = await downloadProjectSave(page)
+    const autoBeforeSnapshot = JSON.parse(
+        await readFile(autoBeforeSave.path, "utf8")
+    )
+    const strokeCell = canvasPointToGridCell(
+        strokePoint.x,
+        strokePoint.y,
+        autoBeforeSnapshot.gridSize
+    )
+    const baseImportCell = getImportLayerCell(autoBeforeSnapshot, strokeCell)
+
+    await page.locator('button[title="Add swatch"]').first().click()
+    await page.getByLabel("HEX input").fill(strokeHex)
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+
+    await clickSwatchByTitle(page, strokeHex)
+    await page.locator("canvas").first().click({ position: strokePoint })
+    await settle(page)
+
+    const autoStrokeSave = await downloadProjectSave(page)
+    const autoStrokeSnapshot = JSON.parse(
+        await readFile(autoStrokeSave.path, "utf8")
+    )
+    expect(
+        getNearbyStrokeCellSwatch(autoStrokeSnapshot, strokeCell, strokeHex)
+            ?.hex
+    ).toBe(strokeHex)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+
+    const presetUserSwatch = page.locator(`button[title="${strokeHex}"]`).last()
+    await expect(presetUserSwatch).toBeVisible()
+    await presetUserSwatch.click({ button: "right" })
+    await expect(page.getByText("SWATCH EDIT")).toBeVisible()
+    await page.getByLabel("Delete swatch").check()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByText("SWATCH EDIT")).toHaveCount(0)
+    await settle(page)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+
+    await expect(page.locator(`button[title="${strokeHex}"]`)).toHaveCount(0)
+
+    const autoAfterDeleteSave = await downloadProjectSave(page)
+    const autoAfterDeleteSnapshot = JSON.parse(
+        await readFile(autoAfterDeleteSave.path, "utf8")
+    )
+    expect(
+        getNearbyStrokeCellSwatch(
+            autoAfterDeleteSnapshot,
+            canvasPointToGridCell(
+                strokePoint.x,
+                strokePoint.y,
+                autoAfterDeleteSnapshot.gridSize
+            ),
+            strokeHex
+        )
+    ).toBeNull()
+    expect(getImportLayerCell(autoAfterDeleteSnapshot, strokeCell)).toBe(
+        baseImportCell
+    )
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("new preset choices coalesce restored palette tab worlds in undo history", async ({
     page,
 }) => {
@@ -1156,6 +1541,134 @@ async function getVisibleSwatchTitle(page: Page, index: number) {
     const title = await swatch.getAttribute("title")
     expect(title).toMatch(/^#[0-9A-F]{6}$/i)
     return title ?? ""
+}
+
+function canvasPointToGridCell(x: number, y: number, gridSize: number) {
+    const size = Number.isFinite(gridSize) && gridSize > 0 ? gridSize : 128
+    return {
+        row: Math.floor((y / 512) * size),
+        column: Math.floor((x / 512) * size),
+    }
+}
+
+function getStrokeCellSwatch(
+    snapshot: {
+        gridSize: number
+        palette: {
+            swatches: Array<{
+                index: number
+                hex: string
+                isUser?: boolean
+            }>
+        }
+        strokeLayer: {
+            cells: Array<{
+                cellIndex: number
+                swatchIndex: number
+            }>
+        }
+    },
+    cell: { row: number; column: number }
+) {
+    const cellIndex = cell.row * snapshot.gridSize + cell.column
+    const strokeCell = snapshot.strokeLayer.cells.find(
+        (item) => item.cellIndex === cellIndex
+    )
+    if (!strokeCell) return null
+
+    return (
+        snapshot.palette.swatches.find(
+            (swatch) => swatch.index === strokeCell.swatchIndex
+        ) ?? null
+    )
+}
+
+function getImportLayerCell(
+    snapshot: {
+        gridSize: number
+        importLayer: {
+            cells: number[]
+        }
+    },
+    cell: { row: number; column: number }
+) {
+    return snapshot.importLayer.cells[cell.row * snapshot.gridSize + cell.column]
+}
+
+function getNearbyStrokeCellSwatch(
+    snapshot: Parameters<typeof getStrokeCellSwatch>[0],
+    cell: { row: number; column: number },
+    expectedHex: string,
+    radius = 8
+) {
+    for (let row = cell.row - radius; row <= cell.row + radius; row += 1) {
+        for (
+            let column = cell.column - radius;
+            column <= cell.column + radius;
+            column += 1
+        ) {
+            if (
+                row < 0 ||
+                column < 0 ||
+                row >= snapshot.gridSize ||
+                column >= snapshot.gridSize
+            ) {
+                continue
+            }
+            const swatch = getStrokeCellSwatch(snapshot, { row, column })
+            if (swatch?.hex.toUpperCase() === expectedHex) return swatch
+        }
+    }
+
+    return null
+}
+
+function getNearbyAnyStrokeCellSwatch(
+    snapshot: Parameters<typeof getStrokeCellSwatch>[0],
+    cell: { row: number; column: number },
+    radius = 8
+) {
+    for (let row = cell.row - radius; row <= cell.row + radius; row += 1) {
+        for (
+            let column = cell.column - radius;
+            column <= cell.column + radius;
+            column += 1
+        ) {
+            if (
+                row < 0 ||
+                column < 0 ||
+                row >= snapshot.gridSize ||
+                column >= snapshot.gridSize
+            ) {
+                continue
+            }
+            const swatch = getStrokeCellSwatch(snapshot, { row, column })
+            if (swatch) return swatch
+        }
+    }
+
+    return null
+}
+
+async function getFirstNonMonochromeSwatchTitle(page: Page) {
+    await expect(page.locator('button[title^="#"]').first()).toBeVisible()
+    const title = await page.locator('button[title^="#"]').evaluateAll(
+        (buttons) =>
+            buttons
+                .map((button) =>
+                    (button as HTMLButtonElement).getAttribute("title")
+                )
+                .find((value) => {
+                    const hex = value?.toUpperCase()
+                    return (
+                        /^#[0-9A-F]{6}$/.test(hex ?? "") &&
+                        hex !== "#000000" &&
+                        hex !== "#FFFFFF"
+                    )
+                }) ?? null
+    )
+    expect(title).toMatch(/^#[0-9A-F]{6}$/i)
+    return title?.toUpperCase() ?? ""
 }
 
 async function clickSwatchByTitle(page: Page, title: string) {

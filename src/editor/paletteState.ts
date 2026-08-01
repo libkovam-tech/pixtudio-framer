@@ -8,7 +8,10 @@ import {
     type ImageDataSampleSource,
     type ImportedPalettePresetForHistory,
 } from "./editorHistoryState.ts"
-import type { QuantizationProfile } from "./paletteQuantizationEngine.ts"
+import {
+    overlayOverBase,
+    type QuantizationProfile,
+} from "./paletteQuantizationEngine.ts"
 
 export type PaletteSwatchLike = {
     id?: string | null
@@ -167,6 +170,144 @@ export function prepareCurrentPaletteWorldSnapshot<
         imagePixels: clonePixelsGrid(input.imagePixels),
         overlayPixels: clonePixelsGrid(input.overlayPixels),
         canvasPixels: clonePixelsGrid(input.canvasPixels),
+    }
+}
+
+export function preparePresetOverlayCarryToAutoWorld<
+    TWorld extends PaletteWorldSnapshotLike<TSwatch, TPixel>,
+    TSwatch extends PalettePaintSwatchLike & { id: string },
+    TPixel extends string | null,
+>(input: {
+    targetWorld: TWorld
+    sourceWorld: PaletteWorldSnapshotLike<TSwatch, TPixel>
+    userSwatches: ReadonlyArray<TSwatch>
+    transparentPixel?: TPixel
+    shouldCarryCell?: (row: number, column: number) => boolean
+    makeUserSwatch: (source: TSwatch) => TSwatch
+}): {
+    world: TWorld
+    userSwatches: TSwatch[]
+    carried: boolean
+    carriedAutoSwatches: Array<{
+        sourceAutoId: string
+        userSwatchId: string
+        cells: Array<{ row: number; column: number }>
+    }>
+} {
+    const nextUserSwatches = clonePaletteSwatches(input.userSwatches)
+    const userById = new Map(nextUserSwatches.map((swatch) => [swatch.id, swatch]))
+    const sourceAutoById = new Map(
+        input.sourceWorld.autoSwatches.map((swatch) => [swatch.id, swatch])
+    )
+    const carriedAutoToUser = new Map<string, string>()
+    const carriedAutoRecords = new Map<
+        string,
+        {
+            sourceAutoId: string
+            userSwatchId: string
+            cells: Array<{ row: number; column: number }>
+        }
+    >()
+    const nextOverlay = clonePaletteGrid(input.targetWorld.overlayPixels)
+    let carried = false
+
+    const getUserIdForSourceAuto = (source: TSwatch): string => {
+        const existing = carriedAutoToUser.get(source.id)
+        if (existing) return existing
+
+        const created = input.makeUserSwatch(source)
+        nextUserSwatches.push(created)
+        userById.set(created.id, created)
+        carriedAutoToUser.set(source.id, created.id)
+        carriedAutoRecords.set(source.id, {
+            sourceAutoId: source.id,
+            userSwatchId: created.id,
+            cells: [],
+        })
+        return created.id
+    }
+
+    for (let r = 0; r < input.sourceWorld.overlayPixels.length; r += 1) {
+        const sourceRow = input.sourceWorld.overlayPixels[r] ?? []
+        const targetRow = nextOverlay[r]
+        if (!targetRow) continue
+
+        for (let c = 0; c < sourceRow.length; c += 1) {
+            if (input.shouldCarryCell && !input.shouldCarryCell(r, c)) {
+                continue
+            }
+
+            const sourcePixel = sourceRow[c] ?? null
+            if (sourcePixel === null) continue
+
+            if (
+                input.transparentPixel !== undefined &&
+                sourcePixel === input.transparentPixel
+            ) {
+                targetRow[c] = sourcePixel
+                carried = true
+                continue
+            }
+
+            const sourceId = String(sourcePixel)
+            if (userById.has(sourceId)) {
+                targetRow[c] = sourcePixel
+                carried = true
+                continue
+            }
+
+            const sourceAuto = sourceAutoById.get(sourceId)
+            if (!sourceAuto) continue
+
+            if (sourceAuto.isTransparent) {
+                if (input.transparentPixel !== undefined) {
+                    targetRow[c] = input.transparentPixel
+                    carried = true
+                }
+                continue
+            }
+
+            const userSwatchId = getUserIdForSourceAuto(sourceAuto)
+            targetRow[c] = userSwatchId as TPixel
+            carriedAutoRecords.get(sourceAuto.id)?.cells.push({
+                row: r,
+                column: c,
+            })
+            carried = true
+        }
+    }
+
+    const carriedAutoSwatches = Array.from(carriedAutoRecords.values()).filter(
+        (record) => record.cells.length > 0
+    )
+
+    if (!carried) {
+        return {
+            world: {
+                ...input.targetWorld,
+                imagePixels: clonePaletteGrid(input.targetWorld.imagePixels),
+                overlayPixels: nextOverlay,
+                canvasPixels: clonePaletteGrid(input.targetWorld.canvasPixels),
+            },
+            userSwatches: nextUserSwatches,
+            carried: false,
+            carriedAutoSwatches,
+        }
+    }
+
+    return {
+        world: {
+            ...input.targetWorld,
+            imagePixels: clonePaletteGrid(input.targetWorld.imagePixels),
+            overlayPixels: nextOverlay,
+            canvasPixels: overlayOverBase(
+                clonePaletteGrid(input.targetWorld.imagePixels),
+                nextOverlay
+            ),
+        },
+        userSwatches: nextUserSwatches,
+        carried: true,
+        carriedAutoSwatches,
     }
 }
 
@@ -816,68 +957,6 @@ export function prepareAutoOverridesForSwatchEdit(input: {
     return nextAutoOverrides
 }
 
-export function prepareStrokePaintSwatch<TSwatch extends PalettePaintSwatchLike>(
-    input: {
-        activeTab: PaletteTabKey
-        selectedSwatch: PaletteSelection
-        autoSwatches: ReadonlyArray<TSwatch>
-        userSwatches: ReadonlyArray<TSwatch>
-        makeUserSwatch: (source: TSwatch) => TSwatch
-    }
-): {
-    paintSwatch: PaletteSelection
-    userSwatches: TSwatch[]
-    createdUserSwatch: TSwatch | null
-} {
-    const {
-        activeTab,
-        selectedSwatch,
-        autoSwatches,
-        userSwatches,
-        makeUserSwatch,
-    } = input
-
-    if (selectedSwatch === "transparent") {
-        return {
-            paintSwatch: selectedSwatch,
-            userSwatches: userSwatches.slice(),
-            createdUserSwatch: null,
-        }
-    }
-
-    if (activeTab !== "presets") {
-        return {
-            paintSwatch: selectedSwatch,
-            userSwatches: userSwatches.slice(),
-            createdUserSwatch: null,
-        }
-    }
-
-    if (swatchListHasId(userSwatches, selectedSwatch)) {
-        return {
-            paintSwatch: selectedSwatch,
-            userSwatches: userSwatches.slice(),
-            createdUserSwatch: null,
-        }
-    }
-
-    const source = autoSwatches.find((swatch) => swatch.id === selectedSwatch)
-    if (!source || source.isTransparent) {
-        return {
-            paintSwatch: selectedSwatch,
-            userSwatches: userSwatches.slice(),
-            createdUserSwatch: null,
-        }
-    }
-
-    const createdUserSwatch = makeUserSwatch(source)
-    return {
-        paintSwatch: createdUserSwatch.id ?? selectedSwatch,
-        userSwatches: [...userSwatches, createdUserSwatch],
-        createdUserSwatch,
-    }
-}
-
 function arePaletteAutoOverridesEqual<TOverride>(
     current: PaletteAutoOverridesMap<TOverride> | null | undefined,
     next: PaletteAutoOverridesMap<TOverride> | null | undefined
@@ -1187,17 +1266,22 @@ export function prepareSwatchDelete<
     const deletedAutoSwatch = input.swatchId.startsWith("auto-")
         ? input.autoSwatches.find((swatch) => swatch.id === input.swatchId)
         : undefined
+    const deletedUserSwatch = input.userSwatches.find(
+        (swatch) => swatch.id === input.swatchId
+    )
     const autoRemapTarget = findNearestAutoSwatchId({
         deletedSwatch: deletedAutoSwatch,
         targetAutoSwatches: nextAuto,
     })
-    const nextImage = autoRemapTarget
-        ? remapPalettePixelValueInGrid(
-              input.imagePixels,
-              input.swatchId,
-              autoRemapTarget
-          )
-        : removePalettePixelValueFromGrid(input.imagePixels, input.swatchId)
+    const nextImage = deletedUserSwatch
+        ? input.imagePixels
+        : autoRemapTarget
+          ? remapPalettePixelValueInGrid(
+                input.imagePixels,
+                input.swatchId,
+                autoRemapTarget
+            )
+          : removePalettePixelValueFromGrid(input.imagePixels, input.swatchId)
     const nextOverlay = autoRemapTarget
         ? remapPalettePixelValueInGrid(
               input.overlayPixels,

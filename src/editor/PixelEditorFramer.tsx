@@ -77,7 +77,6 @@ import {
     prepareFixedPaletteVocabularyExtensionProjectApplicationFromReference,
     preparePalettePresetDeleteDecision,
     preparePaletteTabReferenceWorld,
-    prepareSharedOverlayPaletteWorld,
 } from "./palettePresetExtension.ts"
 import { PalettePanel } from "./PalettePanel.tsx"
 import { MethodPanel } from "./MethodPanel.tsx"
@@ -95,6 +94,7 @@ import {
     prepareCurrentPaletteWorldSnapshot,
     preparePaletteSliderCommitCleanup,
     preparePaletteProjectStateRestoreTabs,
+    preparePresetOverlayCarryToAutoWorld,
     preparePalettePresetSessionReset,
     preparePaletteSwatchDeleteProjectApplication,
     preparePaletteSwatchEditProjectApplication,
@@ -103,7 +103,6 @@ import {
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
-    prepareStrokePaintSwatch,
     prepareUserSwatchCreateProjectApplication,
 } from "./paletteState.ts"
 import {
@@ -3442,6 +3441,11 @@ function PixelEditorFramer({
         sizeWorld: null,
         presetsWorld: null,
     })
+    const paletteTabsStateRef =
+        React.useRef<PaletteTabsState<PixelValue>>(paletteTabsState)
+    React.useEffect(() => {
+        paletteTabsStateRef.current = paletteTabsState
+    }, [paletteTabsState])
     const [activePresetButton, setActivePresetButton] = React.useState<
         string | null
     >(null)
@@ -4118,6 +4122,14 @@ function PixelEditorFramer({
         Map<string, PixelValue>
     >(new Map())
 
+    type PaintRefOverlaySnapshots = {
+        colorSnapshot: ImageData | null
+        userSnapshot: ImageData | null
+        userValueByHex: Map<string, PixelValue>
+        transparentSnapshot: ImageData | null
+        transparentValueByHex: Map<string, PixelValue>
+    }
+
     // Nonce for guards and future keys.
     const paintSnapshotNonceRef = React.useRef(0)
 
@@ -4145,11 +4157,11 @@ function PixelEditorFramer({
         paintTransparentRefValueByHexRef.current = new Map()
     }
 
-    function capturePaintRefsFromOverlay(params: {
+    function renderPaintRefSnapshotsFromOverlay(params: {
         overlay: PixelValue[][]
         autoSwatches: Swatch[]
         userSwatches: Swatch[]
-    }) {
+    }): PaintRefOverlaySnapshots {
         const colorSnap = renderPaintGridToImageData({
             paintGrid: params.overlay,
             autoSwatches: params.autoSwatches,
@@ -4184,13 +4196,29 @@ function PixelEditorFramer({
             get2dContext: get2dReadFrequentlyContext,
         })
 
-        setPaintRefImageData(colorSnap)
-        setPaintUserRefImageData(userSnap.count > 0 ? userSnap.imageData : null)
-        setPaintTransparentRefImageData(
-            transparentSnap.count > 0 ? transparentSnap.imageData : null
-        )
-        paintUserRefValueByHexRef.current = userSnap.valueByHex
-        paintTransparentRefValueByHexRef.current = transparentSnap.valueByHex
+        return {
+            colorSnapshot: colorSnap,
+            userSnapshot: userSnap.count > 0 ? userSnap.imageData : null,
+            userValueByHex: userSnap.valueByHex,
+            transparentSnapshot:
+                transparentSnap.count > 0 ? transparentSnap.imageData : null,
+            transparentValueByHex: transparentSnap.valueByHex,
+        }
+    }
+
+    function capturePaintRefsFromOverlay(params: {
+        overlay: PixelValue[][]
+        autoSwatches: Swatch[]
+        userSwatches: Swatch[]
+    }) {
+        const snapshots = renderPaintRefSnapshotsFromOverlay(params)
+
+        setPaintRefImageData(snapshots.colorSnapshot)
+        setPaintUserRefImageData(snapshots.userSnapshot)
+        setPaintTransparentRefImageData(snapshots.transparentSnapshot)
+        paintUserRefValueByHexRef.current = snapshots.userValueByHex
+        paintTransparentRefValueByHexRef.current =
+            snapshots.transparentValueByHex
     }
 
     function fnv1a32_u32(str: string): number {
@@ -4528,6 +4556,36 @@ function PixelEditorFramer({
         return out
     }
 
+    function removeOverlaySwatchFromPaletteWorld(
+        world: DerivedWorld<PixelValue> | null,
+        swatchId: SwatchId
+    ): DerivedWorld<PixelValue> | null {
+        if (!world) return world
+
+        const nextOverlay = clonePixelsGrid(world.overlayPixels)
+        let changed = false
+
+        for (let r = 0; r < nextOverlay.length; r += 1) {
+            const row = nextOverlay[r]
+            for (let c = 0; c < row.length; c += 1) {
+                if (row[c] === swatchId) {
+                    row[c] = null
+                    changed = true
+                }
+            }
+        }
+
+        if (!changed) return world
+
+        const nextImage = clonePixelsGrid(world.imagePixels)
+        return {
+            ...world,
+            imagePixels: nextImage,
+            overlayPixels: nextOverlay,
+            canvasPixels: overlayOverBaseGrid(nextImage, nextOverlay),
+        }
+    }
+
     const liveGridPreviewOwnerRef = React.useRef(false)
 
     function publishCanvasFrameAtomic(params: {
@@ -4861,6 +4919,45 @@ function PixelEditorFramer({
             selectedSwatch
     }, [paletteTabsState.activeTab, selectedSwatch])
 
+    type PaletteAction = () => void
+    const paletteActionBusyRef = React.useRef(false)
+    const paletteActionQueueRef = React.useRef<PaletteAction[]>([])
+
+    function releasePaletteActionLockAfterPaint() {
+        const release = () => {
+            paletteActionBusyRef.current = false
+            const next = paletteActionQueueRef.current.shift()
+            if (next) runPaletteActionExclusive(next)
+        }
+
+        if (typeof window !== "undefined" && window.requestAnimationFrame) {
+            window.requestAnimationFrame(() =>
+                window.requestAnimationFrame(release)
+            )
+            return
+        }
+
+        setTimeout(release, 0)
+    }
+
+    function runPaletteActionExclusive(action: PaletteAction) {
+        paletteActionBusyRef.current = true
+        try {
+            action()
+        } finally {
+            releasePaletteActionLockAfterPaint()
+        }
+    }
+
+    function enqueuePaletteAction(action: PaletteAction) {
+        if (paletteActionBusyRef.current) {
+            paletteActionQueueRef.current.push(action)
+            return
+        }
+
+        runPaletteActionExclusive(action)
+    }
+
     const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
     const offscreenRef = React.useRef<HTMLCanvasElement | null>(null)
     const [isDrawing, setIsDrawing] = React.useState(false)
@@ -5030,25 +5127,24 @@ function PixelEditorFramer({
     const isRestoringHistoryRef = React.useRef(false)
 
     function makeCurrentDerivedWorldSnapshot(): DerivedWorld<PixelValue> {
-        return prepareCurrentPaletteWorldSnapshot({
-            profile: quantizationProfile,
-            referenceSignature: imageDataSampleSignature(originalImageData),
-            autoSwatches,
-            imagePixels,
-            overlayPixels,
-            canvasPixels,
-        })
-    }
+        const currentState = latestProjectStateRef.current
+        const currentImagePixels = currentState?.imagePixels ?? imagePixels
+        const currentOverlayPixels = currentState?.overlayPixels ?? overlayPixels
+        const currentAutoSwatches = currentState?.autoSwatches ?? autoSwatches
+        const currentProfile =
+            currentState?.quantizationProfile ?? quantizationProfile
+        const currentCanvasPixels = overlayOverBaseGrid(
+            currentImagePixels,
+            currentOverlayPixels
+        )
 
-    function shareOverlayWithDerivedWorld(
-        world: DerivedWorld<PixelValue>,
-        sharedOverlay: PixelValue[][]
-    ): DerivedWorld<PixelValue> {
-        return prepareSharedOverlayPaletteWorld({
-            world,
-            sharedOverlay,
-            currentAutoSwatches: autoSwatches,
-            userSwatches,
+        return prepareCurrentPaletteWorldSnapshot({
+            profile: currentProfile,
+            referenceSignature: imageDataSampleSignature(originalImageData),
+            autoSwatches: currentAutoSwatches,
+            imagePixels: currentImagePixels,
+            overlayPixels: currentOverlayPixels,
+            canvasPixels: currentCanvasPixels,
         })
     }
 
@@ -5376,38 +5472,147 @@ function PixelEditorFramer({
 
     function buildPaletteWorldForTab(
         tab: PaletteTab,
-        staleWorld?: DerivedWorld<PixelValue> | null
+        staleWorld?: DerivedWorld<PixelValue> | null,
+        overrides?: {
+            overlayPixels?: PixelValue[][]
+            previousSwatches?: Swatch[]
+            userSwatches?: Swatch[]
+        }
     ): DerivedWorld<PixelValue> | null {
+        const currentState = latestProjectStateRef.current
+        const currentOverlayPixels =
+            overrides?.overlayPixels ??
+            currentState?.overlayPixels ??
+            overlayPixels
+        const currentAutoSwatches =
+            overrides?.previousSwatches ??
+            currentState?.autoSwatches ??
+            autoSwatches
+        const currentUserSwatches =
+            overrides?.userSwatches ??
+            currentState?.userSwatches ??
+            userSwatches
+        const currentProfile =
+            currentState?.quantizationProfile ?? quantizationProfile
+        const currentMethodProfilesByPaletteContext =
+            currentState?.methodProfilesByPaletteContext ??
+            methodProfilesByPaletteContext
+        const currentDeConfettiByPaletteContext =
+            currentState?.deConfettiByPaletteContext ??
+            deConfettiByPaletteContext
+        const currentDeletedAutoPaletteColors =
+            currentState?.deletedAutoPaletteColors ?? deletedAutoPaletteColors
+
         return preparePaletteTabReferenceWorld({
             tab,
             staleWorld,
-            currentProfile: quantizationProfile,
+            currentProfile,
             referenceSnapshot: originalImageData,
             gridSize,
-            overlayPixels,
-            previousSwatches: autoSwatches,
-            userSwatches,
+            overlayPixels: currentOverlayPixels,
+            previousSwatches: currentAutoSwatches,
+            userSwatches: currentUserSwatches,
             paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
-            methodProfilesByPaletteContext,
-            deConfettiByPaletteContext,
-            excludedColors: deletedAutoPaletteColors,
+            methodProfilesByPaletteContext: currentMethodProfilesByPaletteContext,
+            deConfettiByPaletteContext: currentDeConfettiByPaletteContext,
+            excludedColors: currentDeletedAutoPaletteColors,
             pixelizeReference: (snapshot, nextGridSize) =>
                 pixelizeFromImageDominant(snapshot, nextGridSize, 16),
             referenceSignature: imageDataSampleSignature,
         })
     }
 
+    function preparePresetRebuildFromAutoInputs(
+        stalePresetWorld?: DerivedWorld<PixelValue> | null
+    ):
+        | {
+              overlayPixels: PixelValue[][]
+              previousSwatches: Swatch[]
+              userSwatches: Swatch[]
+          }
+        | undefined {
+        if (!stalePresetWorld || presetCarryUserSwatchesRef.current.size === 0) {
+            return undefined
+        }
+
+        const currentState = latestProjectStateRef.current
+        const sourceOverlay = currentState?.overlayPixels ?? overlayPixels
+        const sourceUserSwatches = currentState?.userSwatches ?? userSwatches
+        const nextOverlay = clonePixelsGrid(sourceOverlay)
+        const nextUserSwatches = sourceUserSwatches.filter(
+            (swatch) => !presetCarryUserSwatchesRef.current.has(swatch.id)
+        )
+        const nextPreviousSwatches = cloneSwatches(
+            currentState?.autoSwatches ?? autoSwatches
+        )
+        const stalePresetAutoById = new Map(
+            stalePresetWorld.autoSwatches.map((swatch) => [swatch.id, swatch])
+        )
+        let changed = false
+
+        for (const [
+            carryUserSwatchId,
+            carryRecord,
+        ] of presetCarryUserSwatchesRef.current) {
+            const sourceAutoSwatch = stalePresetAutoById.get(
+                carryRecord.sourceAutoId
+            )
+            if (!sourceAutoSwatch) continue
+
+            const carrySourceId = `preset-carry:${carryUserSwatchId}`
+            for (let row = 0; row < nextOverlay.length; row += 1) {
+                const overlayRow = nextOverlay[row]
+                for (let column = 0; column < overlayRow.length; column += 1) {
+                    if (overlayRow[column] === carryUserSwatchId) {
+                        overlayRow[column] = carrySourceId
+                        changed = true
+                    }
+                }
+            }
+
+            nextPreviousSwatches.push({
+                ...sourceAutoSwatch,
+                id: carrySourceId,
+                isUser: false,
+            })
+        }
+
+        if (!changed) return undefined
+
+        return {
+            overlayPixels: nextOverlay,
+            previousSwatches: nextPreviousSwatches,
+            userSwatches: nextUserSwatches,
+        }
+    }
+
     function applyDerivedWorldSnapshot(
         world: DerivedWorld<PixelValue>,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets,
-        hiddenPresetRegistry = hiddenPresetIds,
-        activeTab = paletteTabsState.activeTab
+        importedPresetRegistry?: ImportedPalettePreset[],
+        hiddenPresetRegistry?: string[],
+        activeTab = paletteTabsStateRef.current.activeTab,
+        userSwatchesOverride?: Swatch[] | null
     ): ProjectState {
+        const currentState = latestProjectStateRef.current
+        const applicationUserSwatches =
+            userSwatchesOverride ?? currentState?.userSwatches ?? userSwatches
+        const currentSelectedSwatch =
+            currentState?.selectedSwatch ?? selectedSwatch
+        const currentImportedPalettePresets =
+            importedPresetRegistry ??
+            currentState?.importedPalettePresets ??
+            importedPalettePresets
+        const currentHiddenPresetIds =
+            hiddenPresetRegistry ?? currentState?.hiddenPresetIds ?? hiddenPresetIds
+        const currentDeletedAutoPaletteColors =
+            currentState?.deletedAutoPaletteColors ?? deletedAutoPaletteColors
+        const currentAutoOverrides =
+            currentState?.autoOverrides ?? autoOverrides
         const preparedSnapshot = preparePaletteWorldSnapshotProjectApplication({
             world,
-            userSwatches,
-            selectedSwatch,
+            userSwatches: applicationUserSwatches,
+            selectedSwatch: currentSelectedSwatch,
             preferredSwatch,
             activeTab,
             gridSize,
@@ -5416,14 +5621,14 @@ function PixelEditorFramer({
             showImage,
             hasOriginalImageData: hasImportContext,
             referenceSnapshot: originalImageData,
-            importedPalettePresets: importedPresetRegistry,
-            hiddenPresetIds: hiddenPresetRegistry,
-            deletedAutoPaletteColors,
-            autoOverrides,
+            importedPalettePresets: currentImportedPalettePresets,
+            hiddenPresetIds: currentHiddenPresetIds,
+            deletedAutoPaletteColors: currentDeletedAutoPaletteColors,
+            autoOverrides: currentAutoOverrides,
         })
         const preparedApplication = preparedSnapshot.application
         paletteUndoTrace("applyDerivedWorldSnapshot:before", {
-            activeTab: paletteTabsState.activeTab,
+            activeTab: paletteTabsStateRef.current.activeTab,
             currentProfile: quantizationProfileTraceSummary(quantizationProfile),
             worldProfile: quantizationProfileTraceSummary(world.profile),
             selectedSwatch,
@@ -5440,6 +5645,9 @@ function PixelEditorFramer({
         setImagePixels(preparedApplication.imagePixels)
         setOverlayPixels(preparedApplication.overlayPixels)
         setCanvasPixels(preparedApplication.canvasPixels)
+        if (userSwatchesOverride) {
+            setUserSwatches(cloneSwatches(userSwatchesOverride))
+        }
         setAutoOverrides(preparedSnapshot.projectState.autoOverrides)
         latestProjectStateRef.current = preparedSnapshot.projectState
         paletteUndoTrace("applyDerivedWorldSnapshot:latest-ref-updated", {
@@ -5514,35 +5722,46 @@ function PixelEditorFramer({
     }
 
     function switchPaletteTab(nextTab: PaletteTab) {
+        enqueuePaletteAction(() => switchPaletteTabNow(nextTab))
+    }
+
+    function switchPaletteTabNow(nextTab: PaletteTab) {
         if (methodSessionRef.current) return
 
-        const currentTab = paletteTabsState.activeTab
+        const currentPaletteTabsState = paletteTabsStateRef.current
+        const currentTab = currentPaletteTabsState.activeTab
         if (currentTab === nextTab) return
 
         paletteTabSelectedSwatchRef.current[currentTab] = selectedSwatch
         const preferredSwatchForNextTab =
             paletteTabSelectedSwatchRef.current[nextTab]
+        const currentWorld = makeCurrentDerivedWorldSnapshot()
 
         const switchState = preparePaletteTabSwitch<
             DerivedWorld<PixelValue>
         >({
-            state: paletteTabsState,
-            currentWorld: makeCurrentDerivedWorldSnapshot(),
+            state: currentPaletteTabsState,
+            currentWorld,
             nextTab,
             isTargetWorldCompatible: isDerivedWorldCompatibleWithCurrentGrid,
         })
         const { targetWorld, targetWorldIsCompatible } = switchState
 
+        const shouldRebuildPresetFromCurrentWorld =
+            currentTab !== "presets" && nextTab === "presets"
         const shouldRestoreTargetWorld =
+            !shouldRebuildPresetFromCurrentWorld &&
             targetWorld &&
             targetWorldIsCompatible &&
             (nextTab === "size" || targetWorld.profile.kind === "fixed")
-        const restoredWorld = shouldRestoreTargetWorld
-            ? shareOverlayWithDerivedWorld(targetWorld, overlayPixels)
-            : null
+        const restoredWorld = shouldRestoreTargetWorld ? targetWorld : null
+        const presetRebuildInputs =
+            shouldRebuildPresetFromCurrentWorld && targetWorldIsCompatible
+                ? preparePresetRebuildFromAutoInputs(targetWorld)
+                : undefined
         const lazyWorld = restoredWorld
             ? null
-            : buildPaletteWorldForTab(nextTab, targetWorld)
+            : buildPaletteWorldForTab(nextTab, targetWorld, presetRebuildInputs)
         const applicationPlan = preparePaletteTabSwitchApplication({
             nextTab,
             nextState: switchState.nextState,
@@ -5551,6 +5770,62 @@ function PixelEditorFramer({
             userSwatches,
             preferredSwatch: preferredSwatchForNextTab,
         })
+        let nextPaletteTabsState = applicationPlan.nextState
+        let worldToApply = applicationPlan.worldToApply
+        let userSwatchesForApplication: Swatch[] | null = null
+
+        if (currentTab === "presets" && nextTab === "size" && worldToApply) {
+            const previousUserSwatchIds = new Set(
+                userSwatches.map((swatch) => swatch.id)
+            )
+            const carried = preparePresetOverlayCarryToAutoWorld({
+                targetWorld: worldToApply,
+                sourceWorld: currentWorld,
+                userSwatches,
+                transparentPixel: TRANSPARENT_PIXEL,
+                shouldCarryCell: (row, column) =>
+                    presetManualOverlayCellKeysRef.current.has(
+                        `${row}:${column}`
+                    ),
+                makeUserSwatch: (source) => ({
+                    ...source,
+                    id: makeUserPaintSwatchId(),
+                    isUser: true,
+                    isTransparent: false,
+                }),
+            })
+            worldToApply = carried.world
+            userSwatchesForApplication = carried.carried
+                ? carried.userSwatches
+                : null
+            if (carried.carried) {
+                for (const record of carried.carriedAutoSwatches) {
+                    if (!previousUserSwatchIds.has(record.userSwatchId)) {
+                        presetCarryUserSwatchesRef.current.set(
+                            record.userSwatchId,
+                            {
+                                sourceAutoId: record.sourceAutoId,
+                                cellKeys: new Set(
+                                    record.cells.map(
+                                        (cell) => `${cell.row}:${cell.column}`
+                                    )
+                                ),
+                            }
+                        )
+                    }
+                }
+            }
+            nextPaletteTabsState = carried.carried
+                ? preparePaletteTabWorldCommit({
+                      state: nextPaletteTabsState,
+                      activeTab: "size",
+                      world: carried.world,
+                  })
+                : nextPaletteTabsState
+            presetManualOverlayCellKeysRef.current = new Set()
+        } else if (currentTab !== "presets" && nextTab === "presets") {
+            presetManualOverlayCellKeysRef.current = new Set()
+        }
 
         if (
             applicationPlan.kind === "lazy-size" ||
@@ -5559,17 +5834,19 @@ function PixelEditorFramer({
             setQuantizationProfile(EXTRACT_QUANTIZATION_PROFILE)
         }
         setActivePresetButton(applicationPlan.activePresetButton)
-        setPaletteTabsState(applicationPlan.nextState)
+        paletteTabsStateRef.current = nextPaletteTabsState
+        setPaletteTabsState(nextPaletteTabsState)
 
-        if (applicationPlan.worldToApply) {
+        if (worldToApply) {
             const before = latestProjectStateRef.current ?? makeProjectState()
             beginEditorActionTransaction("palette-tab-switch", before)
             const afterState = applyDerivedWorldSnapshot(
-                applicationPlan.worldToApply,
+                worldToApply,
                 applicationPlan.selectedSwatch,
-                importedPalettePresets,
-                hiddenPresetIds,
-                applicationPlan.nextState.activeTab
+                undefined,
+                undefined,
+                nextPaletteTabsState.activeTab,
+                userSwatchesForApplication
             )
             pushCommit(before, { afterState })
             if (
@@ -5582,14 +5859,14 @@ function PixelEditorFramer({
                         ...(applicationPlan.kind === "restore"
                             ? { from: currentTab, to: nextTab }
                             : {}),
-                        profile: applicationPlan.worldToApply.profile.kind,
+                        profile: worldToApply.profile.kind,
                         autoSwatches:
-                            applicationPlan.worldToApply.autoSwatches.length,
+                            worldToApply.autoSwatches.length,
                         imageNonNull: countNonNullCells(
-                            applicationPlan.worldToApply.imagePixels
+                            worldToApply.imagePixels
                         ),
                         overlayNonNull: countNonNullCells(
-                            applicationPlan.worldToApply.overlayPixels
+                            worldToApply.overlayPixels
                         ),
                     }
                 )
@@ -5736,39 +6013,84 @@ function PixelEditorFramer({
     function applyFixedPalettePreset(
         profile: FixedQuantizationProfile,
         preferredSwatch?: SwatchId | "transparent" | null,
-        importedPresetRegistry = importedPalettePresets
+        importedPresetRegistry?: ImportedPalettePreset[]
+    ) {
+        enqueuePaletteAction(() =>
+            applyFixedPalettePresetNow(
+                profile,
+                preferredSwatch,
+                importedPresetRegistry
+            )
+        )
+    }
+
+    function applyFixedPalettePresetNow(
+        profile: FixedQuantizationProfile,
+        preferredSwatch?: SwatchId | "transparent" | null,
+        importedPresetRegistry?: ImportedPalettePreset[]
     ) {
         const before = latestProjectStateRef.current ?? makeProjectState()
+        const activePaletteTab = paletteTabsStateRef.current.activeTab
+        const currentProfile =
+            before.quantizationProfile ?? quantizationProfile
+        const currentImagePixels = before.imagePixels ?? imagePixels
+        const currentOverlayPixels = before.overlayPixels ?? overlayPixels
+        const currentAutoSwatches = before.autoSwatches ?? autoSwatches
+        const currentUserSwatches = before.userSwatches ?? userSwatches
+        const currentSelectedSwatch = before.selectedSwatch ?? selectedSwatch
+        const currentImportedPalettePresets =
+            before.importedPalettePresets ?? importedPalettePresets
+        const currentHiddenPresetIds = before.hiddenPresetIds ?? hiddenPresetIds
+        const currentDeletedAutoPaletteColors =
+            before.deletedAutoPaletteColors ?? deletedAutoPaletteColors
+        const currentAutoOverrides = before.autoOverrides ?? autoOverrides
+        const currentMethodProfilesByPaletteContext =
+            before.methodProfilesByPaletteContext ??
+            methodProfilesByPaletteContext
+        const currentDeConfettiByPaletteContext =
+            before.deConfettiByPaletteContext ?? deConfettiByPaletteContext
         const effectiveImportedPresetRegistry =
             ensureActiveImportedPalettePresetRegistered(
-                importedPresetRegistry,
+                importedPresetRegistry ?? currentImportedPalettePresets,
                 profile
             )
         paletteUndoTrace("applyFixedPalettePreset:start", {
             profile: quantizationProfileTraceSummary(profile),
-            activeTab: paletteTabsState.activeTab,
-            currentProfile: quantizationProfileTraceSummary(quantizationProfile),
+            activeTab: activePaletteTab,
+            currentProfile: quantizationProfileTraceSummary(currentProfile),
             latestRef: editorCommittedStateTraceSummary(
                 before
             ),
         })
         const beforeReferenceSignature =
             imageDataSampleSignature(originalImageData)
+        const currentWorldBeforePreset = prepareCurrentPaletteWorldSnapshot({
+            profile: currentProfile,
+            referenceSignature: beforeReferenceSignature,
+            autoSwatches: currentAutoSwatches,
+            imagePixels: currentImagePixels,
+            overlayPixels: currentOverlayPixels,
+            canvasPixels: overlayOverBaseGrid(
+                currentImagePixels,
+                currentOverlayPixels
+            ),
+        })
         const prepared =
             prepareFixedPalettePresetProjectApplication({
                 profile,
                 referenceSnapshot: originalImageData,
                 gridSize,
-                overlayPixels,
-                previousSwatches: autoSwatches,
-                userSwatches,
-                methodProfilesByPaletteContext,
-                deConfettiByPaletteContext,
+                overlayPixels: currentOverlayPixels,
+                previousSwatches: currentAutoSwatches,
+                userSwatches: currentUserSwatches,
+                methodProfilesByPaletteContext:
+                    currentMethodProfilesByPaletteContext,
+                deConfettiByPaletteContext: currentDeConfettiByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
                     pixelizeFromImageDominant(snapshot, nextGridSize, 16),
                 referenceSignature: imageDataSampleSignature,
-                imagePixels,
-                selectedSwatch,
+                imagePixels: currentImagePixels,
+                selectedSwatch: currentSelectedSwatch,
                 preferredSwatch,
                 makeAutoSwatches: makeAutoSwatchesFromFixedProfile,
                 projectPaletteCount: paletteCount,
@@ -5776,9 +6098,9 @@ function PixelEditorFramer({
                 showImage,
                 hasOriginalImageData: hasImportContext,
                 importedPalettePresets: effectiveImportedPresetRegistry,
-                hiddenPresetIds,
-                deletedAutoPaletteColors,
-                autoOverrides,
+                hiddenPresetIds: currentHiddenPresetIds,
+                deletedAutoPaletteColors: currentDeletedAutoPaletteColors,
+                autoOverrides: currentAutoOverrides,
             })
         const afterReferenceSignature = imageDataSampleSignature(originalImageData)
 
@@ -5806,13 +6128,22 @@ function PixelEditorFramer({
             setQuantizationProfile(profile)
             setImportedPalettePresets(effectiveImportedPresetRegistry)
             setActivePresetButton(profile.id)
-            setPaletteTabsState((prev) =>
-                preparePaletteTabWorldCommit({
-                    state: prev,
+            if (activePaletteTab !== "presets") {
+                presetManualOverlayCellKeysRef.current = new Set()
+            }
+            setPaletteTabsState((prev) => {
+                const nextPaletteTabsState = preparePaletteTabWorldCommit({
+                    state: preparePaletteTabWorldCommit({
+                        state: prev,
+                        activeTab: activePaletteTab,
+                        world: currentWorldBeforePreset,
+                    }),
                     activeTab: "presets",
                     world: nextWorld,
                 })
-            )
+                paletteTabsStateRef.current = nextPaletteTabsState
+                return nextPaletteTabsState
+            })
             setAutoOverrides(preparedApplication.autoOverrides)
             setAutoSwatches(preparedApplication.autoSwatches)
             setSelectedSwatch(preparedApplication.selectedSwatch)
@@ -5840,13 +6171,22 @@ function PixelEditorFramer({
         beginEditorActionTransaction("palette-preset-apply", before)
         setImportedPalettePresets(effectiveImportedPresetRegistry)
         setActivePresetButton(profile.id)
-        setPaletteTabsState((prev) =>
-            preparePaletteTabWorldCommit({
-                state: prev,
+        if (activePaletteTab !== "presets") {
+            presetManualOverlayCellKeysRef.current = new Set()
+        }
+        setPaletteTabsState((prev) => {
+            const nextPaletteTabsState = preparePaletteTabWorldCommit({
+                state: preparePaletteTabWorldCommit({
+                    state: prev,
+                    activeTab: activePaletteTab,
+                    world: currentWorldBeforePreset,
+                }),
                 activeTab: "presets",
                 world,
             })
-        )
+            paletteTabsStateRef.current = nextPaletteTabsState
+            return nextPaletteTabsState
+        })
         paletteUndoTrace("applyFixedPalettePreset:world-built", {
             profile: quantizationProfileTraceSummary(world.profile),
             imageNonNull: countNonNullCells(world.imagePixels),
@@ -5868,7 +6208,7 @@ function PixelEditorFramer({
                     beforeReferenceSignature === afterReferenceSignature,
                 referenceSignature: afterReferenceSignature,
                 autoSwatches: world.autoSwatches.length,
-                userSwatches: userSwatches.length,
+                userSwatches: currentUserSwatches.length,
                 imageNonNull: countNonNullCells(world.imagePixels),
                 overlayNonNull: countNonNullCells(world.overlayPixels),
                 canvasNonNull: countNonNullCells(world.canvasPixels),
@@ -6156,51 +6496,102 @@ function PixelEditorFramer({
         return ctx.getImageData(0, 0, exportSize, exportSize)
     }
 
+    const latestProjectStateRef = React.useRef<ProjectState | null>(null)
+
     const buildQuantizationRecorderSeed =
         React.useCallback((): QuantizationRecorderSeed | null => {
-            const frozenReferenceSnapshot = cloneImageDataSnapshot(originalImageData)
+            const sourceState = latestProjectStateRef.current
+            const sourceReferenceSnapshot =
+                (sourceState?.referenceSnapshot as ImageData | null | undefined) ??
+                originalImageData
+            const frozenReferenceSnapshot = cloneImageDataSnapshot(
+                sourceReferenceSnapshot
+            )
             if (!frozenReferenceSnapshot) return null
 
-            const frozenOverlaySnapshot =
-                cloneImageDataSnapshot(paintRefImageData)
-            const frozenUserOverlaySnapshot =
-                cloneImageDataSnapshot(paintUserRefImageData)
-            const frozenUserValueByHex = new Map(
-                paintUserRefValueByHexRef.current
+            const sourceOverlayPixels =
+                sourceState?.overlayPixels ?? overlayPixels
+            const sourceAutoSwatches = sourceState?.autoSwatches ?? autoSwatches
+            const sourceUserSwatches = sourceState?.userSwatches ?? userSwatches
+            const sourceAutoOverrides =
+                sourceState?.autoOverrides ?? autoOverrides
+            const sourceDeletedAutoPaletteColors =
+                sourceState?.deletedAutoPaletteColors ??
+                deletedAutoPaletteColors
+            const sourceMethodProfilesByPaletteContext =
+                sourceState?.methodProfilesByPaletteContext ??
+                methodProfilesByPaletteContext
+            const sourceDeConfettiByPaletteContext =
+                sourceState?.deConfettiByPaletteContext ??
+                deConfettiByPaletteContext
+            const sourceQuantizationProfile =
+                sourceState?.quantizationProfile ?? quantizationProfile
+            const sourceGridSize = sourceState?.gridSize ?? gridSize
+            const sourcePaletteCount = sourceState?.paletteCount ?? paletteCount
+
+            const frozenAutoSwatches = cloneSwatches(sourceAutoSwatches)
+            const frozenUserSwatches = cloneSwatches(sourceUserSwatches)
+            const frozenAutoOverrides = { ...sourceAutoOverrides }
+            const frozenOverlayPixels = clonePixelsGrid(sourceOverlayPixels)
+            const effectiveAutoSwatchesForRefs = applyAutoOverrides(
+                frozenAutoSwatches,
+                frozenAutoOverrides
             )
+
+            const recorderPaintRefs =
+                countNonNull(frozenOverlayPixels) > 0
+                    ? renderPaintRefSnapshotsFromOverlay({
+                          overlay: frozenOverlayPixels,
+                          autoSwatches: effectiveAutoSwatchesForRefs,
+                          userSwatches: frozenUserSwatches,
+                      })
+                    : {
+                          colorSnapshot: null,
+                          userSnapshot: null,
+                          userValueByHex: new Map<string, PixelValue>(),
+                          transparentSnapshot: null,
+                          transparentValueByHex: new Map<string, PixelValue>(),
+                      }
+
+            const frozenOverlaySnapshot = cloneImageDataSnapshot(
+                recorderPaintRefs.colorSnapshot
+            )
+            const frozenUserOverlaySnapshot = cloneImageDataSnapshot(
+                recorderPaintRefs.userSnapshot
+            )
+            const frozenUserValueByHex = new Map(recorderPaintRefs.userValueByHex)
             const frozenTransparentOverlaySnapshot = cloneImageDataSnapshot(
-                paintTransparentRefImageData
+                recorderPaintRefs.transparentSnapshot
             )
             const frozenTransparentValueByHex = new Map(
-                paintTransparentRefValueByHexRef.current
+                recorderPaintRefs.transparentValueByHex
             )
-            const frozenAutoSwatches = cloneSwatches(autoSwatches)
-            const frozenUserSwatches = cloneSwatches(userSwatches)
-            const frozenAutoOverrides = { ...autoOverrides }
             const frozenDeletedAutoPaletteColors =
-                deletedAutoPaletteColors.slice()
+                sourceDeletedAutoPaletteColors.slice()
             const frozenMethodProfilesByPaletteContext =
                 cloneMethodProfilesByPaletteContextForHistory(
-                    methodProfilesByPaletteContext
+                    sourceMethodProfilesByPaletteContext
                 )
             const frozenDeConfettiByPaletteContext =
                 cloneDeConfettiByPaletteContextForHistory(
-                    deConfettiByPaletteContext
+                    sourceDeConfettiByPaletteContext
                 )
             const frozenFixedPaletteColors =
-                quantizationProfile.kind === "fixed"
-                    ? getFixedProfilePaletteForApplication(quantizationProfile)
+                sourceQuantizationProfile.kind === "fixed"
+                    ? getFixedProfilePaletteForApplication(
+                          sourceQuantizationProfile
+                      )
                     : frozenAutoSwatches
                           .filter((swatch) => !swatch.isTransparent)
                           .map((swatch) => swatch.color)
             const frozenQuantizationProfile: QuantizationProfile =
-                quantizationProfile.kind === "fixed"
+                sourceQuantizationProfile.kind === "fixed"
                     ? {
-                          ...quantizationProfile,
+                          ...sourceQuantizationProfile,
                           colors:
                               frozenFixedPaletteColors.length > 0
                                   ? frozenFixedPaletteColors
-                                  : quantizationProfile.colors,
+                                  : sourceQuantizationProfile.colors,
                       }
                     : EXTRACT_QUANTIZATION_PROFILE
             const frozenGridBounds = { min: 2, max: 128 }
@@ -6274,9 +6665,9 @@ function PixelEditorFramer({
                     frozenUserOverlaySnapshot ||
                     frozenTransparentOverlaySnapshot
                         ? requantizePaintRefsToOverlayPixels({
-                          colorSnapshot: frozenOverlaySnapshot,
-                          userSnapshot: frozenUserOverlaySnapshot,
-                          userValueByHex: frozenUserValueByHex,
+                              colorSnapshot: frozenOverlaySnapshot,
+                              userSnapshot: frozenUserOverlaySnapshot,
+                              userValueByHex: frozenUserValueByHex,
                               transparentSnapshot:
                                   frozenTransparentOverlaySnapshot,
                               transparentValueByHex:
@@ -6318,7 +6709,7 @@ function PixelEditorFramer({
                 autoOverrides: frozenAutoOverrides,
                 gridBounds: frozenGridBounds,
                 paletteBounds: frozenPaletteBounds,
-                initialGridSize: gridSize,
+                initialGridSize: sourceGridSize,
                 initialPaletteSize:
                     frozenQuantizationProfile.kind === "fixed"
                         ? clampInt(
@@ -6328,7 +6719,7 @@ function PixelEditorFramer({
                               frozenPaletteBounds.min,
                               frozenPaletteBounds.max
                           )
-                        : paletteCount,
+                        : sourcePaletteCount,
                 generateFrame,
                 saveBlob: async (produceBlob, filename) => {
                     await saveBlobFromProducer(produceBlob, filename)
@@ -6342,9 +6733,7 @@ function PixelEditorFramer({
             gridSize,
             methodProfilesByPaletteContext,
             originalImageData,
-            paintRefImageData,
-            paintUserRefImageData,
-            paintTransparentRefImageData,
+            overlayPixels,
             paletteCount,
             quantizationProfile,
             saveBlobFromProducer,
@@ -6352,16 +6741,16 @@ function PixelEditorFramer({
         ])
 
     const openQuantizationRecorder = React.useCallback(() => {
-        const nextSeed = buildQuantizationRecorderSeed()
-        if (!nextSeed) return
-        setQuantizationRecorderSeed(nextSeed)
+        enqueuePaletteAction(() => {
+            const nextSeed = buildQuantizationRecorderSeed()
+            if (!nextSeed) return
+            setQuantizationRecorderSeed(nextSeed)
+        })
     }, [buildQuantizationRecorderSeed])
 
     const closeQuantizationRecorder = React.useCallback(() => {
         setQuantizationRecorderSeed(null)
     }, [])
-
-    const latestProjectStateRef = React.useRef<ProjectState | null>(null)
 
     React.useEffect(() => {
         latestProjectStateRef.current = makeProjectState()
@@ -7406,10 +7795,17 @@ function PixelEditorFramer({
     const strokeAfterOverlayRef = React.useRef<PixelValue[][] | null>(null)
     const strokeAfterUserSwatchesRef = React.useRef<Swatch[] | null>(null)
     const activeStrokePaintValueRef = React.useRef<PixelValue | null>(null)
-
-    // --- ROUTE A: stroke debug guards (no spam) ---
-    const strokeRouteIdRef = React.useRef(0)
-    const strokeRouteLoggedWriteRef = React.useRef(false)
+    const presetManualOverlayCellKeysRef = React.useRef<Set<string>>(new Set())
+    const activeStrokePresetCellKeysRef = React.useRef<Set<string> | null>(null)
+    const presetCarryUserSwatchesRef = React.useRef<
+        Map<
+            string,
+            {
+                sourceAutoId: string
+                cellKeys: Set<string>
+            }
+        >
+    >(new Map())
 
     // =====================
     // CANVAS POINTER HANDLERS (preview infra)
@@ -7481,6 +7877,7 @@ function PixelEditorFramer({
         strokeAfterOverlayRef.current = null
         strokeAfterUserSwatchesRef.current = null
         activeStrokePaintValueRef.current = null
+        activeStrokePresetCellKeysRef.current = null
         lastDrawPointRef.current = null
         setIsDrawing(false)
 
@@ -7572,32 +7969,11 @@ function PixelEditorFramer({
     }
 
     function preparePaintValueForStroke(): PixelValue {
-        const prepared = prepareStrokePaintSwatch<Swatch>({
-            activeTab: paletteTabsState.activeTab,
-            selectedSwatch,
-            autoSwatches,
-            userSwatches,
-            makeUserSwatch: (source) => ({
-                ...source,
-                id: makeUserPaintSwatchId(),
-                isUser: true,
-                isTransparent: false,
-            }),
-        })
+        strokeAfterUserSwatchesRef.current = userSwatches.slice()
 
-        strokeAfterUserSwatchesRef.current = prepared.userSwatches
-
-        if (prepared.createdUserSwatch) {
-            setUserSwatches(prepared.userSwatches)
-        }
-
-        if (prepared.paintSwatch !== selectedSwatch) {
-            setSelectedSwatch(prepared.paintSwatch)
-        }
-
-        return prepared.paintSwatch === "transparent"
+        return selectedSwatch === "transparent"
             ? TRANSPARENT_PIXEL
-            : (prepared.paintSwatch as SwatchId)
+            : (selectedSwatch as SwatchId)
     }
 
     function handlePointerDown(e: any) {
@@ -7668,28 +8044,8 @@ function PixelEditorFramer({
         busyKindRef.current = "stream"
         setIsDrawing(true)
 
-        // ROUTE A1: stroke begin
-        strokeRouteIdRef.current += 1
-        strokeRouteLoggedWriteRef.current = false
         const strokePaintValue = preparePaintValueForStroke()
         activeStrokePaintValueRef.current = strokePaintValue
-
-        const x0 = pointerRef.current.x
-        const y0 = pointerRef.current.y
-        const row = Math.floor(y0 / (CANVAS_SIZE / rows))
-        const col = Math.floor(x0 / (CANVAS_SIZE / cols))
-
-        routeLog("A1 STROKE BEGIN (pointerDown)", {
-            id: strokeRouteIdRef.current,
-            toolMode,
-            g: gridSize,
-            brushSize,
-            x: x0,
-            y: y0,
-            row,
-            col,
-            paintValue: strokePaintValue,
-        })
 
         // Step 1:
         const before = latestProjectStateRef.current ?? makeProjectState()
@@ -7706,6 +8062,8 @@ function PixelEditorFramer({
         beginEditorActionTransaction("editor-action", before)
         strokeBeforeRef.current = before
         strokeDidMutateRef.current = false
+        activeStrokePresetCellKeysRef.current =
+            paletteTabsState.activeTab === "presets" ? new Set() : null
 
         // переводим позицию указателя (0..CANVAS_SIZE) в индексы клетки
         const x = pointerRef.current.x
@@ -8579,6 +8937,16 @@ function PixelEditorFramer({
         ]
     )
 
+    const palettePanelUserSwatches = React.useMemo(() => {
+        const sortedUserSwatches = palettePresentation.sortedUserSwatchesForUI
+        if (paletteTabsState.activeTab !== "presets") return sortedUserSwatches
+
+        const carrySwatches = presetCarryUserSwatchesRef.current
+        if (carrySwatches.size === 0) return sortedUserSwatches
+
+        return sortedUserSwatches.filter((swatch) => !carrySwatches.has(swatch.id))
+    }, [palettePresentation.sortedUserSwatchesForUI, paletteTabsState.activeTab])
+
     const swatchById = React.useMemo(() => {
         const m = new Map<SwatchId, Swatch>()
         for (const s of autoSwatches) m.set(s.id, s)
@@ -9451,11 +9819,6 @@ function PixelEditorFramer({
         setOverlayPixels((prev) => {
             const next = prev.map((row) => row.slice())
 
-            // ROUTE A2: first actual write (log once per stroke)
-            const sampleR = Math.max(0, Math.min(gridSize - 1, row0))
-            const sampleC = Math.max(0, Math.min(gridSize - 1, col0))
-            const beforeSample = prev?.[sampleR]?.[sampleC] ?? null
-
             let changed = false
 
             for (let rr = row0; rr < row0 + s; rr++) {
@@ -9466,6 +9829,7 @@ function PixelEditorFramer({
                     const prevValue = prev[rr]?.[cc] ?? null
                     if (prevValue !== value) {
                         next[rr][cc] = value
+                        activeStrokePresetCellKeysRef.current?.add(`${rr}:${cc}`)
                         changed = true
                     }
                 }
@@ -9473,25 +9837,6 @@ function PixelEditorFramer({
 
             if (changed && !strokeDidMutateRef.current) {
                 strokeDidMutateRef.current = true
-            }
-
-            const afterSample = next?.[sampleR]?.[sampleC] ?? null
-
-            if (!strokeRouteLoggedWriteRef.current) {
-                strokeRouteLoggedWriteRef.current = true
-
-                routeLog("A2 OVERLAY WRITE (first in stroke)", {
-                    id: strokeRouteIdRef.current,
-                    g: gridSize,
-                    brushS: s,
-                    row0,
-                    col0,
-                    sampleR,
-                    sampleC,
-                    before: beforeSample,
-                    after: afterSample,
-                    overlayNonNullNext: countNonNullCells(next),
-                })
             }
 
             strokeAfterOverlayRef.current = next
@@ -9554,6 +9899,9 @@ function PixelEditorFramer({
                     const cc = centerCol + dc
                     if (rr < 0 || cc < 0 || rr >= gridSize || cc >= gridSize)
                         continue
+                    if (next[rr][cc] !== value) {
+                        activeStrokePresetCellKeysRef.current?.add(`${rr}:${cc}`)
+                    }
                     next[rr][cc] = value
                 }
             }
@@ -9845,10 +10193,20 @@ function PixelEditorFramer({
                     autoSwatches: afterState.autoSwatches,
                     userSwatches: afterState.userSwatches,
                 }
+                if (activeStrokePresetCellKeysRef.current?.size) {
+                    const nextPresetCells = new Set(
+                        presetManualOverlayCellKeysRef.current
+                    )
+                    for (const key of activeStrokePresetCellKeysRef.current) {
+                        nextPresetCells.add(key)
+                    }
+                    presetManualOverlayCellKeysRef.current = nextPresetCells
+                }
 
                 pushCommit(before, {
                     afterState,
                 })
+                latestProjectStateRef.current = afterState
 
                 postCommitGridHook(
                     {
@@ -9870,6 +10228,7 @@ function PixelEditorFramer({
         strokeAfterOverlayRef.current = null
         strokeAfterUserSwatchesRef.current = null
         activeStrokePaintValueRef.current = null
+        activeStrokePresetCellKeysRef.current = null
 
         // Refresh the stroke reference when the gesture ends, no matter how it ended.
         commitPaintRefIfDirty(reason, paintRefSnapshot)
@@ -10028,25 +10387,45 @@ function PixelEditorFramer({
     }
 
     function handleDeleteSwatchFromModal() {
+        enqueuePaletteAction(handleDeleteSwatchFromModalNow)
+    }
+
+    function handleDeleteSwatchFromModalNow() {
         if (!editingSwatchId) {
             handleModalCancel()
             return
         }
 
-        const swatch = swatchById.get(editingSwatchId)
+        const before = latestProjectStateRef.current ?? makeProjectState()
+        const currentProfile =
+            before.quantizationProfile ?? quantizationProfile
+        const currentImagePixels = before.imagePixels ?? imagePixels
+        const currentOverlayPixels = before.overlayPixels ?? overlayPixels
+        const currentAutoSwatches = before.autoSwatches ?? autoSwatches
+        const currentUserSwatches = before.userSwatches ?? userSwatches
+        const currentSelectedSwatch = before.selectedSwatch ?? selectedSwatch
+        const currentImportedPalettePresets =
+            before.importedPalettePresets ?? importedPalettePresets
+        const currentHiddenPresetIds = before.hiddenPresetIds ?? hiddenPresetIds
+        const currentDeletedAutoPaletteColors =
+            before.deletedAutoPaletteColors ?? deletedAutoPaletteColors
+        const currentAutoOverrides = before.autoOverrides ?? autoOverrides
+        const swatch =
+            currentAutoSwatches.find((item) => item.id === editingSwatchId) ??
+            currentUserSwatches.find((item) => item.id === editingSwatchId) ??
+            swatchById.get(editingSwatchId)
         if (!swatch) {
             handleModalCancel()
             return
         }
 
         if (
-            quantizationProfile.kind === "fixed" &&
+            currentProfile.kind === "fixed" &&
             editingSwatchId.startsWith("auto-")
         ) {
-            const before = latestProjectStateRef.current ?? makeProjectState()
             const colorIndex = getAutoSwatchIndex(editingSwatchId)
             const editableProfile = makeEditableFixedPresetProfile(
-                quantizationProfile,
+                currentProfile,
                 makeImportedPalettePresetId
             )
             const preparedDelete =
@@ -10055,11 +10434,11 @@ function PixelEditorFramer({
                     swatchColor: swatch.color,
                     swatchId: editingSwatchId,
                     swatchIndex: colorIndex,
-                    selectedSwatch,
-                    imagePixels,
-                    overlayPixels,
-                    autoSwatches,
-                    userSwatches,
+                    selectedSwatch: currentSelectedSwatch,
+                    imagePixels: currentImagePixels,
+                    overlayPixels: currentOverlayPixels,
+                    autoSwatches: currentAutoSwatches,
+                    userSwatches: currentUserSwatches,
                     gridSize,
                     paletteCount,
                     brushSize,
@@ -10067,10 +10446,10 @@ function PixelEditorFramer({
                     hasOriginalImageData: hasImportContext,
                     referenceSnapshot: originalImageData,
                     referenceSignature: imageDataSampleSignature(originalImageData),
-                    importedPalettePresets,
-                    hiddenPresetIds,
-                    deletedAutoPaletteColors,
-                    autoOverrides,
+                    importedPalettePresets: currentImportedPalettePresets,
+                    hiddenPresetIds: currentHiddenPresetIds,
+                    deletedAutoPaletteColors: currentDeletedAutoPaletteColors,
+                    autoOverrides: currentAutoOverrides,
                 })
             if (preparedDelete.kind === "ignored") {
                 handleModalCancel()
@@ -10083,13 +10462,15 @@ function PixelEditorFramer({
             setQuantizationProfile(preparedDelete.profile)
             setImportedPalettePresets(preparedDelete.importedPalettePresets)
             setActivePresetButton(preparedDelete.profile.id)
-            setPaletteTabsState((prev) =>
-                preparePaletteTabWorldCommit({
+            setPaletteTabsState((prev) => {
+                const nextPaletteTabsState = preparePaletteTabWorldCommit({
                     state: prev,
                     activeTab: "presets",
                     world: preparedDelete.world,
                 })
-            )
+                paletteTabsStateRef.current = nextPaletteTabsState
+                return nextPaletteTabsState
+            })
             setAutoSwatches(preparedDelete.autoSwatches)
             setImagePixels(preparedDelete.imagePixels)
             setOverlayPixels(preparedDelete.overlayPixels)
@@ -10109,23 +10490,21 @@ function PixelEditorFramer({
             return
         }
 
-        const before = latestProjectStateRef.current ?? makeProjectState()
-
         const preparedDelete = preparePaletteSwatchDeleteProjectApplication({
             swatchId: editingSwatchId,
             swatchColor: swatch.color,
-            imagePixels,
-            overlayPixels,
-            autoSwatches,
-            userSwatches,
-            selectedSwatch,
-            autoOverrides,
-            deletedAutoPaletteColors,
+            imagePixels: currentImagePixels,
+            overlayPixels: currentOverlayPixels,
+            autoSwatches: currentAutoSwatches,
+            userSwatches: currentUserSwatches,
+            selectedSwatch: currentSelectedSwatch,
+            autoOverrides: currentAutoOverrides,
+            deletedAutoPaletteColors: currentDeletedAutoPaletteColors,
             sourcePixels:
                 editingSwatchId.startsWith("auto-") && originalImageData
                     ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
                     : undefined,
-            baseState: latestProjectStateRef.current ?? makeProjectState(),
+            baseState: before,
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
         })
         if (!preparedDelete.removed) {
@@ -10139,6 +10518,11 @@ function PixelEditorFramer({
         const nextOverlay = preparedDelete.overlayPixels
         const nextSelected = preparedDelete.selectedSwatch
         const afterState: ProjectState = preparedDelete.projectState
+        const deletedUserSwatch = currentUserSwatches.some(
+            (item) => item.id === editingSwatchId
+        )
+        const deletedPresetCarryUserSwatch =
+            presetCarryUserSwatchesRef.current.get(editingSwatchId)
 
         beginEditorActionTransaction("editor-action", before)
         setImagePixels(nextImage)
@@ -10148,6 +10532,73 @@ function PixelEditorFramer({
         setSelectedSwatch(nextSelected)
         setDeletedAutoPaletteColors(preparedDelete.deletedAutoPaletteColors)
         setAutoOverrides(afterState.autoOverrides)
+        if (deletedUserSwatch) {
+            setPaletteTabsState((prev) => {
+                const nextPaletteTabsState = {
+                    ...prev,
+                    sizeWorld: removeOverlaySwatchFromPaletteWorld(
+                        prev.sizeWorld,
+                        editingSwatchId
+                    ),
+                    presetsWorld: removeOverlaySwatchFromPaletteWorld(
+                        prev.presetsWorld,
+                        editingSwatchId
+                    ),
+                }
+                paletteTabsStateRef.current = nextPaletteTabsState
+                return nextPaletteTabsState
+            })
+        }
+        if (deletedPresetCarryUserSwatch) {
+            presetCarryUserSwatchesRef.current.delete(editingSwatchId)
+            setPaletteTabsState((prev) => {
+                const presetWorld = prev.presetsWorld
+                if (!presetWorld) return prev
+
+                const nextPresetOverlay = clonePixelsGrid(
+                    presetWorld.overlayPixels
+                )
+                let changed = false
+
+                for (const cellKey of deletedPresetCarryUserSwatch.cellKeys) {
+                    const [rowText, columnText] = cellKey.split(":")
+                    const row = Number(rowText)
+                    const column = Number(columnText)
+                    if (
+                        !Number.isInteger(row) ||
+                        !Number.isInteger(column) ||
+                        !nextPresetOverlay[row]
+                    ) {
+                        continue
+                    }
+                    if (
+                        nextPresetOverlay[row][column] ===
+                        deletedPresetCarryUserSwatch.sourceAutoId
+                    ) {
+                        nextPresetOverlay[row][column] = null
+                        changed = true
+                    }
+                }
+
+                if (!changed) return prev
+
+                const nextPresetImage = clonePixelsGrid(presetWorld.imagePixels)
+                const nextPaletteTabsState = {
+                    ...prev,
+                    presetsWorld: {
+                        ...presetWorld,
+                        imagePixels: nextPresetImage,
+                        overlayPixels: nextPresetOverlay,
+                        canvasPixels: overlayOverBaseGrid(
+                            nextPresetImage,
+                            nextPresetOverlay
+                        ),
+                    },
+                }
+                paletteTabsStateRef.current = nextPaletteTabsState
+                return nextPaletteTabsState
+            })
+        }
         syncPaintRefToOverlay({
             overlay: afterState.overlayPixels,
             auto: afterState.autoSwatches,
@@ -12160,9 +12611,7 @@ function PixelEditorFramer({
                                 palettePresentation.shouldShowPresetSwatches
                             }
                             trackWrap={trackWrap}
-                            userSwatches={
-                                palettePresentation.sortedUserSwatchesForUI
-                            }
+                            userSwatches={palettePanelUserSwatches}
                             visibleBuiltinPresetProfiles={
                                 palettePresentation.visibleBuiltinPresetProfiles
                             }
