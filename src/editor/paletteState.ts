@@ -12,6 +12,10 @@ import {
     overlayOverBase,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
+import {
+    DEFAULT_ASPECT_RATIO_ID,
+    type AspectRatioId,
+} from "./canvasGeometry.ts"
 
 export type PaletteSwatchLike = {
     id?: string | null
@@ -313,10 +317,11 @@ export function preparePresetOverlayCarryToAutoWorld<
 
 function isPaletteGridCompatibleWithSize<TPixel>(
     pixels: ReadonlyArray<ReadonlyArray<TPixel>>,
-    gridSize: number
+    rows: number,
+    columns: number = rows
 ): boolean {
-    if (pixels.length !== gridSize) return false
-    return pixels.every((row) => row.length === gridSize)
+    if (pixels.length !== rows) return false
+    return pixels.every((row) => row.length === columns)
 }
 
 export function isPaletteWorldCompatibleWithReferenceGrid<
@@ -330,18 +335,23 @@ export function isPaletteWorldCompatibleWithReferenceGrid<
     }
     currentReferenceSignature?: string | null
     gridSize: number
+    rows?: number
+    columns?: number
 }): boolean {
     const worldReferenceSignature = input.world.referenceSignature ?? null
     const currentReferenceSignature = input.currentReferenceSignature ?? null
+    const rows = input.rows ?? input.gridSize
+    const columns = input.columns ?? input.gridSize
 
     return (
         worldReferenceSignature === currentReferenceSignature &&
-        isPaletteGridCompatibleWithSize(input.world.imagePixels, input.gridSize) &&
+        isPaletteGridCompatibleWithSize(input.world.imagePixels, rows, columns) &&
         isPaletteGridCompatibleWithSize(
             input.world.overlayPixels,
-            input.gridSize
+            rows,
+            columns
         ) &&
-        isPaletteGridCompatibleWithSize(input.world.canvasPixels, input.gridSize)
+        isPaletteGridCompatibleWithSize(input.world.canvasPixels, rows, columns)
     )
 }
 
@@ -353,6 +363,9 @@ function buildProjectStateFromPaletteParts<
     profile: QuantizationProfile
     activePaletteTab: PaletteTabKey
     gridSize: number
+    aspectRatioId?: AspectRatioId
+    columns?: number
+    rows?: number
     paletteCount: number
     brushSize: number
     imagePixels: TPixel[][]
@@ -379,6 +392,9 @@ function buildProjectStateFromPaletteParts<
 
     return {
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId ?? DEFAULT_ASPECT_RATIO_ID,
+        columns: input.columns ?? input.imagePixels[0]?.length ?? input.gridSize,
+        rows: input.rows ?? input.imagePixels.length ?? input.gridSize,
         paletteCount: input.paletteCount,
         brushSize: input.brushSize,
         imagePixels: input.imagePixels,
@@ -435,6 +451,9 @@ export function prepareProjectStateFromPaletteWorld<
     world: PaletteProjectStateWorldLike<TSwatch, TPixel>
     activePaletteTab: PaletteTabKey
     gridSize: number
+    aspectRatioId?: AspectRatioId
+    columns?: number
+    rows?: number
     paletteCount: number
     brushSize: number
     showImage: boolean
@@ -464,6 +483,9 @@ export function prepareProjectStateFromPaletteWorld<
         profile: input.world.profile,
         activePaletteTab: input.activePaletteTab,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
+        columns: input.columns,
+        rows: input.rows,
         paletteCount: input.paletteCount,
         brushSize: input.brushSize,
         imagePixels: clonePixelsGrid(input.world.imagePixels),
@@ -562,7 +584,10 @@ export function preparePaletteWorldInvalidation<TWorld>(
     return {
         activeTab: state.activeTab,
         sizeWorld: null,
-        presetsWorld: null,
+        // Keep the stale preset world as profile memory. Compatibility checks
+        // still prevent direct restore, but tab switching can lazily rebuild the
+        // last applied fixed preset against the new reference.
+        presetsWorld: state.presetsWorld,
     }
 }
 
@@ -1647,6 +1672,9 @@ export function preparePaletteWorldSnapshotProjectApplication<
     preferredSwatch?: PaletteSelection | null
     activeTab: PaletteTabKey
     gridSize: number
+    aspectRatioId?: AspectRatioId
+    columns?: number
+    rows?: number
     paletteCount: number
     brushSize: number
     showImage: boolean
@@ -1676,6 +1704,9 @@ export function preparePaletteWorldSnapshotProjectApplication<
         profile: input.world.profile,
         activePaletteTab: application.activePaletteTab,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
+        columns: input.columns,
+        rows: input.rows,
         paletteCount: input.paletteCount,
         brushSize: input.brushSize,
         imagePixels: application.imagePixels,

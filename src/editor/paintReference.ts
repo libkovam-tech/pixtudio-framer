@@ -13,7 +13,8 @@ export type PaintReferenceCanvasContextProvider = (
 
 export type PaintReferencePixelizeSnapshot = (
     snapshot: ImageData,
-    gridSize: number
+    gridSize: number,
+    geometry?: { rows: number; columns: number }
 ) => (string | null)[][]
 
 export type PaintReferenceFixedPaletteQuantizer = (
@@ -22,11 +23,32 @@ export type PaintReferenceFixedPaletteQuantizer = (
 ) => (string | null)[][]
 
 export function createEmptyPaintReferencePixels<TPixel extends string | null>(
-    size: number
+    rows: number,
+    columns: number = rows
 ): TPixel[][] {
-    return Array.from({ length: size }, () =>
-        Array.from({ length: size }, () => null as TPixel)
+    return Array.from({ length: rows }, () =>
+        Array.from({ length: columns }, () => null as TPixel)
     )
+}
+
+function resolvePaintReferenceGridGeometry(params: {
+    gridSize: number
+    rows?: number
+    columns?: number
+}) {
+    const rows =
+        Number.isFinite(params.rows) && (params.rows ?? 0) > 0
+            ? Math.round(params.rows ?? params.gridSize)
+            : params.gridSize
+    const columns =
+        Number.isFinite(params.columns) && (params.columns ?? 0) > 0
+            ? Math.round(params.columns ?? params.gridSize)
+            : params.gridSize
+
+    return {
+        rows: Math.max(1, rows),
+        columns: Math.max(1, columns),
+    }
 }
 
 export function buildPaintReferenceSwatchByIdMap<
@@ -401,16 +423,26 @@ export function requantizeTransparentPaintSnapshotToOverlayPixels<
 >(params: {
     snapshot: ImageData
     gridSize: number
+    rows?: number
+    columns?: number
     valueByHex: ReadonlyMap<string, TPixel>
     pixelizeSnapshot: PaintReferencePixelizeSnapshot
 }): TPixel[][] {
-    const maskPixels = params.pixelizeSnapshot(params.snapshot, params.gridSize)
-    const out = createEmptyPaintReferencePixels<TPixel>(params.gridSize)
+    const geometry = resolvePaintReferenceGridGeometry(params)
+    const maskPixels = params.pixelizeSnapshot(
+        params.snapshot,
+        params.gridSize,
+        geometry
+    )
+    const out = createEmptyPaintReferencePixels<TPixel>(
+        geometry.rows,
+        geometry.columns
+    )
 
-    for (let row = 0; row < params.gridSize; row++) {
+    for (let row = 0; row < geometry.rows; row++) {
         const sourceRow = maskPixels[row] || []
         const outRow = out[row]
-        for (let column = 0; column < params.gridSize; column++) {
+        for (let column = 0; column < geometry.columns; column++) {
             const hex = toHexUpperOrNull(sourceRow[column] ?? null)
             outRow[column] = hex
                 ? (params.valueByHex.get(hex) ?? (null as TPixel))
@@ -480,30 +512,39 @@ export function requantizePaintSnapshotToOverlayPixels<
 >(params: {
     snapshot: ImageData
     gridSize: number
+    rows?: number
+    columns?: number
     baseAuto: ReadonlyArray<TSwatch>
     user: ReadonlyArray<TSwatch>
     pixelizeSnapshot: PaintReferencePixelizeSnapshot
     quantizeToFixedPalette: PaintReferenceFixedPaletteQuantizer
 }): TPixel[][] {
     const { snapshot, gridSize, baseAuto, user } = params
+    const geometry = resolvePaintReferenceGridGeometry(params)
 
-    const snapshotPixels = params.pixelizeSnapshot(snapshot, gridSize)
+    const snapshotPixels = params.pixelizeSnapshot(snapshot, gridSize, geometry)
     const { paletteHex, idByHex } = buildFixedPaletteHexAndIdMap({
         baseAuto,
         user,
     })
 
     if (paletteHex.length === 0) {
-        return createEmptyPaintReferencePixels<TPixel>(gridSize)
+        return createEmptyPaintReferencePixels<TPixel>(
+            geometry.rows,
+            geometry.columns
+        )
     }
 
     const quantized = params.quantizeToFixedPalette(snapshotPixels, paletteHex)
-    const out = createEmptyPaintReferencePixels<TPixel>(gridSize)
+    const out = createEmptyPaintReferencePixels<TPixel>(
+        geometry.rows,
+        geometry.columns
+    )
 
-    for (let row = 0; row < gridSize; row++) {
+    for (let row = 0; row < geometry.rows; row++) {
         const sourceRow = quantized[row] || []
         const outRow = out[row]
-        for (let column = 0; column < gridSize; column++) {
+        for (let column = 0; column < geometry.columns; column++) {
             const color = sourceRow[column] ?? null
             if (color == null) {
                 outRow[column] = null as TPixel
@@ -533,26 +574,36 @@ export function requantizePaintRefsToOverlayPixels<
     transparentSnapshot: ImageData | null
     transparentValueByHex: ReadonlyMap<string, TPixel>
     gridSize: number
+    rows?: number
+    columns?: number
     baseAuto: ReadonlyArray<TSwatch>
     user: ReadonlyArray<TSwatch>
     pixelizeSnapshot: PaintReferencePixelizeSnapshot
     quantizeToFixedPalette: PaintReferenceFixedPaletteQuantizer
 }): TPixel[][] {
+    const geometry = resolvePaintReferenceGridGeometry(params)
     const colorOverlay = params.colorSnapshot
         ? requantizePaintSnapshotToOverlayPixels<TPixel, TSwatch>({
               snapshot: params.colorSnapshot,
               gridSize: params.gridSize,
+              rows: geometry.rows,
+              columns: geometry.columns,
               baseAuto: params.baseAuto,
               user: params.user,
               pixelizeSnapshot: params.pixelizeSnapshot,
               quantizeToFixedPalette: params.quantizeToFixedPalette,
           })
-        : createEmptyPaintReferencePixels<TPixel>(params.gridSize)
+        : createEmptyPaintReferencePixels<TPixel>(
+              geometry.rows,
+              geometry.columns
+          )
 
     const userOverlay = params.userSnapshot
         ? requantizeTransparentPaintSnapshotToOverlayPixels<TPixel>({
               snapshot: params.userSnapshot,
               gridSize: params.gridSize,
+              rows: geometry.rows,
+              columns: geometry.columns,
               valueByHex: params.userValueByHex,
               pixelizeSnapshot: params.pixelizeSnapshot,
           })
@@ -571,6 +622,8 @@ export function requantizePaintRefsToOverlayPixels<
         requantizeTransparentPaintSnapshotToOverlayPixels<TPixel>({
             snapshot: params.transparentSnapshot,
             gridSize: params.gridSize,
+            rows: geometry.rows,
+            columns: geometry.columns,
             valueByHex: params.transparentValueByHex,
             pixelizeSnapshot: params.pixelizeSnapshot,
         })

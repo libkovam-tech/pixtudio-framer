@@ -125,6 +125,19 @@ import {
     type ImageDataSampleSource,
 } from "./editorHistoryState.ts"
 import {
+    calculateCanvasGridGeometry,
+    calculateReferenceDimensions,
+    DEFAULT_ASPECT_RATIO_ID,
+    type AspectRatioId,
+} from "./canvasGeometry.ts"
+import { calculateCanvasLayoutPolicy } from "./canvasLayoutPolicy.ts"
+import {
+    AspectRatioSelector,
+    calculateCropViewportGeometry,
+    getAspectRatioCssValue,
+    selectDefaultCropAspectRatio,
+} from "./CropDomain.tsx"
+import {
     AUTO_PALETTE_CONTEXT_KIND,
     DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
@@ -985,12 +998,12 @@ function preprocessImportedImageData(
     return boosted
 }
 
-function bakeRef512InChineseRoom(
-    prepared512: ImageData,
+function bakeReferenceInChineseRoom(
+    preparedReference: ImageData,
     source: "gallery" | "camera" | "other" = "other"
 ): ImageData {
     // Crop Screen stays neutral: palette presets are applied only in Palette Presets.
-    const sanitized = maybeSanitizeImageData(prepared512, source)
+    const sanitized = maybeSanitizeImageData(preparedReference, source)
     return maybeStylizeBoostImageData(sanitized, source)
 }
 
@@ -1236,23 +1249,29 @@ function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value))
 }
 
-function createEmptyPixels(size: number) {
-    return Array.from({ length: size }, () =>
-        Array.from({ length: size }, () => null as PixelValue)
+function createEmptyPixels(rows: number, columns: number = rows) {
+    return Array.from({ length: rows }, () =>
+        Array.from({ length: columns }, () => null as PixelValue)
     )
 }
 
-function resizePixels(prevPixels: PixelValue[][], newSize: number) {
+function resizePixels(
+    prevPixels: PixelValue[][],
+    nextRows: number,
+    nextColumns: number = nextRows
+) {
     if (!prevPixels || prevPixels.length === 0)
-        return createEmptyPixels(newSize)
-    const oldSize = prevPixels.length
-    if (oldSize === newSize) return prevPixels
+        return createEmptyPixels(nextRows, nextColumns)
+    const oldRows = prevPixels.length
+    const oldColumns = prevPixels[0]?.length ?? 0
+    if (oldRows === nextRows && oldColumns === nextColumns) return prevPixels
 
-    const next = createEmptyPixels(newSize)
-    const copySize = Math.min(oldSize, newSize)
-    for (let r = 0; r < copySize; r++) {
+    const next = createEmptyPixels(nextRows, nextColumns)
+    const copyRows = Math.min(oldRows, nextRows)
+    const copyColumns = Math.min(oldColumns, nextColumns)
+    for (let r = 0; r < copyRows; r++) {
         const srcRow = prevPixels[r] || []
-        for (let c = 0; c < copySize; c++)
+        for (let c = 0; c < copyColumns; c++)
             next[r][c] = (srcRow[c] ?? null) as PixelValue
     }
     return next
@@ -1805,18 +1824,23 @@ function hsvToRgbIntoDeg(
 // ---- pixelize: dominant color + rounding ----
 function pixelizeFromImageDominant(
     imageData: ImageDataSampleSource,
-    gridSize: number,
+    gridGeometry: number | { rows: number; columns: number },
     roundStep = 16
 ) {
     const { width, height, data } = imageData
 
-    const size = gridSize
-    const result = Array.from({ length: size }, () =>
-        Array.from({ length: size }, () => null as string | null)
+    const rows =
+        typeof gridGeometry === "number" ? gridGeometry : gridGeometry.rows
+    const columns =
+        typeof gridGeometry === "number" ? gridGeometry : gridGeometry.columns
+    const safeRows = Math.max(1, Math.round(rows || 0))
+    const safeColumns = Math.max(1, Math.round(columns || 0))
+    const result = Array.from({ length: safeRows }, () =>
+        Array.from({ length: safeColumns }, () => null as string | null)
     )
 
-    const cellWidth = width / size
-    const cellHeight = height / size
+    const cellWidth = width / safeColumns
+    const cellHeight = height / safeRows
     const roundComponent = (v: number) =>
         clamp(Math.round(v / roundStep) * roundStep, 0, 255)
 
@@ -1845,11 +1869,11 @@ function pixelizeFromImageDominant(
         return bestKey
     }
 
-    for (let gy = 0; gy < size; gy++) {
+    for (let gy = 0; gy < safeRows; gy++) {
         const startY = Math.floor(gy * cellHeight)
         const endY = Math.floor((gy + 1) * cellHeight) || startY + 1
 
-        for (let gx = 0; gx < size; gx++) {
+        for (let gx = 0; gx < safeColumns; gx++) {
             const startX = Math.floor(gx * cellWidth)
             const endX = Math.floor((gx + 1) * cellWidth) || startX + 1
 
@@ -1962,6 +1986,20 @@ function computeExportSize(gridSize: number) {
     const up = Math.ceil(target / gridSize) * gridSize
     const best = Math.abs(down - target) <= Math.abs(up - target) ? down : up
     return best > 0 ? best : gridSize
+}
+
+function computeRectangularExportGeometry(params: {
+    gridSize: number
+    columns: number
+    rows: number
+}) {
+    const exportShortSide = computeExportSize(params.gridSize)
+    const cellSize = exportShortSide / params.gridSize
+    return {
+        cellSize,
+        width: Math.max(1, Math.round(params.columns * cellSize)),
+        height: Math.max(1, Math.round(params.rows * cellSize)),
+    }
 }
 
 function cloneImageDataSnapshot(src: ImageData | null): ImageData | null {
@@ -3003,6 +3041,9 @@ function editorCommittedStateTraceSummary(
     if (!state) return null
     return {
         gridSize: state.gridSize,
+        aspectRatioId: state.aspectRatioId,
+        columns: state.columns,
+        rows: state.rows,
         paletteCount: state.paletteCount,
         brushSize: state.brushSize,
         activePaletteTab: state.activePaletteTab ?? null,
@@ -3055,6 +3096,7 @@ type EditorCanvasCssSize = {
 function PixelEditorFramer({
     initialImageData,
     initialImageRouteKind,
+    initialImportAspectRatioId,
     blankImportNonce,
     startWithImageVisible,
     onCaptureSmartReferenceBaseForSave,
@@ -3089,6 +3131,7 @@ function PixelEditorFramer({
         | "smart-object-apply"
         | "smart-object-history-restore"
         | null
+    initialImportAspectRatioId?: AspectRatioId
     blankImportNonce: number
     // save-side bridge:
     // The editor does not own Smart Object base/committed adjustments,
@@ -3153,18 +3196,23 @@ function PixelEditorFramer({
     const isMobileUI =
         typeof window !== "undefined" &&
         window.matchMedia("(max-width: 640px)").matches
-    const [mobileViewportWidth, setMobileViewportWidth] = React.useState(() =>
-        getViewportWidthPx()
-    )
+    const [appViewportSize, setAppViewportSize] = React.useState(() => ({
+        w: getViewportWidthPx(),
+        h: getViewportHeightPx(),
+    }))
 
     useIsomorphicLayoutEffect(() => {
-        if (!isMobileUI) return
-
         let raf = 0
         const sync = () => {
             if (raf) cancelAnimationFrame(raf)
             raf = requestAnimationFrame(() => {
-                setMobileViewportWidth(getViewportWidthPx())
+                const next = {
+                    w: getViewportWidthPx(),
+                    h: getViewportHeightPx(),
+                }
+                setAppViewportSize((prev) =>
+                    prev.w === next.w && prev.h === next.h ? prev : next
+                )
             })
         }
 
@@ -3176,7 +3224,7 @@ function PixelEditorFramer({
             window.removeEventListener("resize", sync)
             window.visualViewport?.removeEventListener("resize", sync)
         }
-    }, [isMobileUI])
+    }, [])
 
     // =====================
     // S0: USER ACTION CONTRACT "WIRES" (NO BEHAVIOR CHANGES)
@@ -3318,7 +3366,7 @@ function PixelEditorFramer({
         const userRefSnap = paintUserRefImageData ?? null
         const transparentRefSnap = paintTransparentRefImageData ?? null
         if (!colorRefSnap && !userRefSnap && !transparentRefSnap) {
-            setOverlayPixels(createEmptyPixels(gridSize))
+            setOverlayPixels(createEmptyPixels(gridRows, gridColumns))
             return
         }
 
@@ -3332,10 +3380,20 @@ function PixelEditorFramer({
             transparentSnapshot: transparentRefSnap,
             transparentValueByHex: paintTransparentRefValueByHexRef.current,
             gridSize,
+            rows: gridRows,
+            columns: gridColumns,
             baseAuto: autoEffective,
             user: userSwatches,
-            pixelizeSnapshot: (snapshot, nextGridSize) =>
-                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+            pixelizeSnapshot: (snapshot, nextGridSize, geometry) =>
+                pixelizeFromImageDominant(
+                    snapshot,
+                    geometry ??
+                        calculateCanvasGridGeometry({
+                            gridSize: nextGridSize,
+                            aspectRatioId,
+                        }),
+                    16
+                ),
             quantizeToFixedPalette,
         })
 
@@ -3407,6 +3465,15 @@ function PixelEditorFramer({
     const DEFAULT_EDITOR_PALETTE_COUNT = 16
 
     const [gridSize, setGridSize] = React.useState(DEFAULT_EDITOR_GRID_SIZE)
+    const [aspectRatioId, setAspectRatioId] = React.useState<AspectRatioId>(
+        DEFAULT_ASPECT_RATIO_ID
+    )
+    const canvasGeometry = React.useMemo(
+        () => calculateCanvasGridGeometry({ gridSize, aspectRatioId }),
+        [gridSize, aspectRatioId]
+    )
+    const gridColumns = canvasGeometry.columns
+    const gridRows = canvasGeometry.rows
     const [paletteCount, setPaletteCount] = React.useState(
         DEFAULT_EDITOR_PALETTE_COUNT
     )
@@ -3455,10 +3522,10 @@ function PixelEditorFramer({
     >([])
     const palettePresetFileInputRef = React.useRef<HTMLInputElement | null>(null)
     const [imagePixels, setImagePixels] = React.useState<PixelValue[][]>(() =>
-        createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE)
+        createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE, DEFAULT_EDITOR_GRID_SIZE)
     )
     const [overlayPixels, setOverlayPixels] = React.useState<PixelValue[][]>(
-        () => createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE)
+        () => createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE, DEFAULT_EDITOR_GRID_SIZE)
     )
 
     const [autoOverrides, setAutoOverrides] =
@@ -3624,15 +3691,25 @@ function PixelEditorFramer({
         return i
     }
 
-    function applyBlankProject(nextGridSize: number) {
+    function applyBlankProject(
+        nextGridSize: number,
+        nextAspectRatioId: AspectRatioId = aspectRatioId
+    ) {
         const gs = safeGridSizeOrDefault(nextGridSize)
+        const geometry = calculateCanvasGridGeometry({
+            gridSize: gs,
+            aspectRatioId: nextAspectRatioId,
+        })
 
         // If gridSize was corrupted, repair state as well.
         if (gs !== gridSize) setGridSize(gs)
+        if (nextAspectRatioId !== aspectRatioId) {
+            setAspectRatioId(nextAspectRatioId)
+        }
 
         // 1) Pixels
-        setOverlayPixels(createEmptyPixels(gs))
-        setImagePixels(createEmptyPixels(gs))
+        setOverlayPixels(createEmptyPixels(geometry.rows, geometry.columns))
+        setImagePixels(createEmptyPixels(geometry.rows, geometry.columns))
 
         // 1.5) New import means a new palette session.
         setUserSwatches([])
@@ -3946,6 +4023,9 @@ function PixelEditorFramer({
 
         return buildProjectSnapshotV2ForSave({
             gridSize: g,
+            aspectRatioId,
+            columns: gridColumns,
+            rows: gridRows,
             paletteCount,
             autoSwatches,
             userSwatches,
@@ -3956,6 +4036,8 @@ function PixelEditorFramer({
             deConfettiByPaletteContext,
             quantizationProfile,
             smartReferenceBytes: smartReferenceBaseForSave?.data ?? null,
+            smartReferenceWidth: smartReferenceBaseForSave?.width ?? null,
+            smartReferenceHeight: smartReferenceBaseForSave?.height ?? null,
             smartAdjustments: smartAdjustmentsForSave,
             normalizeColor: toHexUpperSafe,
             transparentPixel: TRANSPARENT_PIXEL,
@@ -4255,6 +4337,8 @@ function PixelEditorFramer({
     function qcLogP2(params: {
         phase: "BEGIN" | "END" | "WARN"
         gridSize: number
+        columns?: number
+        rows?: number
         paletteCount: number
         autoSwatches: Swatch[]
         userSwatches: Swatch[]
@@ -4277,9 +4361,11 @@ function PixelEditorFramer({
             const w = h > 0 ? (params.overlay[0]?.length ?? 0) : 0
             const nn = countNonNull(params.overlay)
             extra = ` overlay=${h}x${w} nn=${nn}`
-            if (h !== params.gridSize || w !== params.gridSize) {
+            const expectedRows = params.rows ?? params.gridSize
+            const expectedColumns = params.columns ?? params.gridSize
+            if (h !== expectedRows || w !== expectedColumns) {
                 editorConsole.warn(
-                    `[P2.5][WARN] overlay size mismatch expected=${params.gridSize} got=${h}x${w} key=${key}`
+                    `[P2.5][WARN] overlay size mismatch expected=${expectedRows}x${expectedColumns} got=${h}x${w} key=${key}`
                 )
             }
         }
@@ -4414,10 +4500,20 @@ function PixelEditorFramer({
                 transparentSnapshot: transparentSnapToUse,
                 transparentValueByHex: paintTransparentRefValueByHexRef.current,
                 gridSize,
+                rows: gridRows,
+                columns: gridColumns,
                 baseAuto: nextAuto,
                 user: nextUser,
-                pixelizeSnapshot: (currentSnapshot, nextGridSize) =>
-                    pixelizeFromImageDominant(currentSnapshot, nextGridSize, 16),
+                pixelizeSnapshot: (currentSnapshot, nextGridSize, geometry) =>
+                    pixelizeFromImageDominant(
+                        currentSnapshot,
+                        geometry ??
+                            calculateCanvasGridGeometry({
+                                gridSize: nextGridSize,
+                                aspectRatioId,
+                            }),
+                        16
+                    ),
                 quantizeToFixedPalette,
             })
 
@@ -4425,6 +4521,8 @@ function PixelEditorFramer({
                 qcLogP2({
                     phase: "END",
                     gridSize,
+                    columns: gridColumns,
+                    rows: gridRows,
                     paletteCount,
                     autoSwatches: nextAuto,
                     userSwatches,
@@ -4452,9 +4550,9 @@ function PixelEditorFramer({
             }
 
             if (!ENABLE_OVERLAY_LEGACY_RESIZE_FALLBACK) {
-                overlayNext = createEmptyPixels(gridSize)
+                overlayNext = createEmptyPixels(gridRows, gridColumns)
             } else {
-                overlayNext = resizePixels(overlayPixels, gridSize)
+                overlayNext = resizePixels(overlayPixels, gridRows, gridColumns)
             }
         }
 
@@ -4489,7 +4587,7 @@ function PixelEditorFramer({
     // B1 - unified canvas, still in soft migration: source of truth for rendering.
     // =====================
     const [canvasPixels, setCanvasPixels] = React.useState<PixelValue[][]>(() =>
-        createEmptyPixels(gridSize)
+        createEmptyPixels(gridRows, gridColumns)
     )
 
     // ROUTE B: overlay -> canvas gateway probe
@@ -4510,21 +4608,21 @@ function PixelEditorFramer({
     }
 
     function composeVisualGrid(): PixelValue[][] | null {
-        const g = gridSize
-
-        // ✅ ВАЖНО: при рассинхроне НЕ возвращаем пустоту (шахматку),
-        // а возвращаем null => "не обновлять витрину"
-        if (!Array.isArray(overlayPixels) || overlayPixels.length !== g) {
+        // IMPORTANT: if layers are out of sync, do not publish an empty
+        // checkerboard frame. Return null and leave the current view intact.
+        if (!Array.isArray(overlayPixels) || overlayPixels.length !== gridRows) {
             return null
         }
-        if (!Array.isArray(imagePixels) || imagePixels.length !== g) {
+        if (!Array.isArray(imagePixels) || imagePixels.length !== gridRows) {
             return null
         }
+        if ((overlayPixels[0]?.length ?? 0) !== gridColumns) return null
+        if ((imagePixels[0]?.length ?? 0) !== gridColumns) return null
 
-        const out: PixelValue[][] = createEmptyPixels(g)
+        const out: PixelValue[][] = createEmptyPixels(gridRows, gridColumns)
 
-        for (let r = 0; r < g; r++) {
-            for (let c = 0; c < g; c++) {
+        for (let r = 0; r < gridRows; r++) {
+            for (let c = 0; c < gridColumns; c++) {
                 out[r][c] = getVisualPixel(r, c)
             }
         }
@@ -4536,17 +4634,18 @@ function PixelEditorFramer({
         base: PixelValue[][],
         overlay: PixelValue[][]
     ): PixelValue[][] {
-        const g = base?.length ?? 0
-        if (g <= 0) return base
+        const rows = base?.length ?? 0
+        const columns = rows > 0 ? (base[0]?.length ?? 0) : 0
+        if (rows <= 0 || columns <= 0) return base
 
-        const out: PixelValue[][] = createEmptyPixels(g)
+        const out: PixelValue[][] = createEmptyPixels(rows, columns)
 
-        for (let r = 0; r < g; r++) {
+        for (let r = 0; r < rows; r++) {
             const baseRow = base[r] || []
             const ovRow = overlay?.[r] || []
             const outRow = out[r]
 
-            for (let c = 0; c < g; c++) {
+            for (let c = 0; c < columns; c++) {
                 const ov = (ovRow[c] ?? null) as PixelValue
                 outRow[c] =
                     ov !== null ? ov : ((baseRow[c] ?? null) as PixelValue)
@@ -5155,6 +5254,8 @@ function PixelEditorFramer({
             world,
             currentReferenceSignature: imageDataSampleSignature(originalImageData),
             gridSize,
+            rows: gridRows,
+            columns: gridColumns,
         })
     }
 
@@ -5371,7 +5472,11 @@ function PixelEditorFramer({
         const before = latestProjectStateRef.current ?? makeProjectState()
         const frozenWorld = makeCurrentDerivedWorldSnapshot()
         const methodSourcePixels = originalImageData
-            ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
+            ? pixelizeFromImageDominant(
+                  originalImageData,
+                  { rows: gridRows, columns: gridColumns },
+                  16
+              )
             : resolveMethodPixelGridToColors(frozenWorld.canvasPixels, [
                   ...frozenWorld.autoSwatches,
                   ...userSwatches,
@@ -5517,7 +5622,14 @@ function PixelEditorFramer({
             deConfettiByPaletteContext: currentDeConfettiByPaletteContext,
             excludedColors: currentDeletedAutoPaletteColors,
             pixelizeReference: (snapshot, nextGridSize) =>
-                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+                pixelizeFromImageDominant(
+                    snapshot,
+                    calculateCanvasGridGeometry({
+                        gridSize: nextGridSize,
+                        aspectRatioId,
+                    }),
+                    16
+                ),
             referenceSignature: imageDataSampleSignature,
         })
     }
@@ -5616,6 +5728,9 @@ function PixelEditorFramer({
             preferredSwatch,
             activeTab,
             gridSize,
+            aspectRatioId,
+            columns: gridColumns,
+            rows: gridRows,
             paletteCount,
             brushSize,
             showImage,
@@ -5674,13 +5789,21 @@ function PixelEditorFramer({
             profile: EXTRACT_QUANTIZATION_PROFILE,
             referenceSnapshot: originalImageData,
             gridSize,
+            aspectRatioId,
             overlayPixels,
             previousSwatches: autoSwatches,
             userSwatches,
             paletteCountTarget: clamp(paletteCount, PALETTE_MIN, PALETTE_MAX),
             excludedColors: deletedAutoPaletteColors,
             pixelizeReference: (snapshot, nextGridSize) =>
-                pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+                pixelizeFromImageDominant(
+                    snapshot,
+                    calculateCanvasGridGeometry({
+                        gridSize: nextGridSize,
+                        aspectRatioId,
+                    }),
+                    16
+                ),
             referenceSignature: imageDataSampleSignature,
             fallbackPalette: generatePalette(
                 clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
@@ -5909,6 +6032,7 @@ function PixelEditorFramer({
             autoSwatchesOverride,
             makeAutoSwatches: makeAutoSwatchesFromFixedProfile,
             gridSize,
+            aspectRatioId,
             paletteCount,
             brushSize,
             showImage,
@@ -5967,13 +6091,21 @@ function PixelEditorFramer({
                 referenceSnapshot,
                 referenceSignature: imageDataSampleSignature,
                 gridSize,
+                aspectRatioId,
                 overlayPixels,
                 previousSwatches: autoSwatches,
                 userSwatches,
                 methodProfilesByPaletteContext,
                 deConfettiByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
-                    pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+                    pixelizeFromImageDominant(
+                        snapshot,
+                        calculateCanvasGridGeometry({
+                            gridSize: nextGridSize,
+                            aspectRatioId,
+                        }),
+                        16
+                    ),
                 autoSwatches: nextAuto,
                 imagePixels,
                 selectedSwatch: selectedPresetSwatch,
@@ -6080,6 +6212,7 @@ function PixelEditorFramer({
                 profile,
                 referenceSnapshot: originalImageData,
                 gridSize,
+                aspectRatioId,
                 overlayPixels: currentOverlayPixels,
                 previousSwatches: currentAutoSwatches,
                 userSwatches: currentUserSwatches,
@@ -6087,7 +6220,14 @@ function PixelEditorFramer({
                     currentMethodProfilesByPaletteContext,
                 deConfettiByPaletteContext: currentDeConfettiByPaletteContext,
                 pixelizeReference: (snapshot, nextGridSize) =>
-                    pixelizeFromImageDominant(snapshot, nextGridSize, 16),
+                    pixelizeFromImageDominant(
+                        snapshot,
+                        calculateCanvasGridGeometry({
+                            gridSize: nextGridSize,
+                            aspectRatioId,
+                        }),
+                        16
+                    ),
                 referenceSignature: imageDataSampleSignature,
                 imagePixels: currentImagePixels,
                 selectedSwatch: currentSelectedSwatch,
@@ -6405,6 +6545,9 @@ function PixelEditorFramer({
 
         return {
             gridSize,
+            aspectRatioId,
+            columns: gridColumns,
+            rows: gridRows,
             paletteCount,
             brushSize,
             imagePixels: clonePixelsGrid(imagePixels),
@@ -6444,15 +6587,21 @@ function PixelEditorFramer({
         autoSwatches: Swatch[]
         userSwatches: Swatch[]
         gridSize: number
+        columns: number
+        rows: number
     }): ImageData {
         const exportSize = computeExportSize(params.gridSize)
+        const columns = Math.max(1, Math.round(params.columns || 0))
+        const rows = Math.max(1, Math.round(params.rows || 0))
         const px = exportSize / params.gridSize
+        const exportWidth = Math.max(1, Math.round(columns * px))
+        const exportHeight = Math.max(1, Math.round(rows * px))
         const out = document.createElement("canvas")
-        out.width = exportSize
-        out.height = exportSize
+        out.width = exportWidth
+        out.height = exportHeight
 
         const ctx = out.getContext("2d")
-        if (!ctx) return new ImageData(exportSize, exportSize)
+        if (!ctx) return new ImageData(exportWidth, exportHeight)
 
         const localSwatchById = new Map<string, Swatch>()
         for (const sw of params.autoSwatches) localSwatchById.set(sw.id, sw)
@@ -6474,12 +6623,12 @@ function PixelEditorFramer({
         }
 
         ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, exportSize, exportSize)
+        ctx.clearRect(0, 0, exportWidth, exportHeight)
 
-        for (let r = 0; r < params.gridSize; r++) {
+        for (let r = 0; r < rows; r++) {
             const iRow = params.imagePixels[r]
             const oRow = params.overlayPixels[r]
-            for (let c = 0; c < params.gridSize; c++) {
+            for (let c = 0; c < columns; c++) {
                 let v: PixelValue = (oRow?.[c] ?? null) as PixelValue
                 if (v == null) {
                     v = (iRow?.[c] ?? null) as PixelValue
@@ -6493,7 +6642,7 @@ function PixelEditorFramer({
             }
         }
 
-        return ctx.getImageData(0, 0, exportSize, exportSize)
+        return ctx.getImageData(0, 0, exportWidth, exportHeight)
     }
 
     const latestProjectStateRef = React.useRef<ProjectState | null>(null)
@@ -6617,10 +6766,14 @@ function PixelEditorFramer({
                     frozenPaletteBounds.min,
                     frozenPaletteBounds.max
                 )
+                const nextGeometry = calculateCanvasGridGeometry({
+                    gridSize: nextGridSize,
+                    aspectRatioId,
+                })
 
                 const basePixels = pixelizeFromImageDominant(
                     frozenReferenceSnapshot,
-                    nextGridSize,
+                    nextGeometry,
                     16
                 )
 
@@ -6630,7 +6783,10 @@ function PixelEditorFramer({
                         : AUTO_PALETTE_CONTEXT_KIND
                 const q = runQuantization<PixelValue>({
                     sourcePixels: basePixels,
-                    overlayPixels: createEmptyPixels(nextGridSize),
+                    overlayPixels: createEmptyPixels(
+                        nextGeometry.rows,
+                        nextGeometry.columns
+                    ),
                     previousSwatches: frozenAutoSwatches,
                     userSwatches: frozenUserSwatches,
                     paletteCount: nextPaletteSize,
@@ -6653,7 +6809,10 @@ function PixelEditorFramer({
 
                 const collapsed = collapseDuplicateSwatchesAndRemap({
                     imagePixels: q.imagePixels,
-                    overlayPixels: createEmptyPixels(nextGridSize),
+                    overlayPixels: createEmptyPixels(
+                        nextGeometry.rows,
+                        nextGeometry.columns
+                    ),
                     nextAuto: nextAutoEffective,
                     nextUser: frozenUserSwatches,
                     nextAutoOverrides: frozenAutoOverrides,
@@ -6673,17 +6832,30 @@ function PixelEditorFramer({
                               transparentValueByHex:
                                   frozenTransparentValueByHex,
                               gridSize: nextGridSize,
+                              rows: nextGeometry.rows,
+                              columns: nextGeometry.columns,
                               baseAuto: collapsed.autoSwatches,
                               user: collapsed.userSwatches,
-                              pixelizeSnapshot: (snapshot, nextGridSize) =>
+                              pixelizeSnapshot: (
+                                  snapshot,
+                                  nextGridSize,
+                                  geometry
+                              ) =>
                                   pixelizeFromImageDominant(
                                       snapshot,
-                                      nextGridSize,
+                                      geometry ??
+                                          calculateCanvasGridGeometry({
+                                              gridSize: nextGridSize,
+                                              aspectRatioId,
+                                          }),
                                       16
                                   ),
                               quantizeToFixedPalette,
                           })
-                        : createEmptyPixels(nextGridSize)
+                        : createEmptyPixels(
+                              nextGeometry.rows,
+                              nextGeometry.columns
+                          )
 
                 const imageData = renderRecorderExportFrameImageData({
                     imagePixels: collapsed.imagePixels,
@@ -6691,12 +6863,18 @@ function PixelEditorFramer({
                     autoSwatches: collapsed.autoSwatches,
                     userSwatches: collapsed.userSwatches,
                     gridSize: nextGridSize,
+                    rows: nextGeometry.rows,
+                    columns: nextGeometry.columns,
                 })
 
                 return {
                     imageData,
-                    exportSize: imageData.width,
+                    exportSize: Math.min(imageData.width, imageData.height),
+                    exportWidth: imageData.width,
+                    exportHeight: imageData.height,
                     gridSize: nextGridSize,
+                    rows: nextGeometry.rows,
+                    columns: nextGeometry.columns,
                     paletteSize: nextPaletteSize,
                 }
             }
@@ -6704,6 +6882,8 @@ function PixelEditorFramer({
             return {
                 referenceSnapshot: frozenReferenceSnapshot,
                 overlaySnapshot: frozenOverlaySnapshot,
+                rows: gridRows,
+                columns: gridColumns,
                 autoSwatches: frozenAutoSwatches,
                 userSwatches: frozenUserSwatches,
                 autoOverrides: frozenAutoOverrides,
@@ -6726,10 +6906,13 @@ function PixelEditorFramer({
                 },
             }
         }, [
+            aspectRatioId,
             autoSwatches,
             autoOverrides,
             deConfettiByPaletteContext,
             deletedAutoPaletteColors,
+            gridColumns,
+            gridRows,
             gridSize,
             methodProfilesByPaletteContext,
             originalImageData,
@@ -6761,6 +6944,9 @@ function PixelEditorFramer({
         })
     }, [
         gridSize,
+        aspectRatioId,
+        gridColumns,
+        gridRows,
         paletteCount,
         brushSize,
         imagePixels,
@@ -6811,6 +6997,7 @@ function PixelEditorFramer({
         })
         isRestoringHistoryRef.current = true
         setGridSize(state.gridSize)
+        setAspectRatioId(state.aspectRatioId ?? DEFAULT_ASPECT_RATIO_ID)
         setPaletteCount(state.paletteCount)
         setBrushSize((state as any).brushSize ?? DEFAULT_BRUSH_SIZE)
         setHasImportContext(state.hasOriginalImageData)
@@ -6963,9 +7150,18 @@ function PixelEditorFramer({
             (list || []).filter(
                 (s) => s && !s.isTransparent && s.id !== "transparent"
             )
+        const loadedAspectRatioId =
+            project.aspectRatioId ?? DEFAULT_ASPECT_RATIO_ID
+        const loadedGeometry = calculateCanvasGridGeometry({
+            gridSize: project.gridSize,
+            aspectRatioId: loadedAspectRatioId,
+        })
 
         const fixedProject: ProjectState = {
             ...project,
+            aspectRatioId: loadedAspectRatioId,
+            columns: project.columns ?? loadedGeometry.columns,
+            rows: project.rows ?? loadedGeometry.rows,
             autoSwatches: stripTransparentSwatches(project.autoSwatches),
             userSwatches: stripTransparentSwatches(project.userSwatches),
             paletteCount: clampInt(project.paletteCount, PALETTE_MIN, PALETTE_MAX),
@@ -6979,12 +7175,20 @@ function PixelEditorFramer({
         return fixedProject
     }
 
-    function clearEditorStateForLoadRestore(nextGridSize: number) {
+    function clearEditorStateForLoadRestore(
+        nextGridSize: number,
+        nextAspectRatioId: AspectRatioId
+    ) {
         const gs = safeGridSizeOrDefault(nextGridSize)
+        const geometry = calculateCanvasGridGeometry({
+            gridSize: gs,
+            aspectRatioId: nextAspectRatioId,
+        })
 
         setGridSize(gs)
-        setImagePixels(createEmptyPixels(gs))
-        setOverlayPixels(createEmptyPixels(gs))
+        setAspectRatioId(nextAspectRatioId)
+        setImagePixels(createEmptyPixels(geometry.rows, geometry.columns))
+        setOverlayPixels(createEmptyPixels(geometry.rows, geometry.columns))
         setOriginalImageData(null)
         setShowImage(false)
         setHasImportContext(false)
@@ -7181,7 +7385,10 @@ function PixelEditorFramer({
                 fileName: payload.fileName,
             }
 
-            clearEditorStateForLoadRestore(fixedProject.gridSize)
+            clearEditorStateForLoadRestore(
+                fixedProject.gridSize,
+                fixedProject.aspectRatioId ?? DEFAULT_ASPECT_RATIO_ID
+            )
             traceLoad("commit: editor state cleared")
 
             const smartObjectBaseForRestore = next.smartObjectBaseForRestore
@@ -8727,8 +8934,8 @@ function PixelEditorFramer({
     const [pickerHue, setPickerHue] = React.useState(0)
     const [pickerSV, setPickerSV] = React.useState({ s: 1, v: 1 })
 
-    const rows = overlayPixels.length
-    const cols = rows > 0 ? overlayPixels[0].length : 0
+    const rows = gridRows
+    const cols = gridColumns
     const isMethodModeActive = methodSession !== null
     const editorControlsDisabled = !!overlayMode || isMethodModeActive
     const currentMethodPaletteContext = getMethodPaletteContextForTab(
@@ -8800,9 +9007,44 @@ function PixelEditorFramer({
         : pixtudioInk(0.55)
     const textColor = PIXTUDIO_INK
     const canvasMax = 640
+    const editorViewportWidth = Math.max(1, appViewportSize.w)
     const editorContentWidth = isMobileUI
-        ? Math.min(canvasMax, Math.max(1, mobileViewportWidth))
+        ? Math.min(canvasMax, editorViewportWidth)
         : canvasMax
+    const topMenuRegionHeight = isMethodModeActive
+        ? 0
+        : (isMobileUI ? 6 : 0) + 38 + (isMobileUI ? 6 : 12)
+    const controlsRegionHeight = isMethodModeActive
+        ? 150
+        : isMobileUI
+          ? 360
+          : 300
+    const canvasLayout = React.useMemo(
+        () =>
+            calculateCanvasLayoutPolicy({
+                deviceClass: isMobileUI ? "mobile" : "desktop",
+                viewportWidth: editorViewportWidth,
+                viewportHeight: Math.max(1, appViewportSize.h),
+                anchorWidth: editorContentWidth,
+                topMenuHeight: topMenuRegionHeight,
+                controlsHeight: controlsRegionHeight,
+                columns: cols,
+                rows,
+            }),
+        [
+            appViewportSize.h,
+            cols,
+            controlsRegionHeight,
+            editorContentWidth,
+            editorViewportWidth,
+            isMobileUI,
+            rows,
+            topMenuRegionHeight,
+        ]
+    )
+    const editorLayoutContentWidth = canvasLayout.contentWidth
+    const actualCanvasWidth = canvasLayout.actualCanvasRect.width
+    const actualCanvasHeight = canvasLayout.actualCanvasRect.height
 
     const squareButton = (clickable = false): React.CSSProperties => ({
         width: 44,
@@ -9046,9 +9288,12 @@ function PixelEditorFramer({
             // import kills both pointer and keyboard slider transactions.
             // A new import starts a completely fresh editor session.
             const nextGridSize = DEFAULT_EDITOR_GRID_SIZE
+            const nextAspectRatioId =
+                initialImportAspectRatioId ?? DEFAULT_ASPECT_RATIO_ID
             const nextPaletteCount = DEFAULT_EDITOR_PALETTE_COUNT
 
             setGridSize(nextGridSize)
+            setAspectRatioId(nextAspectRatioId)
             setPaletteCount(nextPaletteCount)
             setBrushSize(DEFAULT_BRUSH_SIZE)
             resetEditorInteractionStateForNewImport()
@@ -9078,7 +9323,7 @@ function PixelEditorFramer({
                 postLoadCheckNonceRef.current = 0
                 silentLoadHydrationRef.current = false
 
-                applyBlankProject(nextGridSize)
+                applyBlankProject(nextGridSize, nextAspectRatioId)
                 setPaletteCount(nextPaletteCount)
                 setBrushSize(DEFAULT_BRUSH_SIZE)
                 setGridSuppressed(false, "blank-import")
@@ -9116,7 +9361,13 @@ function PixelEditorFramer({
             p3LastProcessedKeyRef.current = null
             p3InFlightKeyRef.current = null
 
-            setOverlayPixels(createEmptyPixels(nextGridSize))
+            const nextGeometry = calculateCanvasGridGeometry({
+                gridSize: nextGridSize,
+                aspectRatioId: nextAspectRatioId,
+            })
+            setOverlayPixels(
+                createEmptyPixels(nextGeometry.rows, nextGeometry.columns)
+            )
 
             // Safety: a new import must always trigger rebuild, even after
             // a load-hydration chain.
@@ -9171,6 +9422,7 @@ function PixelEditorFramer({
     }, [
         initialImageData,
         initialImageRouteKind,
+        initialImportAspectRatioId,
         blankImportNonce,
         resetEditorInteractionStateForNewImport,
     ])
@@ -9305,7 +9557,7 @@ function PixelEditorFramer({
                 return
             }
 
-            // 2) защита от наложения
+            // 2) Overlap guard.
             if (p3InFlightKeyRef.current === p3Key) {
                 if (ENABLE_TXN_LOGS) {
                     editorConsole.log(`[IMPORT][SKIP] key=${p3Key} reason=in_flight`)
@@ -9320,6 +9572,8 @@ function PixelEditorFramer({
                 qcLogP2({
                     phase: "BEGIN",
                     gridSize,
+                    columns: gridColumns,
+                    rows: gridRows,
                     paletteCount,
                     autoSwatches,
                     userSwatches,
@@ -9328,7 +9582,7 @@ function PixelEditorFramer({
             }
         }
 
-        // txn нужен только в snap-режиме
+        // The transaction is only needed in snapshot mode.
         const txn =
             hasSnap && ENABLE_TXN_LOGS
                 ? beginImportTxn("paint-snapshot-requantize")
@@ -9338,14 +9592,14 @@ function PixelEditorFramer({
             if (originalImageData) {
                 const basePixels = pixelizeFromImageDominant(
                     originalImageData,
-                    gridSize,
+                    { rows: gridRows, columns: gridColumns },
                     16
                 )
 
-                // ✅ IMPORT UNDO: импорт должен стать одним коммитом в историю.
+                // IMPORT UNDO: import must become a single history commit.
                 pendingImportBeforeRef.current = null
 
-                // E1A: DEFAULT-ONLY (editor не знает о пресетах)
+                // E1A: DEFAULT-ONLY (the editor does not know about presets).
                 const pixelsForQuant = basePixels
 
                 const target = clamp(paletteCount, PALETTE_MIN, PALETTE_MAX)
@@ -9488,7 +9742,11 @@ function PixelEditorFramer({
                     step: "setImagePixels (no-original) [non-functional]",
                 })
 
-                const imageNext = resizePixels(imagePixels, gridSize)
+                const imageNext = resizePixels(
+                    imagePixels,
+                    gridRows,
+                    gridColumns
+                )
 
                 traceLoad("repixelizeEffect MUTATE", {
                     step: "build auto palette (no-original)",
@@ -9805,13 +10063,13 @@ function PixelEditorFramer({
         const cellW = CANVAS_SIZE / cols
         const cellH = CANVAS_SIZE / rows
 
-        // x/y в координатах "виртуального" холста 0..CANVAS_SIZE
-        // Вместо "центральной клетки" считаем стартовую клетку квадрата кисти.
-        // ROUND делает поведение чётной кисти предсказуемым (не уезжает влево/вверх из-за floor).
+        // x/y are in virtual canvas coordinates, 0..CANVAS_SIZE.
+        // Instead of the center cell, calculate the brush square's start cell.
+        // ROUND keeps even-sized brushes predictable instead of drifting left/up.
         const col0 = Math.round(x / cellW - s / 2)
         const row0 = Math.round(y / cellH - s / 2)
 
-        // Step 2: overlay dirty отмечаем ТОЛЬКО при рисовании
+        // Step 2: mark overlay dirty only while painting.
         if (!overlayDirtyRef.current) {
             overlayDirtyRef.current = true
         }
@@ -9823,7 +10081,7 @@ function PixelEditorFramer({
 
             for (let rr = row0; rr < row0 + s; rr++) {
                 for (let cc = col0; cc < col0 + s; cc++) {
-                    if (rr < 0 || cc < 0 || rr >= gridSize || cc >= gridSize)
+                    if (rr < 0 || cc < 0 || rr >= rows || cc >= cols)
                         continue
 
                     const prevValue = prev[rr]?.[cc] ?? null
@@ -9851,30 +10109,30 @@ function PixelEditorFramer({
 
         const rect = viewport.getBoundingClientRect()
 
-        // координаты указателя внутри viewport (в CSS-пикселях ПОСЛЕ FitToViewport)
+        // Pointer coordinates inside the viewport in CSS pixels after FitToViewport.
         const xViewportPx = e.clientX - rect.left
         const yViewportPx = e.clientY - rect.top
 
-        // внешний scale FitToViewport
+        // External FitToViewport scale.
         const fit = Math.max(0.0001, fitScaleRef.current || 1)
 
-        // "unscaled viewport px" (как если бы FitToViewport scale = 1)
+        // Unscaled viewport pixels, as if FitToViewport scale were 1.
         const xViewportUnscaledPx = xViewportPx / fit
         const yViewportUnscaledPx = yViewportPx / fit
 
         const viewportWUnscaledPx = rect.width / fit
         const viewportHUnscaledPx = rect.height / fit
 
-        // переводим в координаты content (обратный transform редактора)
-        // panX/panY/zoom считаются в НЕ-fit системе
+        // Convert into content coordinates by reversing the editor transform.
+        // panX/panY/zoom are measured in the unfit coordinate system.
         const xContentPx = (xViewportUnscaledPx - panX) / zoom
         const yContentPx = (yViewportUnscaledPx - panY) / zoom
 
-        // переводим в координаты "виртуального" холста 0..CANVAS_SIZE
+        // Convert into virtual canvas coordinates, 0..CANVAS_SIZE.
         const xCanvas = (xContentPx / viewportWUnscaledPx) * CANVAS_SIZE
         const yCanvas = (yContentPx / viewportHUnscaledPx) * CANVAS_SIZE
 
-        // переводим в col/row
+        // Convert into col/row.
         const col = Math.floor((xCanvas / CANVAS_SIZE) * cols)
         const row = Math.floor((yCanvas / CANVAS_SIZE) * rows)
 
@@ -9897,7 +10155,7 @@ function PixelEditorFramer({
                 for (let dc = start; dc <= end; dc++) {
                     const rr = centerRow + dr
                     const cc = centerCol + dc
-                    if (rr < 0 || cc < 0 || rr >= gridSize || cc >= gridSize)
+                    if (rr < 0 || cc < 0 || rr >= rows || cc >= cols)
                         continue
                     if (next[rr][cc] !== value) {
                         activeStrokePresetCellKeysRef.current?.add(`${rr}:${cc}`)
@@ -10009,26 +10267,26 @@ function PixelEditorFramer({
 
         const rect = viewport.getBoundingClientRect()
 
-        // координаты указателя внутри viewport (в CSS-пикселях ПОСЛЕ FitToViewport)
+        // Pointer coordinates inside the viewport in CSS pixels after FitToViewport.
         const xViewportPx = e.clientX - rect.left
         const yViewportPx = e.clientY - rect.top
 
         // --- FIX: учитываем внешний scale FitToViewport ---
         const fit = Math.max(0.0001, fitScaleRef.current || 1)
 
-        // "unscaled viewport px" (как если бы FitToViewport scale = 1)
+        // Unscaled viewport pixels, as if FitToViewport scale were 1.
         const xViewportUnscaledPx = xViewportPx / fit
         const yViewportUnscaledPx = yViewportPx / fit
 
         const viewportWUnscaledPx = rect.width / fit
         const viewportHUnscaledPx = rect.height / fit
 
-        // переводим в координаты content (обратный transform редактора)
-        // panX/panY/zoom здесь считаются в НЕ-fit системе, поэтому работаем в unscaled px
+        // Convert into content coordinates by reversing the editor transform.
+        // panX/panY/zoom are measured in the unfit system, so use unscaled px.
         const xContentPx = (xViewportUnscaledPx - panX) / zoom
         const yContentPx = (yViewportUnscaledPx - panY) / zoom
 
-        // переводим в координаты "виртуального" холста 0..CANVAS_SIZE
+        // Convert into virtual canvas coordinates, 0..CANVAS_SIZE.
         const x = (xContentPx / viewportWUnscaledPx) * CANVAS_SIZE
         const y = (yContentPx / viewportHUnscaledPx) * CANVAS_SIZE
 
@@ -10044,7 +10302,7 @@ function PixelEditorFramer({
         const previewW = brushW + 2 * padX
         const previewH = brushH + 2 * padY
 
-        // сохраним для дебага/возможных будущих шагов
+        // Keep these values for debugging and future pointer steps.
         pointerRef.current = { x, y, inside, w: previewW, h: previewH }
 
         const canShowPreview =
@@ -10069,14 +10327,13 @@ function PixelEditorFramer({
             return
         }
 
-        // ВАЖНО: brushPreviewRef живёт ВНУТРИ zoom/pan контейнера,
-        // поэтому сюда нельзя подмешивать zoom/fit — они применятся DOM-трансформами сами.
+        // brushPreviewRef lives inside the zoom/pan container, so do not mix
+        // zoom/fit into these values. DOM transforms will apply them.
         const previewWContentPx = (previewW / CANVAS_SIZE) * viewportWUnscaledPx
         const previewHContentPx = (previewH / CANVAS_SIZE) * viewportHUnscaledPx
 
-        // ✅ КЛЮЧЕВОЙ FIX:
-        // позиционируем рамку в ЛОКАЛЬНЫХ координатах content (до zoom/pan),
-        // иначе translate будет дополнительно масштабирован zoom-ом и даст дрейф к правому-нижнему углу.
+        // Position the frame in local content coordinates before zoom/pan,
+        // otherwise translate would be scaled again and drift down-right.
         const leftPx = xContentPx - previewWContentPx / 2
         const topPx = yContentPx - previewHContentPx / 2
 
@@ -10266,14 +10523,15 @@ function PixelEditorFramer({
 
     function handleClear() {
         if (originalImageData) {
-            // Импорт есть → Clear чистит только overlay, импортный контекст сохраняем
-            setOverlayPixels(createEmptyPixels(gridSize))
+            // Imported image exists: Clear only wipes the overlay and keeps
+            // the import context.
+            setOverlayPixels(createEmptyPixels(gridRows, gridColumns))
         } else {
-            // Импорта нет → это “пустой проект”
-            setOverlayPixels(createEmptyPixels(gridSize))
-            setImagePixels(createEmptyPixels(gridSize))
+            // No import: this is a blank project.
+            setOverlayPixels(createEmptyPixels(gridRows, gridColumns))
+            setImagePixels(createEmptyPixels(gridRows, gridColumns))
 
-            // Patch E: сбрасываем импортный контекст (только тут это корректно)
+            // Patch E: reset the import context only on this path.
             setHasImportContext(false)
             setOriginalImageData(null)
         }
@@ -10440,6 +10698,7 @@ function PixelEditorFramer({
                     autoSwatches: currentAutoSwatches,
                     userSwatches: currentUserSwatches,
                     gridSize,
+                    aspectRatioId,
                     paletteCount,
                     brushSize,
                     showImage,
@@ -10502,7 +10761,11 @@ function PixelEditorFramer({
             deletedAutoPaletteColors: currentDeletedAutoPaletteColors,
             sourcePixels:
                 editingSwatchId.startsWith("auto-") && originalImageData
-                    ? pixelizeFromImageDominant(originalImageData, gridSize, 16)
+                    ? pixelizeFromImageDominant(
+                          originalImageData,
+                          { rows: gridRows, columns: gridColumns },
+                          16
+                      )
                     : undefined,
             baseState: before,
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
@@ -11163,21 +11426,24 @@ function PixelEditorFramer({
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
 
-        const rows = gridSize
-        const cols = gridSize
-
-        const exportSize = computeExportSize(rows)
-        const px = exportSize / rows
+        const rows = gridRows
+        const cols = gridColumns
+        const exportGeometry = computeRectangularExportGeometry({
+            gridSize,
+            columns: cols,
+            rows,
+        })
+        const px = exportGeometry.cellSize
 
         const out = document.createElement("canvas")
-        out.width = exportSize
-        out.height = exportSize
+        out.width = exportGeometry.width
+        out.height = exportGeometry.height
 
         const ctx = out.getContext("2d")
         if (!ctx) return null
 
         ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, exportSize, exportSize)
+        ctx.clearRect(0, 0, exportGeometry.width, exportGeometry.height)
 
         for (let r = 0; r < rows; r++) {
             const iRow = imagePixels[r]
@@ -11231,11 +11497,14 @@ function PixelEditorFramer({
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
 
-        const rows = gridSize
-        const cols = gridSize
-
-        const exportSize = computeExportSize(rows)
-        const px = exportSize / rows
+        const rows = gridRows
+        const cols = gridColumns
+        const exportGeometry = computeRectangularExportGeometry({
+            gridSize,
+            columns: cols,
+            rows,
+        })
+        const px = exportGeometry.cellSize
 
         const rects: string[] = []
 
@@ -11274,8 +11543,8 @@ function PixelEditorFramer({
         const svg =
             `<?xml version="1.0" encoding="UTF-8"?>` +
             `<svg xmlns="http://www.w3.org/2000/svg" ` +
-            `width="${exportSize}" height="${exportSize}" ` +
-            `viewBox="0 0 ${exportSize} ${exportSize}" shape-rendering="crispEdges">` +
+            `width="${exportGeometry.width}" height="${exportGeometry.height}" ` +
+            `viewBox="0 0 ${exportGeometry.width} ${exportGeometry.height}" shape-rendering="crispEdges">` +
             rects.join("") +
             `</svg>`
 
@@ -11297,6 +11566,8 @@ function PixelEditorFramer({
     }): (string | null)[][] {
         return composePixelArtXlsxExportColors<PixelValue>({
             gridSize,
+            rows: gridRows,
+            columns: gridColumns,
             imagePixels,
             overlayPixels,
             includeStroke: p?.includeStroke ?? true,
@@ -11702,7 +11973,7 @@ function PixelEditorFramer({
             {/* Top toolbar (unified layout) */}
             <div
                 style={{
-                    width: editorContentWidth,
+                    width: editorLayoutContentWidth,
                     display: isMethodModeActive ? "none" : "flex",
                     justifyContent: "center",
                     marginTop: isMobileUI ? 6 : 0,
@@ -11711,8 +11982,7 @@ function PixelEditorFramer({
             >
                 <div
                     style={{
-                        width: "100%",
-                        maxWidth: canvasMax,
+                        width: editorContentWidth,
                         display: "flex",
                         alignItems: "stretch",
 
@@ -11963,7 +12233,7 @@ function PixelEditorFramer({
             {/* Canvas */}
             <div
                 style={{
-                    width: editorContentWidth,
+                    width: editorLayoutContentWidth,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -11971,9 +12241,8 @@ function PixelEditorFramer({
             >
                 <div
                     style={{
-                        width: "100%",
-                        maxWidth: canvasMax,
-                        aspectRatio: "1 / 1",
+                        width: actualCanvasWidth,
+                        height: actualCanvasHeight,
                         border: `2px solid ${canvasBorderColor}`,
                         background: "#ffffff",
                         backgroundClip: "padding-box",
@@ -12091,13 +12360,13 @@ function PixelEditorFramer({
             {/* Controls area */}
             <div
                 style={{
-                    width: editorContentWidth,
+                    width: editorLayoutContentWidth,
                     display: "flex",
                     justifyContent: "center",
                     marginTop: 0,
                 }}
             >
-                <div style={{ width: "100%", maxWidth: canvasMax }}>
+                <div style={{ width: editorContentWidth }}>
                     {isMethodModeActive && methodSession ? (
                         <MethodPanel
                             paletteContext={methodSession.frozenPaletteContext}
@@ -12492,7 +12761,7 @@ function PixelEditorFramer({
                             >
                                 <div style={gridSizeLabelStyle}>GRID SIZE:</div>
                                 <div style={gridSizeSubLabelStyle}>
-                                    {rows} × {cols}
+                                    {cols} × {rows}
                                 </div>
                             </div>
 
@@ -13849,6 +14118,105 @@ function commitImportTxn(
     }
 }
 
+const BLANK_SETUP_DEFAULT_GRID_SIZE = 32
+
+function BlankCanvasSetupScreen({
+    aspectRatioId,
+    onAspectRatioChange,
+    onApply,
+    onCancel,
+}: {
+    aspectRatioId: AspectRatioId
+    onAspectRatioChange: (value: AspectRatioId) => void
+    onApply: () => void
+    onCancel: () => void
+}) {
+    const geometry = React.useMemo(
+        () =>
+            calculateCanvasGridGeometry({
+                gridSize: BLANK_SETUP_DEFAULT_GRID_SIZE,
+                aspectRatioId,
+            }),
+        [aspectRatioId]
+    )
+
+    return (
+        <div
+            style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 12000,
+                background: "rgba(69,64,49,0.5)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 18,
+                boxSizing: "border-box",
+            }}
+        >
+            <div
+                style={{
+                    width: "min(92vw, 520px)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 22,
+                }}
+            >
+                <AspectRatioSelector
+                    value={aspectRatioId}
+                    onChange={onAspectRatioChange}
+                />
+
+                <div
+                    style={{
+                        fontFamily:
+                            "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+                        fontSize: 18,
+                        fontWeight: 900,
+                        color: PIXTUDIO_INK,
+                        background: "rgba(255,255,255,0.72)",
+                        border: `2px solid ${PIXTUDIO_INK}`,
+                        borderRadius: 6,
+                        padding: "8px 12px",
+                    }}
+                >
+                    CANVAS: {geometry.columns} × {geometry.rows}
+                </div>
+
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        style={okCancelButtonStyle}
+                        aria-label="Cancel Blank Canvas"
+                        className="pxUiAnim"
+                    >
+                        <SvgCancelButton style={okCancelSvgStyle} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onApply}
+                        style={okCancelButtonStyle}
+                        aria-label="Create Blank Canvas"
+                        className="pxUiAnim"
+                    >
+                        <SvgOkButton style={okCancelSvgStyle} />
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 // ------------------- ROOT MVP -------------------
 
 export default function PIXTUDIO_Mobile_MVP() {
@@ -13858,6 +14226,9 @@ export default function PIXTUDIO_Mobile_MVP() {
     >("start")
     const [pendingProjectFile, setPendingProjectFile] =
         React.useState<File | null>(null)
+    const [blankSetupOpen, setBlankSetupOpen] = React.useState(false)
+    const [blankSetupAspectRatioId, setBlankSetupAspectRatioId] =
+        React.useState<AspectRatioId>(DEFAULT_ASPECT_RATIO_ID)
 
     const pendingProjectOpenFromStartRef = React.useRef(false)
     const [editorCanvasCssSize, setEditorCanvasCssSize] =
@@ -13882,6 +14253,15 @@ export default function PIXTUDIO_Mobile_MVP() {
         setScreen("start")
     }, [])
 
+    const openBlankCanvasSetup = React.useCallback(() => {
+        setBlankSetupAspectRatioId(DEFAULT_ASPECT_RATIO_ID)
+        setBlankSetupOpen(true)
+    }, [])
+
+    const cancelBlankCanvasSetup = React.useCallback(() => {
+        setBlankSetupOpen(false)
+    }, [])
+
     // =====================
     // ROOT / GATEWAY
     // bakedReferenceFromImport:
@@ -13891,14 +14271,14 @@ export default function PIXTUDIO_Mobile_MVP() {
     // =====================
 
     // H1 / H2:
-    // Import не создаёт HistoryEntry.
+    // Import does not create a HistoryEntry.
     // Import:
-    // - очищает past
-    // - очищает future
-    // - удаляет pending transaction
-    // - начинает новую session
+    // - clears past
+    // - clears future
+    // - removes pending transaction
+    // - starts a new session
     //
-    // Undo/redo не имеет права возвращать состояние до импорта.
+    // Undo/redo must not restore the pre-import state.
 
     const [gatewayCommittedReference, setGatewayCommittedReference] =
         React.useState<ImageData | null>(null)
@@ -13912,6 +14292,18 @@ export default function PIXTUDIO_Mobile_MVP() {
             | null
         >(null)
     const [blankImportNonce, setBlankImportNonce] = React.useState(0)
+    const [gatewayImportAspectRatioId, setGatewayImportAspectRatioId] =
+        React.useState<AspectRatioId>(DEFAULT_ASPECT_RATIO_ID)
+    const pendingImportAspectRatioIdRef =
+        React.useRef<AspectRatioId>(DEFAULT_ASPECT_RATIO_ID)
+
+    const prepareNextImportAspectRatio = React.useCallback(
+        (nextAspectRatioId: AspectRatioId) => {
+            pendingImportAspectRatioIdRef.current = nextAspectRatioId
+            setGatewayImportAspectRatioId(nextAspectRatioId)
+        },
+        []
+    )
 
     const [smartObjectHasBase, setSmartObjectHasBase] = React.useState(false)
 
@@ -13921,13 +14313,13 @@ export default function PIXTUDIO_Mobile_MVP() {
     // Root-level History Engine scaffold.
     //
     // committedHistoryRef:
-    //   будущий список committed history entries текущей session
+    //   future list of committed history entries for the current session
     //
     // redoHistoryRef:
-    //   будущий список redo entries текущей session
+    //   future list of redo entries for the current session
     //
     // pendingHistoryTransactionRef:
-    //   временный before-state между beginTransaction и commit/abort
+    //   temporary before-state between beginTransaction and commit/abort
     const rootHistoryRef = React.useRef<
         RootHistoryState<EditorCommittedState, SmartObjectCommittedState>
     >(createRootHistoryState<EditorCommittedState, SmartObjectCommittedState>())
@@ -13936,12 +14328,12 @@ export default function PIXTUDIO_Mobile_MVP() {
     const [rootCanRedo, setRootCanRedo] = React.useState(false)
 
     // H3:
-    // Root получает прямой bridge к editor committed-state boundary.
+    // Root receives a direct bridge to the editor committed-state boundary.
     const editorCommittedStateBridgeRef =
         React.useRef<EditorCommittedStateBridge | null>(null)
 
     // H4:
-    // Root получает прямой bridge к smart-object committed-state boundary.
+    // Root receives a direct bridge to the smart-object committed-state boundary.
     const smartObjectCommittedStateBridgeRef =
         React.useRef<SmartObjectCommittedStateBridge | null>(null)
 
@@ -13957,11 +14349,12 @@ export default function PIXTUDIO_Mobile_MVP() {
                 | "import"
                 | "load"
                 | "smart-object-apply"
-                | "smart-object-history-restore"
+                | "smart-object-history-restore",
+            aspectRatioForImport?: AspectRatioId
         ) => {
-            // Любой вход эталона в editor идёт через эту точку,
-            // но editor обязан знать ПРИЧИНУ входа:
-            // обычный import или SmartObject Apply.
+            // Every reference entering the editor goes through this point,
+            // but the editor must know why it entered:
+            // regular import or Smart Object Apply.
             coreLifecycleLog("gateway:commit", {
                 kind,
                 hasSnapshot: !!snapshot,
@@ -13971,6 +14364,14 @@ export default function PIXTUDIO_Mobile_MVP() {
             setGatewayCommittedReferenceKind(kind)
 
             if (kind === "import" || kind === "load") {
+                if (kind === "import") {
+                    prepareNextImportAspectRatio(
+                        aspectRatioForImport ??
+                            pendingImportAspectRatioIdRef.current ??
+                            DEFAULT_ASPECT_RATIO_ID
+                    )
+                }
+
                 // Step 7:
                 // import/load/open-draw = new life boundary.
                 // No previous user action may survive this point.
@@ -13978,7 +14379,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 syncRootHistoryFlags()
             }
         },
-        [syncRootHistoryFlags]
+        [prepareNextImportAspectRatio, syncRootHistoryFlags]
     )
 
     const captureEditorCommittedState = React.useCallback(() => {
@@ -14833,6 +15234,13 @@ export default function PIXTUDIO_Mobile_MVP() {
     const [cropFlowSource, setCropFlowSource] = React.useState<
         "gallery" | "camera"
     >("gallery")
+    const [cropAspectRatioId, setCropAspectRatioId] = React.useState<AspectRatioId>(
+        DEFAULT_ASPECT_RATIO_ID
+    )
+    const cropReferenceDimensions = React.useMemo(
+        () => calculateReferenceDimensions(cropAspectRatioId),
+        [cropAspectRatioId]
+    )
 
     // --- Step 1: preview inside Crop/ImportPrep overlay (NO-OP for project) ---
 
@@ -14851,23 +15259,24 @@ export default function PIXTUDIO_Mobile_MVP() {
     // ============================================================
     // C0 — CROP "CHINESE ROOM" CONTRACT (NO-OP)
     //
-    // Crop/ImportPrep = китайская комната между выбором файла и Editor.
-    // Editor не знает:
-    // - был ли кроп,
-    // - был ли пресет,
-    // - какой пресет,
-    // - были ли санитизация/буст.
+    // Crop/ImportPrep is the Chinese Room between file selection and Editor.
+    // Editor does not know:
+    // - whether crop happened,
+    // - whether a preset existed,
+    // - which preset existed,
+    // - whether sanitization or boost happened.
     //
-    // Единственный артефакт, который выходит из кроп-комнаты:
-    // bakedRef512: ImageData (crop + preset + preprocess уже запечены).
+    // The only artifact leaving the crop room:
+    // bakedReference: ImageData (crop + preprocess already baked).
     //
-    // NOTE (C0): пока это только контракт типами/комментариями.
+    // NOTE (C0): this is still only a type/comment contract.
     // The old ImportDecision path remains as a compatibility bridge while
     // CropFlow moves toward ImportArtifact-only publishing.
     // ============================================================
 
     type ImportArtifact = {
-        bakedRef512: ImageData
+        bakedReference: ImageData
+        aspectRatioId: AspectRatioId
     }
 
     type ImportStatus = "idle" | "decoding" | "ready" | "applying"
@@ -14911,7 +15320,8 @@ export default function PIXTUDIO_Mobile_MVP() {
     // longer carried through CropFlow or baked into the reference snapshot.
 
     type CropFlowResult = {
-        prepared512: ImageData
+        preparedReference: ImageData
+        aspectRatioId: AspectRatioId
         source: "gallery" | "camera"
     }
 
@@ -14919,17 +15329,17 @@ export default function PIXTUDIO_Mobile_MVP() {
         preparedImageData: ImageData
     }
 
-    // RF3: транзакция импорта — decision, ожидающий применения
+    // RF3: import transaction - a decision waiting to be applied.
 
     const [pendingImportDecision, setPendingImportDecision] =
         React.useState<ImportDecision | null>(null)
 
-    // E1B: параллельная “новая шина” (пока НЕ используется — NO-OP результата)
+    // E1B: parallel new bus, still inactive and result no-op.
 
     const [pendingCropResult, setPendingCropResult] =
         React.useState<CropFlowResult | null>(null)
 
-    // RF2: транзакционный апплаер импорта — единственное место, где проект реально меняется
+    // RF2: transactional import applier; the only place that mutates the project.
 
     function validateImportImageDataOrThrow(img: ImageData, label: string) {
         if (!img) {
@@ -14944,9 +15354,12 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         const data = (img as any).data
 
-        if (w !== 512 || h !== 512) {
+        if (
+            w !== cropReferenceDimensions.width ||
+            h !== cropReferenceDimensions.height
+        ) {
             throw new Error(
-                `[IMPORT][A0] ${label}: expected 512x512, got ${String(w)}x${String(h)}`
+                `[IMPORT][A0] ${label}: expected ${cropReferenceDimensions.width}x${cropReferenceDimensions.height}, got ${String(w)}x${String(h)}`
             )
         }
 
@@ -14954,7 +15367,8 @@ export default function PIXTUDIO_Mobile_MVP() {
             throw new Error(`[IMPORT][A0] ${label}: missing data buffer`)
         }
 
-        const expectedLen = 512 * 512 * 4
+        const expectedLen =
+            cropReferenceDimensions.width * cropReferenceDimensions.height * 4
 
         if ((data as any).length !== expectedLen) {
             throw new Error(
@@ -14974,8 +15388,8 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
 
     // ROOT GATEWAY ENTRY:
-    // Альтернативный импортный путь тоже обязан входить в editor
-    // только через gateway-slot, без прямого setEditorImageData(...).
+    // The alternative import path must also enter editor only through the
+    // gateway slot, without direct setEditorImageData(...).
     function handleImportArtifact(a: ImportArtifact) {
         const bridge = smartObjectCommittedStateBridgeRef.current
         if (!bridge) {
@@ -14983,7 +15397,8 @@ export default function PIXTUDIO_Mobile_MVP() {
             return
         }
 
-        bridge.importBakedBase(a.bakedRef512)
+        prepareNextImportAspectRatio(a.aspectRatioId)
+        bridge.importBakedBase(a.bakedReference)
         setSmartObjectHasBase(true)
         setScreen("editor")
     }
@@ -14996,7 +15411,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         const txn = ENABLE_TXN_LOGS ? beginImportTxn("import-apply") : null
 
         try {
-            // A0: жёсткая валидация “бэйк=512×512”
+            // A0: strict validation of the baked reference dimensions.
 
             validateImportImageDataOrThrow(
                 d.preparedImageData,
@@ -15005,7 +15420,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
             setImportStatus("applying")
 
-            // применяем старый путь (пока он единственный, кто реально работает)
+            // Apply the old path while it is still the only active one.
 
             handleImportDecision(d)
 
@@ -15034,7 +15449,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         }
     }, [pendingImportDecision])
 
-    // E1B: параллельный useEffect под новый контракт ImportArtifact (пока не используется)
+    // E1B: parallel useEffect for the new ImportArtifact contract, still inactive.
 
     React.useEffect(() => {
         const a = null as ImportArtifact | null
@@ -15042,24 +15457,24 @@ export default function PIXTUDIO_Mobile_MVP() {
         if (!a) return
 
         try {
-            // A0: жёсткая валидация “бэйк=512×512”
+            // A0: strict validation of the baked reference dimensions.
 
             validateImportImageDataOrThrow(
-                a.bakedRef512,
-                "artifact.bakedRef512"
+                a.bakedReference,
+                "artifact.bakedReference"
             )
 
             handleImportArtifact(a)
 
-            // закрываем кроп-оверлей и сбрасываем UI кроп-комнаты
+            // Close the crop overlay and reset crop-room UI.
             setCropPending(null)
             setImportStatus("idle")
             setImportError(null)
         } catch (e: any) {
             editorConsole.error("[IMPORT][A0] artifact apply failed", e)
 
-            // В E1B можно НЕ трогать старый UX ошибок (путь ещё не активен),
-            // но хотя бы чистим pending, чтобы не зависать.
+            // E1B may leave the old error UX alone while inactive, but it
+            // still cleans pending state so the flow cannot get stuck.
         } finally {
             void a
         }
@@ -15071,17 +15486,20 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         try {
             // CropFlow publishes only a neutral baked reference.
-            const bakedRef512 = bakeRef512InChineseRoom(
-                r.prepared512,
+            const bakedReference = bakeReferenceInChineseRoom(
+                r.preparedReference,
                 r.source
             )
 
-            const artifact: ImportArtifact = { bakedRef512 }
+            const artifact: ImportArtifact = {
+                bakedReference,
+                aspectRatioId: r.aspectRatioId,
+            }
 
-            // дальше — как раньше: транзакционный apply артефакта
+            // Continue through the existing transactional artifact apply.
             validateImportImageDataOrThrow(
-                artifact.bakedRef512,
-                "artifact.bakedRef512"
+                artifact.bakedReference,
+                "artifact.bakedReference"
             )
             handleImportArtifact(artifact)
             setCropPending(null)
@@ -15135,8 +15553,22 @@ export default function PIXTUDIO_Mobile_MVP() {
         setCropUiScale(1)
         setCropUiRotation(0)
         setCropUiOffset({ x: 0, y: 0 })
-        // preview перерисуется сам из-за bump ниже
+        // The preview will redraw from this tick.
         bumpCropPreview()
+    }
+
+    function setDefaultCropAspectRatioFromSource(source: {
+        width?: number
+        height?: number
+        naturalWidth?: number
+        naturalHeight?: number
+        videoWidth?: number
+        videoHeight?: number
+    }) {
+        const width = source.naturalWidth ?? source.videoWidth ?? source.width ?? 0
+        const height =
+            source.naturalHeight ?? source.videoHeight ?? source.height ?? 0
+        setCropAspectRatioId(selectDefaultCropAspectRatio({ width, height }))
     }
 
     // === ImportPrep Step 2: viewport + ears ===
@@ -15144,7 +15576,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     const IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE = 0.12
 
     const IMPORT_PREVIEW_EARS_OPACITY = 0.3
-    const IMPORT_PREVIEW_DECODE_MAX_SIDE = 2048 // чтобы не держать гигантские исходники в памяти
+    const IMPORT_PREVIEW_DECODE_MAX_SIDE = 2048
 
     const [isCoarsePointer, setIsCoarsePointer] = React.useState(false)
     const [isTouchDevice, setIsTouchDevice] = React.useState(false)
@@ -15264,20 +15696,20 @@ export default function PIXTUDIO_Mobile_MVP() {
     }, [])
 
     function applyGeometry(): ImageData | null {
-        // P4: финальный рендер должен идти с оригинала (SourceImage),
-        // preview-canvas используется только как fallback.
+        // P4: final render must use the original SourceImage; preview canvas is
+        // only a fallback.
         const srcAny =
             cropOriginalSourceRef.current ?? cropPreviewSrcCanvasRef.current
         if (!srcAny) return null
 
         const out = document.createElement("canvas")
-        out.width = CANVAS_SIZE
-        out.height = CANVAS_SIZE
+        out.width = cropReferenceDimensions.width
+        out.height = cropReferenceDimensions.height
 
         const ctx = out.getContext("2d")
         if (!ctx) return null
 
-        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+        ctx.clearRect(0, 0, out.width, out.height)
 
         // - HTMLImageElement: naturalWidth/naturalHeight
         // - ImageBitmap / Canvas: width/height
@@ -15288,34 +15720,45 @@ export default function PIXTUDIO_Mobile_MVP() {
             anySrc?.naturalHeight ?? anySrc?.videoHeight ?? anySrc?.height ?? 0
         if (imgW <= 0 || imgH <= 0) return null
 
-        // --- ВАЖНО: повторяем геометрию preview ---
-        // Поэтому cropUiOffset и cropUiScale должны интерпретироваться в координатах vSize, а не 512.
+        // Match the preview transform semantics: cropUiOffset and cropUiScale
+        // are interpreted in preview short-side coordinates, then projected to
+        // the normalized reference dimensions.
 
         const previewCanvas = cropPreviewCanvasRef.current
-        const W = previewCanvas?.width ?? CANVAS_SIZE
+        const previewWidth = previewCanvas?.width ?? CANVAS_SIZE
+        const previewHeight = previewCanvas?.height ?? CANVAS_SIZE
 
         const insetFrac = isMobileUI
             ? IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE
             : IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP
 
-        const vInset = Math.round(W * insetFrac)
-        const vSize = Math.max(1, W - vInset * 2)
+        const viewport = calculateCropViewportGeometry({
+            canvasWidth: previewWidth,
+            canvasHeight: previewHeight,
+            insetFraction: insetFrac,
+        })
+        const referenceToPreviewScale =
+            cropReferenceDimensions.width / viewport.viewportWidth
 
-        // Масштаб из координат preview-viewport -> в итоговый 512×512
-        const k = CANVAS_SIZE / vSize
+        // Scale from preview viewport coordinates into the normalized reference.
+        const k = referenceToPreviewScale
 
-        // cover-scale как в preview, но потом домножаем на k
-        const baseScale = Math.max(vSize / imgW, vSize / imgH)
+        // Cover-scale the selected reference viewport, then project it to the
+        // baked reference dimensions.
+        const baseScale = Math.max(
+            viewport.viewportWidth / imgW,
+            viewport.viewportHeight / imgH
+        )
 
         const drawW = imgW * baseScale * cropUiScale * k
         const drawH = imgH * baseScale * cropUiScale * k
 
-        // offset тоже в координатах vSize -> переводим в 512
+        // Offset is also in preview coordinates.
         const ox = cropUiOffset.x * k
         const oy = cropUiOffset.y * k
 
-        const cx = CANVAS_SIZE / 2 + ox
-        const cy = CANVAS_SIZE / 2 + oy
+        const cx = out.width / 2 + ox
+        const cy = out.height / 2 + oy
 
         ctx.save()
         ctx.translate(cx, cy)
@@ -15323,7 +15766,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         ctx.drawImage(srcAny as any, -drawW / 2, -drawH / 2, drawW, drawH)
         ctx.restore()
 
-        return ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE)
+        return ctx.getImageData(0, 0, out.width, out.height)
     }
 
     function renderCropPreview() {
@@ -15341,30 +15784,35 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         previewCtx.clearRect(0, 0, W, H)
 
-        // viewport — квадрат внутри preview
         const insetFrac = isMobileUI
             ? IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE
             : IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP
 
-        const vInset = Math.round(W * insetFrac)
-        const vSize = Math.max(1, W - vInset * 2)
-        const vx = vInset
-        const vy = vInset
-        const vcx = vx + vSize / 2
-        const vcy = vy + vSize / 2
+        const viewport = calculateCropViewportGeometry({
+            canvasWidth: W,
+            canvasHeight: H,
+            insetFraction: insetFrac,
+        })
+        const vx = viewport.viewportX
+        const vy = viewport.viewportY
+        const vcx = viewport.viewportCenterX
+        const vcy = viewport.viewportCenterY
 
-        // картинка масштабируется "cover" относительно viewport:
-        // меньшая сторона viewport касается изображения => вторая сторона вылезает (это и есть "уши")
+        // The image uses cover-scale relative to the viewport: one side fits
+        // the viewport and the other side can extend outside as preview ears.
         const imgW = src.width
         const imgH = src.height
         if (imgW <= 0 || imgH <= 0) return
 
-        // базовый cover-scale + UI scale
-        const baseScale = Math.max(vSize / imgW, vSize / imgH)
+        // Base cover-scale plus UI scale.
+        const baseScale = Math.max(
+            viewport.viewportWidth / imgW,
+            viewport.viewportHeight / imgH
+        )
         const drawW = imgW * baseScale * cropUiScale
         const drawH = imgH * baseScale * cropUiScale
 
-        // apply UI offset относительно центра viewport
+        // Apply UI offset relative to the viewport center.
         const cx = vcx + cropUiOffset.x
         const cy = vcy + cropUiOffset.y
 
@@ -15383,18 +15831,18 @@ export default function PIXTUDIO_Mobile_MVP() {
             previewCtx.restore()
         }
 
-        // 1) "уши": рисуем ту же картинку, но с opacity ~30% (без клипа)
+        // 1) Ears: draw the same image with reduced opacity and no clipping.
         drawTransformed(IMPORT_PREVIEW_EARS_OPACITY)
 
-        // 2) viewport: поверх — та же картинка, но только внутри квадратного окна (100% opacity)
+        // 2) Viewport: draw the same image at full opacity, clipped to the window.
         previewCtx.save()
         previewCtx.beginPath()
-        previewCtx.rect(vx, vy, vSize, vSize)
+        previewCtx.rect(vx, vy, viewport.viewportWidth, viewport.viewportHeight)
         previewCtx.clip()
         drawTransformed(1)
         previewCtx.restore()
 
-        // 3) рамка viewport, чтобы было понятно "вот это будет холст"
+        // 3) Viewport frame, showing what will become the canvas.
         previewCtx.save()
         previewCtx.strokeStyle = "rgba(255,255,255,0.95)"
         previewCtx.lineWidth = Math.max(2, Math.round(W * 0.006))
@@ -15402,8 +15850,8 @@ export default function PIXTUDIO_Mobile_MVP() {
         previewCtx.strokeRect(
             vx - half,
             vy - half,
-            vSize + previewCtx.lineWidth,
-            vSize + previewCtx.lineWidth
+            viewport.viewportWidth + previewCtx.lineWidth,
+            viewport.viewportHeight + previewCtx.lineWidth
         )
         previewCtx.restore()
     }
@@ -15418,6 +15866,20 @@ export default function PIXTUDIO_Mobile_MVP() {
             typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1
         return Math.max(1, Math.round(cropPreviewCssPx * dpr))
     }, [cropPreviewCssPx])
+    const cropReferenceRatio =
+        cropReferenceDimensions.width / cropReferenceDimensions.height
+    const cropPreviewCanvasWidthPx = Math.max(
+        1,
+        Math.round(
+            cropPreviewCanvasPx * (cropReferenceRatio >= 1 ? cropReferenceRatio : 1)
+        )
+    )
+    const cropPreviewCanvasHeightPx = Math.max(
+        1,
+        Math.round(
+            cropPreviewCanvasPx * (cropReferenceRatio >= 1 ? 1 : 1 / cropReferenceRatio)
+        )
+    )
 
     React.useLayoutEffect(() => {
         if (!cropPending) return
@@ -15433,7 +15895,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
         measure()
 
-        // ResizeObserver может отсутствовать в очень старых браузерах
+        // ResizeObserver may be missing in very old browsers.
         if (typeof (window as any).ResizeObserver === "undefined") {
             window.addEventListener("resize", measure)
             return () => window.removeEventListener("resize", measure)
@@ -15522,7 +15984,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
 
     function openCropFlow(source: SourceImage) {
-        // P3: единая точка входа в CropFlow (без ChineseRoom/Editor)
+        setDefaultCropAspectRatioFromSource(source as any)
         openCropScreen({ sourceImage: source })
     }
 
@@ -15550,7 +16012,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     React.useEffect(() => {
         if (!cropPending) return
 
-        // новый запрос — сбрасываем старое превью
+        // New request: clear the previous preview.
         cropDecodedRef.current = null
         cropPreviewSrcCanvasRef.current = null
         cropOriginalSourceRef.current = null
@@ -15562,14 +16024,14 @@ export default function PIXTUDIO_Mobile_MVP() {
         setImportError(null)
 
         const fail = (err: any) => {
-            // Не трогаем UI, если этот decode уже устарел
+            // Leave the UI alone if this decode job is already stale.
             if (jobId !== cropDecodeJobRef.current) return
 
             editorConsole.error("[IMPORT][decode] processing failed", err)
             failImportInFlow("Failed to open image.")
         }
 
-        // 1) Ветка FILE (как было)
+        // File request.
         if ("file" in cropPending) {
             const file = cropPending.file
             const url = URL.createObjectURL(file)
@@ -15594,6 +16056,10 @@ export default function PIXTUDIO_Mobile_MVP() {
 
                     const srcW0 = (img as any).naturalWidth || img.width
                     const srcH0 = (img as any).naturalHeight || img.height
+                    setDefaultCropAspectRatioFromSource({
+                        width: srcW0,
+                        height: srcH0,
+                    })
                     cropOriginalSourceRef.current = img
 
                     const maxSide = Math.max(srcW0, srcH0)
@@ -15640,7 +16106,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             return
         }
 
-        // 2) Ветка SOURCE IMAGE (НОВАЯ)
+        // SourceImage request.
         if ("sourceImage" in cropPending) {
             try {
                 const src = cropPending.sourceImage as any
@@ -15650,6 +16116,10 @@ export default function PIXTUDIO_Mobile_MVP() {
                 const srcH0 = src?.height ?? 0
                 if (!srcW0 || !srcH0)
                     throw new Error("Invalid SourceImage size")
+                setDefaultCropAspectRatioFromSource({
+                    width: srcW0,
+                    height: srcH0,
+                })
 
                 const offCanvas = document.createElement("canvas")
 
@@ -15671,7 +16141,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 ctx.clearRect(0, 0, srcW, srcH)
                 ctx.drawImage(src, 0, 0, srcW, srcH)
 
-                // Если вдруг пока рисовали пришёл новый job — просто молча выходим
+                // If another job arrived while drawing, silently stop.
                 if (jobId !== cropDecodeJobRef.current) return
 
                 const decoded = ctx.getImageData(0, 0, srcW, srcH)
@@ -15690,20 +16160,21 @@ export default function PIXTUDIO_Mobile_MVP() {
             return
         }
 
-        // На всякий случай: неизвестный вариант CropRequest
+        // Defensive guard for unknown CropRequest variants.
         fail(new Error("Unknown CropRequest variant"))
     }, [cropPending])
 
     React.useEffect(() => {
         if (!cropPending) return
-        if (!cropPreviewCanvasPx) return
+        if (!cropPreviewCanvasWidthPx || !cropPreviewCanvasHeightPx) return
         renderCropPreview()
     }, [
         cropPending,
         cropPreviewTick,
-        cropPreviewCanvasPx,
+        cropPreviewCanvasWidthPx,
+        cropPreviewCanvasHeightPx,
 
-        // 🔥 важно: любые изменения UI-трансформаций должны перерисовывать превью
+        // Any UI transform change must redraw the preview.
         cropUiScale,
         cropUiRotation,
         cropUiOffset.x,
@@ -15711,13 +16182,12 @@ export default function PIXTUDIO_Mobile_MVP() {
     ])
 
     function cancelCrop() {
-        // P5: Cancel = выход CropFlow = null
         setPendingCropResult(null)
         resetImportUi("cancel")
     }
 
     function confirmCrop() {
-        // 🔒 защита от повторного OK
+        // Guard against repeated OK presses.
         if (importStatus === "applying") return
 
         const p = cropPending
@@ -15754,7 +16224,8 @@ export default function PIXTUDIO_Mobile_MVP() {
         setImportError(null)
         setImportStatus("applying")
         setPendingCropResult({
-            prepared512: prepared,
+            preparedReference: prepared,
+            aspectRatioId: cropAspectRatioId,
             source: cropFlowSource,
         })
     }
@@ -15833,27 +16304,36 @@ export default function PIXTUDIO_Mobile_MVP() {
     void clamp
 
     function getCropViewportGeometry() {
-        const W = cropPreviewCanvasPx || cropPreviewCanvasRef.current?.width || 0
+        const canvas = cropPreviewCanvasRef.current
+        const W = canvas?.width || 0
+        const H = canvas?.height || 0
         const src = cropPreviewSrcCanvasRef.current
-        if (!W || !src || src.width <= 0 || src.height <= 0) return null
+        if (!W || !H || !src || src.width <= 0 || src.height <= 0) return null
 
         const insetFrac = isMobileUI
             ? IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE
             : IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP
-        const vInset = Math.round(W * insetFrac)
-        const vSize = Math.max(1, W - vInset * 2)
+        const viewport = calculateCropViewportGeometry({
+            canvasWidth: W,
+            canvasHeight: H,
+            insetFraction: insetFrac,
+        })
 
         return {
             W,
-            vInset,
-            vSize,
-            vx: vInset,
-            vy: vInset,
-            vcx: vInset + vSize / 2,
-            vcy: vInset + vSize / 2,
+            H,
+            vx: viewport.viewportX,
+            vy: viewport.viewportY,
+            vw: viewport.viewportWidth,
+            vh: viewport.viewportHeight,
+            vcx: viewport.viewportCenterX,
+            vcy: viewport.viewportCenterY,
             imgW: src.width,
             imgH: src.height,
-            baseScale: Math.max(vSize / src.width, vSize / src.height),
+            baseScale: Math.max(
+                viewport.viewportWidth / src.width,
+                viewport.viewportHeight / src.height
+            ),
         }
     }
 
@@ -15879,11 +16359,12 @@ export default function PIXTUDIO_Mobile_MVP() {
         const imageTop = cy - halfH
         const imageBottom = cy + halfH
         const viewportLeft = g.vx
-        const viewportRight = g.vx + g.vSize
+        const viewportRight = g.vx + g.vw
         const viewportTop = g.vy
-        const viewportBottom = g.vy + g.vSize
-        const threshold = Math.max(6, Math.min(18, g.vSize * 0.0375))
-        const centerThreshold = Math.max(4, Math.min(12, g.vSize * 0.025))
+        const viewportBottom = g.vy + g.vh
+        const shortSide = Math.min(g.vw, g.vh)
+        const threshold = Math.max(6, Math.min(18, shortSide * 0.0375))
+        const centerThreshold = Math.max(4, Math.min(12, shortSide * 0.025))
 
         const xCandidates = [
             g.vcx - cx,
@@ -16126,13 +16607,21 @@ export default function PIXTUDIO_Mobile_MVP() {
     // SmartReferenceEditor is already wired into root as a separate module,
     // but it is not wired into the regular user-facing UI yet.
 
-    function openDraw() {
+    function openDraw(
+        nextAspectRatioId: AspectRatioId = DEFAULT_ASPECT_RATIO_ID
+    ) {
         // Blank canvas is a command, not only a derived "current image is null" state.
+        prepareNextImportAspectRatio(nextAspectRatioId)
         smartObjectCommittedStateBridgeRef.current?.clearBase("import")
         setSmartObjectHasBase(false)
-        commitGatewaySnapshotToEditor(null, "import")
+        commitGatewaySnapshotToEditor(null, "import", nextAspectRatioId)
         setBlankImportNonce((nonce) => nonce + 1)
         setScreen("editor")
+    }
+
+    function applyBlankCanvasSetup() {
+        setBlankSetupOpen(false)
+        openDraw(blankSetupAspectRatioId)
     }
 
     function isLikelyMobileDevice(): boolean {
@@ -16236,7 +16725,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             <StartScreen
                 onPickImage={openImagePicker}
                 onOpenCamera={openCamera}
-                onOpenDraw={openDraw}
+                onOpenDraw={openBlankCanvasSetup}
                 onOpenHome={openPromoHome}
             />
         ) : (
@@ -16249,6 +16738,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 <PixelEditorFramer
                     initialImageData={gatewayCommittedReference}
                     initialImageRouteKind={gatewayCommittedReferenceKind}
+                    initialImportAspectRatioId={gatewayImportAspectRatioId}
                     blankImportNonce={blankImportNonce}
                     onCaptureSmartReferenceBaseForSave={
                         handleCaptureSmartReferenceBaseForSave
@@ -16265,7 +16755,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                         const sourceImage = await decodeToSourceImage(file)
                         openCropFlow(sourceImage)
                     }}
-                    onRequestBlankImport={openDraw}
+                    onRequestBlankImport={openBlankCanvasSetup}
                     onRequestOpenProject={openProjectPicker}
                     onRequestStartScreen={openEditorStartScreen}
                     onShowImportError={failImport}
@@ -16529,6 +17019,15 @@ export default function PIXTUDIO_Mobile_MVP() {
                 </div>
             )}
 
+            {blankSetupOpen && (
+                <BlankCanvasSetupScreen
+                    aspectRatioId={blankSetupAspectRatioId}
+                    onAspectRatioChange={setBlankSetupAspectRatioId}
+                    onApply={applyBlankCanvasSetup}
+                    onCancel={cancelBlankCanvasSetup}
+                />
+            )}
+
             {importErrorModalPortal}
 
             {/* camera head: MUST be mounted on both start + editor */}
@@ -16596,7 +17095,16 @@ export default function PIXTUDIO_Mobile_MVP() {
                             gap: isMobileUI ? 44 : 36,
                         }}
                     >
-                        {/* ВЕРХНЯЯ ПОЛОВИНА: Crop preview */}
+                        <AspectRatioSelector
+                            value={cropAspectRatioId}
+                            onChange={(nextAspectRatioId) => {
+                                setCropAspectRatioId(nextAspectRatioId)
+                                resetCropUiIfNeeded()
+                            }}
+                            compact={isMobileUI}
+                        />
+
+                        {/* Crop preview. */}
                         <div
                             style={{
                                 width: "100%",
@@ -16610,7 +17118,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                             <div
                                 style={{
                                     width: "100%",
-                                    aspectRatio: "1 / 1",
+                                    aspectRatio:
+                                        getAspectRatioCssValue(cropAspectRatioId),
                                     borderRadius: 8,
                                     overflow: "visible",
                                     display: "flex",
@@ -16641,7 +17150,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                                         touchAction: "none",
                                         overflow: "visible",
 
-                                        // ✅ курсор “ладошка” внутри рамки
                                         cursor: isCropDragging
                                             ? "grabbing"
                                             : "grab",
@@ -16649,8 +17157,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                                 >
                                     <canvas
                                         ref={cropPreviewCanvasRef}
-                                        width={cropPreviewCanvasPx}
-                                        height={cropPreviewCanvasPx}
+                                        width={cropPreviewCanvasWidthPx}
+                                        height={cropPreviewCanvasHeightPx}
                                         style={{
                                             display: "block",
                                             width: "100%",
@@ -16664,7 +17172,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
                                     {!isMobileOS && (
                                         <>
-                                            {/* rotate handle — правый верх */}
+                                            {/* Rotate handle. */}
                                             <div
                                                 onPointerDown={(e) =>
                                                     handleCropPointerDown(
@@ -16707,7 +17215,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                                                 </svg>
                                             </div>
 
-                                            {/* scale handle — левый низ */}
+                                            {/* Scale handle. */}
                                             <div
                                                 onPointerDown={(e) =>
                                                     handleCropPointerDown(
@@ -16756,7 +17264,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                             </div>
                         </div>
 
-                        {/* НИЖНЯЯ ПОЛОВИНА: Presets */}
+                        {/* Presets area is intentionally inactive in Crop. */}
                         <div
                             style={{
                                 width: "100%",
@@ -16785,7 +17293,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                             </div>
                         </div>
 
-                        {/* КНОПКИ ❌ / ✅ */}
+                        {/* Action buttons. */}
                         <div
                             style={{
                                 width: "100%",

@@ -31,6 +31,12 @@ import {
     DEFAULT_METHOD_PROFILE,
     DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
 } from "./QuantizationCore.ts"
+import {
+    ASPECT_RATIO_TEMPLATES,
+    calculateCanvasGridGeometry,
+    calculateReferenceDimensions,
+    type AspectRatioId,
+} from "./canvasGeometry.ts"
 
 function canonicalProject(): ProjectSnapshotV2 {
     return {
@@ -65,6 +71,49 @@ function canonicalProject(): ProjectSnapshotV2 {
     }
 }
 
+function rectangularProject(params: {
+    gridSize: number
+    aspectRatioId: AspectRatioId
+}): ProjectSnapshotV2 {
+    const geometry = calculateCanvasGridGeometry(params)
+    const cells: ProjectSnapshotV2["importLayer"]["cells"] = Array.from(
+        { length: geometry.columns * geometry.rows },
+        () => V2_CELL_NULL
+    )
+    const topRight = geometry.columns - 1
+    const bottomLeft = (geometry.rows - 1) * geometry.columns
+    const bottomRight = geometry.rows * geometry.columns - 1
+    cells[0] = 0
+    cells[topRight] = 1
+    cells[bottomLeft] = V2_CELL_TRANSPARENT
+    cells[bottomRight] = 0
+
+    return {
+        magic: PROJECT_SNAPSHOT_V2_MAGIC,
+        version: PROJECT_SNAPSHOT_V2_VERSION,
+        gridSize: params.gridSize,
+        aspectRatioId: params.aspectRatioId,
+        columns: geometry.columns,
+        rows: geometry.rows,
+        paletteCount: 2,
+        palette: {
+            swatches: [
+                { index: 0, id: "auto-0", hex: "#112233", isUser: false },
+                { index: 1, id: "user-1", hex: "#AABBCC", isUser: true },
+            ],
+        },
+        importLayer: { cells },
+        strokeLayer: {
+            cells: [
+                { cellIndex: topRight, swatchIndex: 1 },
+                { cellIndex: bottomLeft, swatchIndex: V2_CELL_TRANSPARENT },
+                { cellIndex: bottomRight, swatchIndex: 0 },
+            ],
+        },
+        ref: null,
+    }
+}
+
 describe("ProjectSnapshotV2 invariants", () => {
     it("accepts a canonical saved project and preserves critical restore state", () => {
         const snapshot = canonicalProject()
@@ -74,6 +123,9 @@ describe("ProjectSnapshotV2 invariants", () => {
         if (!parsed.ok) return
 
         expect(parsed.canonical.gridSize).toBe(snapshot.gridSize)
+        expect(parsed.canonical.aspectRatioId).toBe("1:1")
+        expect(parsed.canonical.columns).toBe(snapshot.gridSize)
+        expect(parsed.canonical.rows).toBe(snapshot.gridSize)
         expect(parsed.canonical.palette.swatches).toEqual(snapshot.palette.swatches)
         expect(parsed.canonical.importLayer.cells).toEqual(
             snapshot.importLayer.cells
@@ -199,6 +251,9 @@ describe("ProjectSnapshotV2 invariants", () => {
     })
 
     it("builds a complete save snapshot from editor state inputs", () => {
+        const referenceBytes = new Uint8ClampedArray(512 * 512 * 4)
+        referenceBytes.set([0, 255, 16, 128])
+
         const snapshot = buildProjectSnapshotV2ForSave({
             gridSize: 2,
             paletteCount: 99,
@@ -246,7 +301,9 @@ describe("ProjectSnapshotV2 invariants", () => {
                 name: "Custom",
                 colors: ["#112233", "#aabbcc"],
             },
-            smartReferenceBytes: new Uint8ClampedArray([0, 255, 16, 128]),
+            smartReferenceBytes: referenceBytes,
+            smartReferenceWidth: 512,
+            smartReferenceHeight: 512,
             smartAdjustments: {
                 exposure: 0,
                 whiteBalance: 0.5,
@@ -293,8 +350,129 @@ describe("ProjectSnapshotV2 invariants", () => {
             name: "Custom",
             colors: ["#112233", "#AABBCC"],
         })
-        expect(snapshot.ref?.b64).toBe("AP8QgA==")
+        expect(snapshot.ref?.w).toBe(512)
+        expect(snapshot.ref?.h).toBe(512)
+        expect(decodeProjectSnapshotRefBytes(snapshot.ref)?.slice(0, 4)).toEqual(
+            new Uint8ClampedArray([0, 255, 16, 128])
+        )
         expect(snapshot.smartObjectState?.adjustments.whiteBalance).toBe(0.5)
+    })
+
+    it("saves and loads every aspect ratio with rectangular schema dimensions", () => {
+        for (const template of ASPECT_RATIO_TEMPLATES) {
+            const geometry = calculateCanvasGridGeometry({
+                gridSize: 18,
+                aspectRatioId: template.id,
+            })
+            const imagePixels = Array.from({ length: geometry.rows }, () =>
+                Array.from({ length: geometry.columns }, () => null as string | null)
+            )
+            const overlayPixels = Array.from({ length: geometry.rows }, () =>
+                Array.from({ length: geometry.columns }, () => null as string | null)
+            )
+            imagePixels[0][0] = "auto-0"
+            imagePixels[geometry.rows - 1][geometry.columns - 1] = "user-0"
+            overlayPixels[0][geometry.columns - 1] = "user-0"
+            overlayPixels[geometry.rows - 1][0] = "__TRANSPARENT__"
+
+            const snapshot = buildProjectSnapshotV2ForSave({
+                gridSize: geometry.gridSize,
+                aspectRatioId: geometry.aspectRatioId,
+                columns: geometry.columns,
+                rows: geometry.rows,
+                paletteCount: 2,
+                autoSwatches: [
+                    {
+                        id: "auto-0",
+                        color: "#112233",
+                        isTransparent: false,
+                        isUser: false,
+                    },
+                ],
+                userSwatches: [
+                    {
+                        id: "user-0",
+                        color: "#AABBCC",
+                        isTransparent: false,
+                        isUser: true,
+                    },
+                ],
+                imagePixels,
+                overlayPixels,
+                transparentPixel: "__TRANSPARENT__",
+            })
+
+            expect(snapshot.aspectRatioId).toBe(template.id)
+            expect(snapshot.columns).toBe(geometry.columns)
+            expect(snapshot.rows).toBe(geometry.rows)
+            expect(snapshot.importLayer.cells).toHaveLength(
+                geometry.columns * geometry.rows
+            )
+            expect(snapshot.importLayer.cells[0]).toBe(0)
+            expect(
+                snapshot.importLayer.cells[
+                    geometry.rows * geometry.columns - 1
+                ]
+            ).toBe(1)
+            expect(snapshot.strokeLayer.cells).toEqual([
+                { cellIndex: geometry.columns - 1, swatchIndex: 1 },
+                {
+                    cellIndex: (geometry.rows - 1) * geometry.columns,
+                    swatchIndex: V2_CELL_TRANSPARENT,
+                },
+            ])
+
+            const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+            expect(parsed.ok).toBe(true)
+            if (!parsed.ok) continue
+            expect(parsed.canonical.aspectRatioId).toBe(template.id)
+            expect(parsed.canonical.columns).toBe(geometry.columns)
+            expect(parsed.canonical.rows).toBe(geometry.rows)
+
+            const runtime = buildProjectSnapshotV2RuntimeLayers(
+                parsed.snapshot,
+                {
+                    transparentPixel: "__TRANSPARENT__",
+                    paletteMin: 2,
+                    paletteMax: 32,
+                }
+            )
+            expect(runtime.imagePixels).toHaveLength(geometry.rows)
+            expect(runtime.imagePixels[0]).toHaveLength(geometry.columns)
+            expect(runtime.imagePixels[0][0]).toBe("auto-0")
+            expect(runtime.imagePixels[geometry.rows - 1][geometry.columns - 1]).toBe(
+                "user-0"
+            )
+            expect(runtime.overlayPixels[0][geometry.columns - 1]).toBe("user-0")
+            expect(runtime.overlayPixels[geometry.rows - 1][0]).toBe(
+                "__TRANSPARENT__"
+            )
+        }
+    })
+
+    it("preserves edge cells when using columns as the rectangular stride", () => {
+        const snapshot = rectangularProject({
+            gridSize: 9,
+            aspectRatioId: "16:9",
+        })
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(true)
+        if (!parsed.ok) return
+
+        expect(parsed.canonical.columns).toBe(16)
+        expect(parsed.canonical.rows).toBe(9)
+        expect(parsed.canonical.importLayer.cells).toHaveLength(144)
+        expect(parsed.canonical.importLayer.cells[15]).toBe(1)
+        expect(parsed.canonical.importLayer.cells[128]).toBe(
+            V2_CELL_TRANSPARENT
+        )
+        expect(parsed.canonical.importLayer.cells[143]).toBe(0)
+        expect(parsed.canonical.strokeLayer.cells).toEqual([
+            { cellIndex: 15, swatchIndex: 1 },
+            { cellIndex: 128, swatchIndex: V2_CELL_TRANSPARENT },
+            { cellIndex: 143, swatchIndex: 0 },
+        ])
     })
 
     it("loads missing or invalid context METHOD profiles as default profiles", () => {
@@ -440,6 +618,134 @@ describe("ProjectSnapshotV2 invariants", () => {
         expect(decodeProjectSnapshotRefBytes(null)).toBeNull()
     })
 
+    it("validates reference bytes using variable reference dimensions", () => {
+        for (const aspectRatioId of ["16:9", "9:16", "3:2", "1:1"] as const) {
+            const dimensions = calculateReferenceDimensions(aspectRatioId)
+            const bytes = new Uint8ClampedArray(
+                dimensions.width * dimensions.height * 4
+            )
+            const snapshot: ProjectSnapshotV2 = {
+                ...rectangularProject({
+                    gridSize: 18,
+                    aspectRatioId,
+                }),
+                ref: {
+                    w: dimensions.width,
+                    h: dimensions.height,
+                    ext: "rgba8",
+                    b64: encodeProjectSnapshotBytesBase64(bytes),
+                },
+            }
+
+            const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+            expect(parsed.ok).toBe(true)
+            if (!parsed.ok) continue
+            expect(parsed.canonical.ref?.w).toBe(dimensions.width)
+            expect(parsed.canonical.ref?.h).toBe(dimensions.height)
+        }
+    })
+
+    it("saves variable reference dimensions from Smart Object bytes", () => {
+        const dimensions = calculateReferenceDimensions("16:9")
+        const bytes = new Uint8ClampedArray(
+            dimensions.width * dimensions.height * 4
+        )
+        const geometry = calculateCanvasGridGeometry({
+            gridSize: 18,
+            aspectRatioId: "16:9",
+        })
+        const emptyGrid = Array.from({ length: geometry.rows }, () =>
+            Array.from({ length: geometry.columns }, () => null as string | null)
+        )
+
+        const snapshot = buildProjectSnapshotV2ForSave({
+            gridSize: geometry.gridSize,
+            aspectRatioId: geometry.aspectRatioId,
+            columns: geometry.columns,
+            rows: geometry.rows,
+            paletteCount: 2,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#112233",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [],
+            imagePixels: emptyGrid,
+            overlayPixels: emptyGrid,
+            smartReferenceBytes: bytes,
+            smartReferenceWidth: dimensions.width,
+            smartReferenceHeight: dimensions.height,
+            smartAdjustments: {
+                exposure: 0,
+                whiteBalance: 0.5,
+                contrast: 0,
+                saturation: 0,
+                shadows: 0,
+                midtones: 0,
+                highlights: 0,
+            },
+            transparentPixel: "__TRANSPARENT__",
+        })
+
+        expect(snapshot.ref?.w).toBe(910)
+        expect(snapshot.ref?.h).toBe(512)
+        expect(validateProjectSnapshotV2OrThrow(snapshot).ref?.w).toBe(910)
+    })
+
+    it("rejects reference dimensions that do not match the selected aspect ratio", () => {
+        const dimensions = calculateReferenceDimensions("16:9")
+        const bytes = new Uint8ClampedArray(
+            dimensions.width * dimensions.height * 4
+        )
+        const snapshot: ProjectSnapshotV2 = {
+            ...rectangularProject({
+                gridSize: 18,
+                aspectRatioId: "16:9",
+            }),
+            ref: {
+                w: 512,
+                h: 512,
+                ext: "rgba8",
+                b64: encodeProjectSnapshotBytesBase64(bytes),
+            },
+        }
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(false)
+        if (parsed.ok) return
+        expect(parsed.error.code).toBe("E_REF")
+    })
+
+    it("rejects reference byte length mismatches using w times h times four", () => {
+        const dimensions = calculateReferenceDimensions("3:2")
+        const bytes = new Uint8ClampedArray(
+            dimensions.width * dimensions.height * 4 - 4
+        )
+        const snapshot: ProjectSnapshotV2 = {
+            ...rectangularProject({
+                gridSize: 18,
+                aspectRatioId: "3:2",
+            }),
+            ref: {
+                w: dimensions.width,
+                h: dimensions.height,
+                ext: "rgba8",
+                b64: encodeProjectSnapshotBytesBase64(bytes),
+            },
+        }
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(false)
+        if (parsed.ok) return
+        expect(parsed.error.code).toBe("E_REF")
+    })
+
     it("resolves loaded quantization profile markers for restore", () => {
         const fallback = { kind: "extract" as const }
         const builtinProfile = {
@@ -519,11 +825,14 @@ describe("ProjectSnapshotV2 invariants", () => {
     })
 
     it("builds runtime palette and pixel layers from a validated snapshot", () => {
-        const layers = buildProjectSnapshotV2RuntimeLayers(canonicalProject(), {
-            transparentPixel: "__TRANSPARENT__",
-            paletteMin: 2,
-            paletteMax: 32,
-        })
+        const layers = buildProjectSnapshotV2RuntimeLayers(
+            validateProjectSnapshotV2OrThrow(canonicalProject()),
+            {
+                transparentPixel: "__TRANSPARENT__",
+                paletteMin: 2,
+                paletteMax: 32,
+            }
+        )
 
         expect(layers.gridSize).toBe(4)
         expect(layers.paletteOrderIds).toEqual(["auto-0", "user-1"])
@@ -786,6 +1095,70 @@ describe("ProjectSnapshotV2 invariants", () => {
         ])
     })
 
+    it("migrates legacy square projects to the 1:1 aspect ratio", () => {
+        const legacy = canonicalProject()
+        delete legacy.aspectRatioId
+        delete legacy.columns
+        delete legacy.rows
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(legacy))
+
+        expect(parsed.ok).toBe(true)
+        if (!parsed.ok) return
+        expect(parsed.snapshot.aspectRatioId).toBe("1:1")
+        expect(parsed.snapshot.columns).toBe(legacy.gridSize)
+        expect(parsed.snapshot.rows).toBe(legacy.gridSize)
+        expect(parsed.canonical.aspectRatioId).toBe("1:1")
+        expect(parsed.canonical.columns).toBe(legacy.gridSize)
+        expect(parsed.canonical.rows).toBe(legacy.gridSize)
+        expect(parsed.canonical.importLayer.cells).toHaveLength(
+            legacy.gridSize * legacy.gridSize
+        )
+    })
+
+    it("rejects partial aspect ratio geometry fields fail-closed", () => {
+        const partial = {
+            ...canonicalProject(),
+            aspectRatioId: "16:9",
+        }
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(partial))
+
+        expect(parsed.ok).toBe(false)
+        if (parsed.ok) return
+        expect(parsed.error.code).toBe("E_GRID")
+    })
+
+    it("rejects rectangular import layers with the wrong cell count", () => {
+        const snapshot = rectangularProject({
+            gridSize: 9,
+            aspectRatioId: "16:9",
+        })
+        snapshot.importLayer.cells = snapshot.importLayer.cells.slice(0, -1)
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(false)
+        if (parsed.ok) return
+        expect(parsed.error.code).toBe("E_IMPORT_LAYER")
+    })
+
+    it("rejects rectangular stroke cell indexes outside columns times rows", () => {
+        const snapshot = rectangularProject({
+            gridSize: 9,
+            aspectRatioId: "16:9",
+        })
+        snapshot.strokeLayer.cells = [
+            { cellIndex: 16 * 9, swatchIndex: 0 },
+        ]
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(snapshot))
+
+        expect(parsed.ok).toBe(false)
+        if (parsed.ok) return
+        expect(parsed.error.code).toBe("E_STROKE_LAYER")
+    })
+
     it("rejects malformed saved payloads without accepting partial state", () => {
         const malformed = {
             ...canonicalProject(),
@@ -804,6 +1177,23 @@ describe("ProjectSnapshotV2 invariants", () => {
         ambiguous.strokeLayer.cells = [
             { cellIndex: 3, swatchIndex: 0 },
             { cellIndex: 3, swatchIndex: 1 },
+        ]
+
+        const parsed = parseProjectSnapshotV2Json(JSON.stringify(ambiguous))
+
+        expect(parsed.ok).toBe(false)
+        if (parsed.ok) return
+        expect(parsed.error.code).toBe("E_STROKE_LAYER")
+    })
+
+    it("rejects duplicate rectangular stroke cell indexes fail-closed", () => {
+        const ambiguous = rectangularProject({
+            gridSize: 9,
+            aspectRatioId: "16:9",
+        })
+        ambiguous.strokeLayer.cells = [
+            { cellIndex: 143, swatchIndex: 0 },
+            { cellIndex: 143, swatchIndex: 1 },
         ]
 
         const parsed = parseProjectSnapshotV2Json(JSON.stringify(ambiguous))

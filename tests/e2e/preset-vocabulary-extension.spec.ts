@@ -105,6 +105,51 @@ test("added preset swatch keeps restored preset tab world as its own redo step",
     expect(errors.flush()).toEqual([])
 })
 
+test("active preset remains applied after auto Smart Object adjustment", async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "METHOD flow is desktop-only")
+    const errors = collectBrowserErrors(page)
+
+    await openGeneratedPortrait(page)
+    await applyMethodProfile(page, "k-means", "hsv")
+    await applySunsetPreset(page)
+    await applyMethodProfile(page, "fixed-palette-mapping", "hsl")
+
+    const presetBeforeSmart = await summarizePresetState(page)
+    expect(presetBeforeSmart.profileKind).toBe("fixed")
+    expect(presetBeforeSmart.profileId).toMatch(/^sunset\b/i)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+    await applyMethodProfile(page, "k-medoids", "hsl")
+    await applyStrongSmartObjectAdjustment(page)
+
+    const autoAfterSmart = await summarizePresetState(page)
+    expect(autoAfterSmart.profileKind).toBe("extract")
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await settle(page)
+
+    const presetAfterSmart = await summarizePresetState(page)
+    expect(presetAfterSmart.profileKind).toBe("fixed")
+    expect(presetAfterSmart.profileId).toMatch(/^sunset\b/i)
+    expect(presetAfterSmart.canvasSignature).not.toBe(
+        autoAfterSmart.canvasSignature
+    )
+
+    await page.getByRole("button", { name: /^GRAY\b/ }).click()
+    await settle(page)
+    await applySunsetPreset(page)
+    const forcedSunsetAfterSmart = await summarizePresetState(page)
+
+    expect(presetAfterSmart.canvasSignature).toBe(
+        forcedSunsetAfterSmart.canvasSignature
+    )
+
+    expect(errors.flush()).toEqual([])
+})
+
 async function openGeneratedPortrait(page: Page) {
     await page.goto("/editor/")
     const fileChooserPromise = page.waitForEvent("filechooser")
@@ -143,11 +188,49 @@ async function applySmartObjectHighlights(page: Page) {
     await settle(page)
 }
 
+async function applyStrongSmartObjectAdjustment(page: Page) {
+    await page.getByRole("button", { name: "Smart Object" }).click()
+    await expect(page.getByText("EXPOSURE:")).toBeVisible()
+    await setRangeValue(page.locator("input.soRange").nth(0), 35)
+    await setRangeValue(page.locator("input.soRange").nth(1), 100)
+    await setRangeValue(page.locator("input.soRange").nth(2), -45)
+    await setRangeValue(page.locator("input.soRange").nth(3), -80)
+    await page.getByRole("button", { name: "Apply" }).click()
+    await expect(page.getByRole("button", { name: "Smart Object" })).toBeVisible()
+    await settle(page)
+}
+
 async function addPresetSwatch(page: Page, hex: string) {
     await page.locator('button[title="Add swatch"]').first().click()
     await page.getByLabel("HEX input").fill(hex)
     await page.getByRole("button", { name: "OK" }).click()
     await settle(page)
+}
+
+async function applyMethodProfile(
+    page: Page,
+    methodId: string,
+    colorSpaceId: string
+) {
+    await page.getByRole("button", { name: "METHOD" }).click()
+    await expect(page.getByText("METHOD")).toBeVisible()
+    await page.locator(`button[data-axis="method"][data-method-id="${methodId}"]`).click()
+    await page
+        .locator(`button[data-axis="color-space"][data-color-space-id="${colorSpaceId}"]`)
+        .click()
+    await settle(page)
+    await page.getByRole("button", { name: "Apply METHOD" }).click()
+    await expect(page.getByRole("button", { name: "METHOD" })).toBeVisible()
+    await settle(page)
+}
+
+async function summarizePresetState(page: Page) {
+    const snapshot = await downloadProjectSnapshot(page)
+    return {
+        canvasSignature: await readEditorCanvasSignature(page),
+        profileKind: snapshot.quantizationProfile?.kind ?? "extract",
+        profileId: snapshot.quantizationProfile?.id ?? null,
+    }
 }
 
 async function summarizeCurrentState(page: Page) {

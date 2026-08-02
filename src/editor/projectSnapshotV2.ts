@@ -1,5 +1,12 @@
 import type { SmartReferenceAdjustments } from "./SmartReferenceEditor.tsx"
 import {
+    calculateCanvasGridGeometry,
+    calculateReferenceDimensions,
+    DEFAULT_ASPECT_RATIO_ID,
+    isAspectRatioId,
+    type AspectRatioId,
+} from "./canvasGeometry.ts"
+import {
     AUTO_PALETTE_CONTEXT_KIND,
     DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     FIXED_PALETTE_CONTEXT_KIND,
@@ -33,12 +40,15 @@ export const PROJECT_SNAPSHOT_V2_REQUIRED_ROOT_KEYS = [
 ] as const
 
 export const PROJECT_SNAPSHOT_V2_OPTIONAL_ROOT_KEYS = [
+    "aspectRatioId",
     "autoOverrides",
+    "columns",
     "deConfettiByPaletteContext",
     "methodProfilesByPaletteContext",
     "methodProfile",
     "smartObjectState",
     "quantizationProfile",
+    "rows",
 ] as const
 
 export type ImportCellV2 = typeof V2_CELL_NULL | typeof V2_CELL_TRANSPARENT | number
@@ -55,6 +65,9 @@ export type ProjectSnapshotV2 = {
     magic: typeof PROJECT_SNAPSHOT_V2_MAGIC
     version: typeof PROJECT_SNAPSHOT_V2_VERSION
     gridSize: number
+    aspectRatioId?: AspectRatioId
+    columns?: number
+    rows?: number
     palette: {
         swatches: Array<{
             index: number
@@ -115,18 +128,25 @@ export type ProjectSnapshotV2 = {
         }>
     }
     ref: null | {
-        w: 512
-        h: 512
+        w: number
+        h: number
         ext: "rgba8"
         b64: string
     }
 }
 
-export type ValidatedSnapshotV2 = ProjectSnapshotV2
+export type ProjectSnapshotV2GeometryFields = {
+    aspectRatioId: AspectRatioId
+    columns: number
+    rows: number
+}
+export type ValidatedSnapshotV2 = ProjectSnapshotV2 &
+    ProjectSnapshotV2GeometryFields
 export type ProjectSnapshotV2BuildInput = Omit<
     ProjectSnapshotV2,
     "magic" | "version"
->
+> &
+    Partial<Pick<ProjectSnapshotV2, "aspectRatioId" | "columns" | "rows">>
 export type ProjectSnapshotV2QuantizationProfileInput = NonNullable<
     ProjectSnapshotV2["quantizationProfile"]
 >
@@ -174,6 +194,9 @@ export type ProjectSnapshotV2SaveLayers = Pick<
 >
 export type ProjectSnapshotV2ForSaveInput<TTransparent> = {
     gridSize: number
+    aspectRatioId?: AspectRatioId
+    columns?: number
+    rows?: number
     paletteCount: number
     autoSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>
     userSwatches: ReadonlyArray<ProjectSnapshotV2SavePaletteSwatch>
@@ -188,6 +211,8 @@ export type ProjectSnapshotV2ForSaveInput<TTransparent> = {
     deConfettiByPaletteContext?: ProjectSnapshotV2DeConfettiByPaletteContextInput | null
     quantizationProfile?: ProjectSnapshotV2QuantizationProfileInput
     smartReferenceBytes?: Uint8ClampedArray | null
+    smartReferenceWidth?: number | null
+    smartReferenceHeight?: number | null
     smartAdjustments?: SmartReferenceAdjustments | null
     normalizeColor?: (color: string) => string
     transparentPixel: TTransparent
@@ -208,6 +233,9 @@ export type ProjectSnapshotV2RuntimePixel<TTransparent> =
     | TTransparent
 export type ProjectSnapshotV2RuntimeLayers<TTransparent> = {
     gridSize: number
+    aspectRatioId: AspectRatioId
+    columns: number
+    rows: number
     paletteOrderIds: string[]
     allSwatches: ProjectSnapshotV2RuntimeSwatch[]
     autoSwatches: ProjectSnapshotV2RuntimeSwatch[]
@@ -259,11 +287,12 @@ function clampInt(n: number, min: number, max: number) {
 }
 
 function createRuntimePixelGrid<TTransparent>(
-    size: number
+    rows: number,
+    columns: number
 ): ProjectSnapshotV2RuntimePixel<TTransparent>[][] {
-    return Array.from({ length: size }, () =>
+    return Array.from({ length: rows }, () =>
         Array.from(
-            { length: size },
+            { length: columns },
             () => null as ProjectSnapshotV2RuntimePixel<TTransparent>
         )
     )
@@ -371,6 +400,40 @@ function assertBool(
         throw makeLoadGateError(code, `${where}: not boolean`)
     }
 }
+
+function resolveProjectSnapshotV2GeometryFields(input: {
+    gridSize: number
+    aspectRatioId?: unknown
+    columns?: unknown
+    rows?: unknown
+}): CanvasGeometryFields {
+    const aspectRatioId = isAspectRatioId(input.aspectRatioId)
+        ? input.aspectRatioId
+        : DEFAULT_ASPECT_RATIO_ID
+    const calculated = calculateCanvasGridGeometry({
+        gridSize: input.gridSize,
+        aspectRatioId,
+    })
+    const columns =
+        typeof input.columns === "number" && Number.isInteger(input.columns)
+            ? input.columns
+            : calculated.columns
+    const rows =
+        typeof input.rows === "number" && Number.isInteger(input.rows)
+            ? input.rows
+            : calculated.rows
+
+    return {
+        aspectRatioId,
+        columns,
+        rows,
+    }
+}
+
+type CanvasGeometryFields = Pick<
+    ProjectSnapshotV2GeometryFields,
+    "aspectRatioId" | "columns" | "rows"
+>
 
 function base64DecodedLenOrThrow(
     b64: string,
@@ -556,6 +619,8 @@ export function buildProjectSnapshotV2SavePalette(
 
 export function buildProjectSnapshotV2SaveLayers<TTransparent>(params: {
     gridSize: number
+    columns?: number
+    rows?: number
     imagePixels: ReadonlyArray<
         ReadonlyArray<ProjectSnapshotV2SavePixel<TTransparent>>
     >
@@ -568,6 +633,8 @@ export function buildProjectSnapshotV2SaveLayers<TTransparent>(params: {
 }): ProjectSnapshotV2SaveLayers {
     const {
         gridSize,
+        columns = gridSize,
+        rows = gridSize,
         imagePixels,
         overlayPixels,
         indexById,
@@ -582,26 +649,26 @@ export function buildProjectSnapshotV2SaveLayers<TTransparent>(params: {
             transparentSwatchIds,
         })
 
-    const importCells: ImportCellV2[] = new Array(gridSize * gridSize)
-    for (let row = 0; row < gridSize; row++) {
-        for (let column = 0; column < gridSize; column++) {
-            importCells[row * gridSize + column] = mapPixel(
-                imagePixels[row][column]
+    const importCells: ImportCellV2[] = new Array(rows * columns)
+    for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+            importCells[row * columns + column] = mapPixel(
+                imagePixels[row]?.[column] ?? null
             )
         }
     }
 
     const strokeCells: ProjectSnapshotV2["strokeLayer"]["cells"] = []
-    for (let row = 0; row < gridSize; row++) {
-        for (let column = 0; column < gridSize; column++) {
-            const value = overlayPixels[row][column]
+    for (let row = 0; row < rows; row++) {
+        for (let column = 0; column < columns; column++) {
+            const value = overlayPixels[row]?.[column] ?? null
             if (value == null) continue
 
             const swatchIndex = mapPixel(value)
             if (swatchIndex === V2_CELL_NULL) continue
 
             strokeCells.push({
-                cellIndex: row * gridSize + column,
+                cellIndex: row * columns + column,
                 swatchIndex,
             })
         }
@@ -620,6 +687,7 @@ export function buildProjectSnapshotV2ForSave<TTransparent>(
         input.normalizeColor ?? ((color: string) => color.toUpperCase())
     const paletteMin = input.paletteMin ?? PROJECT_SNAPSHOT_V2_PALETTE_MIN
     const paletteMax = input.paletteMax ?? PROJECT_SNAPSHOT_V2_PALETTE_MAX
+    const geometry = resolveProjectSnapshotV2GeometryFields(input)
 
     const savePalette = buildProjectSnapshotV2SavePalette(
         input.autoSwatches,
@@ -628,6 +696,8 @@ export function buildProjectSnapshotV2ForSave<TTransparent>(
     )
     const saveLayers = buildProjectSnapshotV2SaveLayers({
         gridSize: input.gridSize,
+        columns: geometry.columns,
+        rows: geometry.rows,
         imagePixels: input.imagePixels,
         overlayPixels: input.overlayPixels,
         indexById: savePalette.indexById,
@@ -640,9 +710,20 @@ export function buildProjectSnapshotV2ForSave<TTransparent>(
         input.smartReferenceBytes && input.smartReferenceBytes.length > 0
             ? input.smartReferenceBytes
             : null
+    const smartReferenceWidth =
+        smartReferenceBytes && input.smartReferenceWidth
+            ? input.smartReferenceWidth
+            : 512
+    const smartReferenceHeight =
+        smartReferenceBytes && input.smartReferenceHeight
+            ? input.smartReferenceHeight
+            : 512
 
     return createProjectSnapshotV2({
         gridSize: input.gridSize,
+        aspectRatioId: geometry.aspectRatioId,
+        columns: geometry.columns,
+        rows: geometry.rows,
         palette: { swatches: savePalette.swatches },
         paletteCount: clampInt(input.paletteCount, paletteMin, paletteMax),
         methodProfilesByPaletteContext:
@@ -671,8 +752,8 @@ export function buildProjectSnapshotV2ForSave<TTransparent>(
             : undefined,
         ref: smartReferenceBytes
             ? {
-                  w: 512,
-                  h: 512,
+                  w: smartReferenceWidth,
+                  h: smartReferenceHeight,
                   ext: "rgba8",
                   b64: encodeProjectSnapshotBytesBase64(smartReferenceBytes),
               }
@@ -726,7 +807,9 @@ export function buildProjectSnapshotV2RuntimeLayers<TTransparent>(
     }
 ): ProjectSnapshotV2RuntimeLayers<TTransparent> {
     const gridSize = snapshot.gridSize
-    const cellsN = gridSize * gridSize
+    const { aspectRatioId, columns, rows } =
+        resolveProjectSnapshotV2GeometryFields(snapshot)
+    const cellsN = rows * columns
     const paletteMin = options.paletteMin ?? PROJECT_SNAPSHOT_V2_PALETTE_MIN
     const paletteMax = options.paletteMax ?? PROJECT_SNAPSHOT_V2_PALETTE_MAX
 
@@ -756,24 +839,27 @@ export function buildProjectSnapshotV2RuntimeLayers<TTransparent>(
         return sw ? sw.id : null
     }
 
-    const imagePixels = createRuntimePixelGrid<TTransparent>(gridSize)
+    const imagePixels = createRuntimePixelGrid<TTransparent>(rows, columns)
     const importCells = snapshot.importLayer.cells
     for (let i = 0; i < cellsN; i++) {
-        const r = Math.floor(i / gridSize)
-        const c = i - r * gridSize
+        const r = Math.floor(i / columns)
+        const c = i - r * columns
         imagePixels[r][c] = idxToPixelValue(importCells[i])
     }
 
-    const overlayPixels = createRuntimePixelGrid<TTransparent>(gridSize)
+    const overlayPixels = createRuntimePixelGrid<TTransparent>(rows, columns)
     for (const cell of snapshot.strokeLayer.cells) {
-        const r = Math.floor(cell.cellIndex / gridSize)
-        const c = cell.cellIndex - r * gridSize
-        if (r < 0 || c < 0 || r >= gridSize || c >= gridSize) continue
+        const r = Math.floor(cell.cellIndex / columns)
+        const c = cell.cellIndex - r * columns
+        if (r < 0 || c < 0 || r >= rows || c >= columns) continue
         overlayPixels[r][c] = idxToPixelValue(cell.swatchIndex)
     }
 
     return {
         gridSize,
+        aspectRatioId,
+        columns,
+        rows,
         paletteOrderIds,
         allSwatches,
         autoSwatches,
@@ -876,12 +962,13 @@ export function createProjectSnapshotV2(
         magic: PROJECT_SNAPSHOT_V2_MAGIC,
         version: PROJECT_SNAPSHOT_V2_VERSION,
         ...input,
-    })
+    } as ProjectSnapshotV2)
 }
 
 export function canonicalizeSnapshotV2(
     s: ProjectSnapshotV2
 ): ProjectSnapshotV2 {
+    const geometry = resolveProjectSnapshotV2GeometryFields(s)
     const sw = [...s.palette.swatches].sort((a, b) => a.index - b.index)
     const st = [...s.strokeLayer.cells]
         .filter((cell) => cell.swatchIndex !== V2_CELL_NULL)
@@ -917,6 +1004,9 @@ export function canonicalizeSnapshotV2(
         magic: PROJECT_SNAPSHOT_V2_MAGIC,
         version: PROJECT_SNAPSHOT_V2_VERSION,
         gridSize: s.gridSize,
+        aspectRatioId: geometry.aspectRatioId,
+        columns: geometry.columns,
+        rows: geometry.rows,
         palette: {
             swatches: sw.map((x, i) => ({
                 index: i,
@@ -932,7 +1022,9 @@ export function canonicalizeSnapshotV2(
                 swatchIndex: c.swatchIndex,
             })),
         },
-        ref: s.ref ? { w: 512, h: 512, ext: "rgba8", b64: s.ref.b64 } : null,
+        ref: s.ref
+            ? { w: s.ref.w, h: s.ref.h, ext: "rgba8", b64: s.ref.b64 }
+            : null,
     }
 
     if (typeof s.paletteCount === "number") {
@@ -1270,7 +1362,40 @@ export function validateProjectSnapshotV2OrThrow(
 
     assertIntInRange(raw.gridSize, 2, 128, "E_GRID", "gridSize")
     const g = raw.gridSize as number
-    const cellsN = g * g
+    const geometryKeysPresent = [
+        "aspectRatioId" in raw,
+        "columns" in raw,
+        "rows" in raw,
+    ].filter(Boolean).length
+    if (geometryKeysPresent !== 0 && geometryKeysPresent !== 3) {
+        throw makeLoadGateError(
+            "E_GRID",
+            "geometry: aspectRatioId, columns, and rows must be saved together"
+        )
+    }
+
+    let aspectRatioId = DEFAULT_ASPECT_RATIO_ID
+    if ("aspectRatioId" in raw) {
+        if (!isAspectRatioId(raw.aspectRatioId)) {
+            throw makeLoadGateError("E_GRID", "aspectRatioId: not supported")
+        }
+        aspectRatioId = raw.aspectRatioId
+    }
+    const calculatedGeometry = calculateCanvasGridGeometry({
+        gridSize: g,
+        aspectRatioId,
+    })
+    const columns = "columns" in raw ? raw.columns : calculatedGeometry.columns
+    const rows = "rows" in raw ? raw.rows : calculatedGeometry.rows
+    assertIntInRange(columns, 2, 256, "E_GRID", "columns")
+    assertIntInRange(rows, 2, 256, "E_GRID", "rows")
+    if (
+        columns !== calculatedGeometry.columns ||
+        rows !== calculatedGeometry.rows
+    ) {
+        throw makeLoadGateError("E_GRID", "geometry: dimensions mismatch")
+    }
+    const cellsN = (rows as number) * (columns as number)
 
     const pal = raw.palette
     if (!isPlainObject(pal)) {
@@ -1400,8 +1525,15 @@ export function validateProjectSnapshotV2OrThrow(
             throw makeLoadGateError("E_REF", "ref: not null/object")
         }
         assertExactKeys(ref, ["w", "h", "ext", "b64"], "E_REF", "ref")
-        if (ref.w !== 512 || ref.h !== 512) {
-            throw makeLoadGateError("E_REF", "ref: invalid size")
+        assertIntInRange(ref.w, 1, 16384, "E_REF", "ref.w")
+        assertIntInRange(ref.h, 1, 16384, "E_REF", "ref.h")
+        const expectedReferenceDimensions =
+            calculateReferenceDimensions(aspectRatioId)
+        if (
+            ref.w !== expectedReferenceDimensions.width ||
+            ref.h !== expectedReferenceDimensions.height
+        ) {
+            throw makeLoadGateError("E_REF", "ref: dimensions mismatch")
         }
         if (ref.ext !== "rgba8") {
             throw makeLoadGateError("E_REF", "ref.ext: not allowed")
@@ -1409,14 +1541,19 @@ export function validateProjectSnapshotV2OrThrow(
 
         const refB64 = ref.b64
         assertString(refB64, "E_REF", "ref.b64")
-        const expectedLen = 512 * 512 * 4
+        const expectedLen = (ref.w as number) * (ref.h as number) * 4
         const decodedLen = base64DecodedLenOrThrow(refB64, "E_REF", "ref.b64")
         if (decodedLen !== expectedLen) {
             throw makeLoadGateError("E_REF", "ref.b64: decoded length mismatch")
         }
     }
 
-    return raw as ValidatedSnapshotV2
+    return {
+        ...(raw as ProjectSnapshotV2),
+        aspectRatioId,
+        columns: columns as number,
+        rows: rows as number,
+    }
 }
 
 export function parseProjectSnapshotV2Json(

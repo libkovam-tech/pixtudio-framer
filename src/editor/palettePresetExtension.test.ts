@@ -460,6 +460,54 @@ describe("palette preset extension", () => {
         )
     })
 
+    it("keeps rectangular geometry when applying fixed presets from references", () => {
+        const referenceSnapshot = {
+            width: 3,
+            height: 2,
+            data: new Uint8ClampedArray(24),
+        }
+
+        const result = prepareFixedPalettePresetProjectApplication({
+            profile,
+            referenceSnapshot,
+            gridSize: 2,
+            aspectRatioId: "3:2",
+            overlayPixels: [
+                [null, null, null],
+                [null, null, null],
+            ],
+            previousSwatches: [],
+            userSwatches: [],
+            pixelizeReference: () => [
+                ["#001219", "#E9D8A6", "#001219"],
+                ["#E9D8A6", "#001219", "#E9D8A6"],
+            ],
+            referenceSignature: () => "reference-fixed-3x2",
+            imagePixels: [
+                ["auto-0", "auto-1", "auto-0"],
+                ["auto-1", "auto-0", "auto-1"],
+            ],
+            selectedSwatch: "auto-0",
+            projectPaletteCount: 8,
+            brushSize: 3,
+            showImage: true,
+            hasOriginalImageData: true,
+            importedPalettePresets: [],
+            hiddenPresetIds: [],
+            deletedAutoPaletteColors: [],
+            autoOverrides: {},
+        })
+
+        expect(result.kind).toBe("reference")
+        if (result.kind !== "reference") throw new Error("expected reference")
+
+        expect(result.projectState.aspectRatioId).toBe("3:2")
+        expect(result.projectState.columns).toBe(3)
+        expect(result.projectState.rows).toBe(2)
+        expect(result.projectState.imagePixels).toHaveLength(2)
+        expect(result.projectState.imagePixels[0]).toHaveLength(3)
+    })
+
     it("uses the fixed METHOD profile when rebuilding a fixed preset from a reference", () => {
         const referenceSnapshot = {
             width: 2,

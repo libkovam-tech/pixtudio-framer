@@ -31,6 +31,10 @@ import {
     type ImageDataSampleSource,
     type ImportedPalettePresetForHistory,
 } from "./editorHistoryState.ts"
+import {
+    DEFAULT_ASPECT_RATIO_ID,
+    type AspectRatioId,
+} from "./canvasGeometry.ts"
 
 export type EditableFixedPaletteProfile = {
     kind: "fixed"
@@ -495,6 +499,7 @@ type PaletteReferenceWorldInput<
     profile: TProfile
     referenceSnapshot: TReference | null | undefined
     gridSize: number
+    aspectRatioId?: AspectRatioId
     overlayPixels: TPixel[][]
     previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     userSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
@@ -799,6 +804,7 @@ export function prepareFixedPaletteDrawingProjectApplication<
     autoSwatchesOverride?: ReadonlyArray<TSwatch> | null
     makeAutoSwatches?: (profile: TProfile) => TSwatch[]
     gridSize: number
+    aspectRatioId?: AspectRatioId
     paletteCount: number
     brushSize: number
     showImage: boolean
@@ -830,6 +836,11 @@ export function prepareFixedPaletteDrawingProjectApplication<
         application,
         projectState: {
             gridSize: input.gridSize,
+            ...projectGeometryFromPixels(
+                input.gridSize,
+                application.imagePixels,
+                input.aspectRatioId
+            ),
             paletteCount: input.paletteCount,
             brushSize: input.brushSize,
             imagePixels: application.imagePixels,
@@ -890,6 +901,7 @@ export function prepareAutoPaletteDrawingProjectApplication<
     selectedSwatch: PaletteSelection
     preferredSwatch?: PaletteSelection | null
     gridSize: number
+    aspectRatioId?: AspectRatioId
     projectPaletteCount: number
     brushSize: number
     showImage: boolean
@@ -923,6 +935,7 @@ export function prepareAutoPaletteDrawingProjectApplication<
             world,
             activePaletteTab: "size",
             gridSize: input.gridSize,
+            aspectRatioId: input.aspectRatioId,
             paletteCount: input.projectPaletteCount,
             brushSize: input.brushSize,
             showImage: input.showImage,
@@ -1168,6 +1181,7 @@ export function prepareFixedPaletteReferenceProjectApplication<
             world,
             activePaletteTab: "presets",
             gridSize: input.gridSize,
+            aspectRatioId: input.aspectRatioId,
             paletteCount: input.projectPaletteCount,
             brushSize: input.brushSize,
             showImage: input.showImage,
@@ -1194,6 +1208,7 @@ export function prepareFixedPalettePresetProjectApplication<
     profile: TProfile
     referenceSnapshot: TReference | null | undefined
     gridSize: number
+    aspectRatioId?: AspectRatioId
     overlayPixels: TPixel[][]
     previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     userSwatches: ReadonlyArray<TSwatch>
@@ -1233,6 +1248,7 @@ export function prepareFixedPalettePresetProjectApplication<
         profile: input.profile,
         referenceSnapshot: input.referenceSnapshot,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
         overlayPixels: input.overlayPixels,
         previousSwatches: input.previousSwatches,
         userSwatches: input.userSwatches,
@@ -1275,6 +1291,7 @@ export function prepareFixedPalettePresetProjectApplication<
         autoSwatchesOverride: input.autoSwatchesOverride,
         makeAutoSwatches: input.makeAutoSwatches,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
         paletteCount: input.projectPaletteCount,
         brushSize: input.brushSize,
         showImage: input.showImage,
@@ -1351,6 +1368,7 @@ export function prepareAutoPaletteReferenceProjectApplication<
             world,
             activePaletteTab: "size",
             gridSize: input.gridSize,
+            aspectRatioId: input.aspectRatioId,
             paletteCount: input.projectPaletteCount,
             brushSize: input.brushSize,
             showImage: input.showImage,
@@ -1408,6 +1426,7 @@ export function prepareAutoSwatchExclusionReferenceApplication<
         profile: input.profile,
         referenceSnapshot: input.referenceSnapshot,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
         overlayPixels: input.overlayPixels,
         previousSwatches: input.previousSwatches,
         userSwatches: input.userSwatches,
@@ -1469,6 +1488,7 @@ export function prepareActivePresetFallbackToAuto<
             profile: input.profile,
             referenceSnapshot: input.referenceSnapshot,
             gridSize: input.gridSize,
+            aspectRatioId: input.aspectRatioId,
             overlayPixels: input.overlayPixels,
             previousSwatches: input.previousSwatches,
             userSwatches: input.userSwatches,
@@ -1510,6 +1530,7 @@ export function prepareActivePresetFallbackToAuto<
         selectedSwatch: input.selectedSwatch,
         preferredSwatch: null,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
         projectPaletteCount: input.projectPaletteCount,
         brushSize: input.brushSize,
         showImage: input.showImage,
@@ -1751,6 +1772,18 @@ export function removeFixedPaletteProfileColor<
                 : undefined,
         },
         removed: true,
+    }
+}
+
+function projectGeometryFromPixels<TPixel>(
+    gridSize: number,
+    imagePixels: ReadonlyArray<ReadonlyArray<TPixel>>,
+    aspectRatioId: AspectRatioId = DEFAULT_ASPECT_RATIO_ID
+) {
+    return {
+        aspectRatioId,
+        columns: imagePixels[0]?.length ?? gridSize,
+        rows: imagePixels.length ?? gridSize,
     }
 }
 
@@ -2103,6 +2136,7 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplication<
         TPixel
     > & {
         gridSize: number
+        aspectRatioId?: AspectRatioId
         paletteCount: number
         brushSize: number
         showImage: boolean
@@ -2130,6 +2164,11 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplication<
         application,
         projectState: {
             gridSize: input.gridSize,
+            ...projectGeometryFromPixels(
+                input.gridSize,
+                application.imagePixels,
+                input.aspectRatioId
+            ),
             paletteCount: input.paletteCount,
             brushSize: input.brushSize,
             imagePixels: application.imagePixels,
@@ -2167,6 +2206,7 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromRefe
         referenceSnapshot: TReference | null
     ) => string | null
     gridSize: number
+    aspectRatioId?: AspectRatioId
     overlayPixels: TPixel[][]
     previousSwatches: ReadonlyArray<FixedPaletteAutoSwatch>
     userSwatches: ReadonlyArray<TSwatch>
@@ -2224,6 +2264,7 @@ export function prepareFixedPaletteVocabularyExtensionProjectApplicationFromRefe
         overlayPixels: input.overlayPixels,
         selectedSwatch: input.selectedSwatch,
         gridSize: input.gridSize,
+        aspectRatioId: input.aspectRatioId,
         paletteCount: input.projectPaletteCount,
         brushSize: input.brushSize,
         showImage: input.showImage,
@@ -2324,6 +2365,7 @@ export function prepareFixedPalettePresetSwatchDeleteProjectApplication<
     autoSwatches: ReadonlyArray<TSwatch>
     userSwatches: ReadonlyArray<TSwatch>
     gridSize: number
+    aspectRatioId?: AspectRatioId
     paletteCount: number
     brushSize: number
     showImage: boolean
@@ -2399,6 +2441,11 @@ export function prepareFixedPalettePresetSwatchDeleteProjectApplication<
         world,
         projectState: {
             gridSize: input.gridSize,
+            ...projectGeometryFromPixels(
+                input.gridSize,
+                imagePixels,
+                input.aspectRatioId
+            ),
             paletteCount: input.paletteCount,
             brushSize: input.brushSize,
             imagePixels,

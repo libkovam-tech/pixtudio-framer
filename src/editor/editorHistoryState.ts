@@ -2,6 +2,7 @@ import {
     EXTRACT_QUANTIZATION_PROFILE,
     type QuantizationProfile,
 } from "./paletteQuantizationEngine.ts"
+import type { AspectRatioId } from "./canvasGeometry.ts"
 import {
     resolveMethodProfile,
     resolveMethodProfilesByPaletteContext,
@@ -43,6 +44,9 @@ export type EditorCommittedState<
     TImportedPreset extends ImportedPalettePresetForHistory = ImportedPalettePresetForHistory,
 > = {
     gridSize: number
+    aspectRatioId: AspectRatioId
+    columns: number
+    rows: number
     paletteCount: number
     brushSize: number
     imagePixels: TPixel[][]
@@ -242,6 +246,9 @@ export function areEditorCommittedStatesEqual<
     if (a === b) return true
     if (!a || !b) return false
     if (a.gridSize !== b.gridSize) return false
+    if (a.aspectRatioId !== b.aspectRatioId) return false
+    if (a.columns !== b.columns) return false
+    if (a.rows !== b.rows) return false
     if (a.paletteCount !== b.paletteCount) return false
     if (a.brushSize !== b.brushSize) return false
     if (a.showImage !== b.showImage) return false

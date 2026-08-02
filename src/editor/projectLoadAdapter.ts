@@ -1,4 +1,5 @@
 import type { QuantizationProfile, PaletteTab } from "./paletteQuantizationEngine.ts"
+import type { AspectRatioId } from "./canvasGeometry.ts"
 import type {
     DeConfettiByPaletteContext,
     MethodProfilesByPaletteContext,
@@ -32,6 +33,9 @@ export type ProjectLoadImportedPalettePreset = {
 
 export type ProjectLoadEditorState<TTransparent> = {
     gridSize: number
+    aspectRatioId: AspectRatioId
+    columns: number
+    rows: number
     paletteCount: number
     brushSize: number
     imagePixels: (string | null | TTransparent)[][]
@@ -80,7 +84,7 @@ function decodeProjectSnapshotRefToImageData(
 ): ImageData | null {
     const bytes = decodeProjectSnapshotRefBytes(ref)
     if (!bytes) return null
-    return new ImageData(bytes, 512, 512)
+    return new ImageData(bytes, ref?.w ?? 512, ref?.h ?? 512)
 }
 
 function resolveLoadedQuantizationProfile(
@@ -127,6 +131,9 @@ export function buildProjectLoadStateFromSnapshot<TTransparent>(
 
     const project: ProjectLoadEditorState<TTransparent> = {
         gridSize: runtimeLayers.gridSize,
+        aspectRatioId: runtimeLayers.aspectRatioId,
+        columns: runtimeLayers.columns,
+        rows: runtimeLayers.rows,
         paletteCount: runtimeLayers.paletteCount,
         brushSize: options.defaultBrushSize,
         imagePixels: runtimeLayers.imagePixels,

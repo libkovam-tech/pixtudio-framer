@@ -31,6 +31,9 @@ function committedState(
 ): EditorCommittedState<TestPixel> {
     return {
         gridSize: 2,
+        aspectRatioId: "1:1",
+        columns: 2,
+        rows: 2,
         paletteCount: 4,
         brushSize: 3,
         imagePixels: [

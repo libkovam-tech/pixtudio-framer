@@ -659,7 +659,7 @@ describe("palette state", () => {
         })
     })
 
-    it("invalidates cached palette worlds while keeping the active tab", () => {
+    it("invalidates auto cache while keeping stale preset profile memory", () => {
         const sizeWorld: TestPaletteTabWorld = {
             profile: { kind: "extract" },
             autoSwatches: [{ id: "auto-size" }],
@@ -678,7 +678,7 @@ describe("palette state", () => {
         ).toEqual({
             activeTab: "presets",
             sizeWorld: null,
-            presetsWorld: null,
+            presetsWorld,
         })
     })
 
@@ -882,6 +882,57 @@ describe("palette state", () => {
         ).toBe(false)
     })
 
+    it("checks palette world compatibility against rectangular grid geometry", () => {
+        const compatibleWorld = {
+            referenceSignature: "ref-1",
+            imagePixels: [
+                ["auto-0", null, "auto-1"],
+                [null, "auto-1", "auto-0"],
+            ],
+            overlayPixels: [
+                [null, null, null],
+                ["auto-0", null, null],
+            ],
+            canvasPixels: [
+                ["auto-0", null, "auto-1"],
+                ["auto-0", "auto-1", "auto-0"],
+            ],
+        }
+
+        expect(
+            isPaletteWorldCompatibleWithReferenceGrid({
+                world: compatibleWorld,
+                currentReferenceSignature: "ref-1",
+                gridSize: 2,
+                rows: 2,
+                columns: 3,
+            })
+        ).toBe(true)
+
+        expect(
+            isPaletteWorldCompatibleWithReferenceGrid({
+                world: compatibleWorld,
+                currentReferenceSignature: "ref-1",
+                gridSize: 2,
+                rows: 2,
+                columns: 2,
+            })
+        ).toBe(false)
+
+        expect(
+            isPaletteWorldCompatibleWithReferenceGrid({
+                world: {
+                    ...compatibleWorld,
+                    imagePixels: [compatibleWorld.imagePixels[0]],
+                },
+                currentReferenceSignature: "ref-1",
+                gridSize: 2,
+                rows: 2,
+                columns: 3,
+            })
+        ).toBe(false)
+    })
+
     it("carries preset overlay strokes into auto worlds as user swatches", () => {
         const result = preparePresetOverlayCarryToAutoWorld({
             targetWorld: {
@@ -1010,6 +1061,9 @@ describe("palette state", () => {
         }
         const baseState = {
             gridSize: 2,
+            aspectRatioId: "1:1" as const,
+            columns: 2,
+            rows: 1,
             paletteCount: 3,
             brushSize: 1,
             imagePixels: [["auto-0", null]],
@@ -1062,6 +1116,9 @@ describe("palette state", () => {
         ]
         const baseState = {
             gridSize: 2,
+            aspectRatioId: "1:1" as const,
+            columns: 1,
+            rows: 1,
             paletteCount: 8,
             brushSize: 1,
             imagePixels: [["auto-0"]],
@@ -1406,6 +1463,9 @@ describe("palette state", () => {
     it("prepares swatch edit project applications with committed state", () => {
         const baseState = {
             gridSize: 2,
+            aspectRatioId: "1:1" as const,
+            columns: 1,
+            rows: 1,
             paletteCount: 3,
             brushSize: 1,
             imagePixels: [["auto-0"]],
@@ -1979,6 +2039,9 @@ describe("palette state", () => {
     it("prepares swatch delete project applications with committed state", () => {
         const baseState = {
             gridSize: 2,
+            aspectRatioId: "1:1" as const,
+            columns: 2,
+            rows: 1,
             paletteCount: 2,
             brushSize: 1,
             imagePixels: [["auto-1", "auto-0"]],

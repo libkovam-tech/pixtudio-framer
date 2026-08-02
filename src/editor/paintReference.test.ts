@@ -111,4 +111,44 @@ describe("paint reference", () => {
             ["transparent", "auto-0"],
         ])
     })
+
+    it("requantizes rectangular paint references without losing edge columns", () => {
+        const colorSnapshot = { tag: "wide-color" } as unknown as ImageData
+
+        const result = requantizePaintRefsToOverlayPixels({
+            colorSnapshot,
+            userSnapshot: null,
+            userValueByHex: new Map(),
+            transparentSnapshot: null,
+            transparentValueByHex: new Map(),
+            gridSize: 2,
+            rows: 2,
+            columns: 4,
+            baseAuto: [swatch("auto-0", "#ff0000"), swatch("auto-1", "#00ff00")],
+            user: [],
+            pixelizeSnapshot: (_snapshot, _gridSize, geometry) => {
+                expect(geometry).toEqual({ rows: 2, columns: 4 })
+                return [
+                    [
+                        "rgb(255, 0, 0)",
+                        "rgb(0, 255, 0)",
+                        "rgb(255, 0, 0)",
+                        "rgb(0, 255, 0)",
+                    ],
+                    [
+                        "rgb(0, 255, 0)",
+                        "rgb(255, 0, 0)",
+                        "rgb(0, 255, 0)",
+                        "rgb(255, 0, 0)",
+                    ],
+                ]
+            },
+            quantizeToFixedPalette: (pixels) => pixels,
+        })
+
+        expect(result).toEqual([
+            ["auto-0", "auto-1", "auto-0", "auto-1"],
+            ["auto-1", "auto-0", "auto-1", "auto-0"],
+        ])
+    })
 })

@@ -129,6 +129,8 @@ describe("projectPersistence", () => {
         expect(result.value.mime).toBe("application/pixtudio+json")
         expect(result.value.summary).toEqual({
             gridSize: 2,
+            columns: 2,
+            rows: 2,
             paletteSize: 2,
             hasRef: false,
             hasSmartObjectState: false,

@@ -51,6 +51,8 @@ export type PreparedProjectSave = CurrentProjectSnapshot & {
     canonicalChecksum: string
     summary: {
         gridSize: number
+        columns: number
+        rows: number
         paletteSize: number
         hasRef: boolean
         hasSmartObjectState: boolean
@@ -114,6 +116,8 @@ export function prepareProjectSnapshotForSave(
             canonicalChecksum: checksumJsonString(jsonText),
             summary: {
                 gridSize: validated.gridSize,
+                columns: validated.columns,
+                rows: validated.rows,
                 paletteSize: validated.palette.swatches.length,
                 hasRef: !!validated.ref,
                 hasSmartObjectState: !!validated.smartObjectState,

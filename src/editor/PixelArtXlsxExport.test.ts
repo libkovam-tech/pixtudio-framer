@@ -75,6 +75,38 @@ describe("pixel art xlsx export", () => {
         ])
     })
 
+    it("composes rectangular exports without dropping edge cells", () => {
+        const colors = composePixelArtXlsxExportColors({
+            gridSize: 2,
+            rows: 2,
+            columns: 3,
+            imagePixels: [
+                ["image", null, "right-edge"],
+                [null, null, "bottom-right"],
+            ],
+            overlayPixels: [
+                [null, null, null],
+                [null, null, "stroke"],
+            ],
+            resolveColor: (value) =>
+                value === "stroke"
+                    ? "#ff0000"
+                    : value === "right-edge"
+                      ? "#0000ff"
+                      : value === "bottom-right"
+                        ? "#00ffff"
+                        : value === "image"
+                          ? "#00ff00"
+                          : null,
+            isTransparent: (value) => value === "transparent",
+        })
+
+        expect(colors).toEqual([
+            ["#00ff00", null, "#0000ff"],
+            [null, null, "#ff0000"],
+        ])
+    })
+
     it("exports only the selected layer when layer toggles are used", () => {
         const colors = composePixelArtXlsxExportColors({
             gridSize: 2,
@@ -134,5 +166,24 @@ describe("pixel art xlsx export", () => {
             'defaultColWidth="1.7143" defaultRowHeight="9" customHeight="1"'
         )
         expect(text).not.toContain(' ht="')
+    })
+
+    it("builds rectangular worksheet dimensions and keeps the far edge cell", async () => {
+        const text = await blobAsText(
+            buildPixelArtXlsxBlob({
+                colors: [
+                    ["#ff0000", null, "#0000ff"],
+                    [null, null, "#00ff00"],
+                ],
+                sizeMm: 200,
+            })
+        )
+
+        expect(text).toContain('<dimension ref="A1:C2"/>')
+        expect(text).toContain('<cols><col min="1" max="3"')
+        expect(text).toContain('<row r="1" spans="1:3">')
+        expect(text).toContain('orientation="landscape"')
+        expect(text).toContain('<c r="C1" s="2"><v>0</v></c>')
+        expect(text).toContain('<c r="C2" s="3"><v>0</v></c>')
     })
 })

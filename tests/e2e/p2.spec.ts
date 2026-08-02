@@ -235,6 +235,8 @@ test("blank canvas command resets a drawn blank-session canvas", async ({
 
     await page.goto("/editor/")
     await page.getByRole("button", { name: "Draw" }).click()
+    await expect(page.getByText(/CANVAS:\s*32 × 32/i)).toBeVisible()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
     await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible()
 
     await page.locator("canvas").first().click({ position: { x: 180, y: 180 } })
@@ -247,11 +249,345 @@ test("blank canvas command resets a drawn blank-session canvas", async ({
     await page.getByRole("button", { name: "Open" }).click()
     await expect(page.getByRole("button", { name: "Blank canvas" })).toBeVisible()
     await page.getByRole("button", { name: "Blank canvas" }).click()
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await expect(page.getByText(/CANVAS:\s*57 × 32/i)).toBeVisible()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
     await settle(page)
 
     const blankSave = await downloadProjectSave(page)
     const blankSnapshot = JSON.parse(await readFile(blankSave.path, "utf8"))
+    expect(blankSnapshot.aspectRatioId).toBe("16:9")
+    expect(blankSnapshot.columns).toBe(57)
+    expect(blankSnapshot.rows).toBe(32)
     expect(blankSnapshot.strokeLayer.cells).toEqual([])
+
+    expect(errors.flush()).toEqual([])
+})
+
+for (const visualCase of [
+    { aspectRatioId: "1:1", columns: 32, rows: 32 },
+    { aspectRatioId: "16:9", columns: 57, rows: 32 },
+    { aspectRatioId: "9:16", columns: 32, rows: 57 },
+] as const) {
+    test(`canvas visual geometry renders ${visualCase.aspectRatioId}`, async ({
+        page,
+    }) => {
+        const errors = collectBrowserErrors(page)
+
+        await page.goto("/editor/")
+        await page.getByRole("button", { name: "Draw" }).click()
+        await page
+            .getByRole("radio", {
+                name: `Aspect ratio ${visualCase.aspectRatioId}`,
+            })
+            .click()
+        await page.getByRole("button", { name: "Create Blank Canvas" }).click()
+        await expect(
+            page.getByText(
+                new RegExp(
+                    `GRID SIZE:\\s*${visualCase.columns} × ${visualCase.rows}`,
+                    "i"
+                )
+            )
+        ).toBeVisible()
+        await settle(page)
+
+        const canvasBox = await page.locator("canvas").first().boundingBox()
+        expect(canvasBox).not.toBeNull()
+        expect(canvasBox!.width / canvasBox!.height).toBeCloseTo(
+            visualCase.columns / visualCase.rows,
+            1
+        )
+        await expectNoPageScroll(page)
+
+        expect(errors.flush()).toEqual([])
+    })
+}
+
+test("rectangular canvas layout keeps hit-testing aligned with saved columns", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    await page.getByRole("button", { name: "Draw" }).click()
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible()
+    await expect(page.getByText(/GRID SIZE:\s*57 × 32/i)).toBeVisible()
+    await settle(page)
+
+    const canvas = page.locator("canvas").first()
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error("Editor canvas was not measurable")
+    expect(box.width / box.height).toBeCloseTo(57 / 32, 1)
+
+    const scroll = await page.evaluate(() => ({
+        documentWidth: document.documentElement.scrollWidth,
+        documentHeight: document.documentElement.scrollHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+    }))
+    expect(scroll.documentWidth).toBeLessThanOrEqual(scroll.viewportWidth + 1)
+    expect(scroll.documentHeight).toBeLessThanOrEqual(scroll.viewportHeight + 1)
+
+    await canvas.click({
+        position: {
+            x: box.width - 8,
+            y: box.height / 2,
+        },
+    })
+    await settle(page)
+
+    const save = await downloadProjectSave(page)
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    expect(snapshot.aspectRatioId).toBe("16:9")
+    expect(snapshot.columns).toBe(57)
+    expect(snapshot.rows).toBe(32)
+    const touchedColumns = snapshot.strokeLayer.cells.map(
+        (cell: { cellIndex: number }) => cell.cellIndex % snapshot.columns
+    )
+    expect(Math.max(...touchedColumns)).toBeGreaterThanOrEqual(54)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("rectangular project saves and reloads with edge strokes", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    await page.getByRole("button", { name: "Draw" }).click()
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
+    await expect(page.getByText(/GRID SIZE:\s*57 × 32/i)).toBeVisible()
+    await settle(page)
+
+    const canvas = page.locator("canvas").first()
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error("Editor canvas was not measurable")
+    await canvas.click({
+        position: {
+            x: box.width - 6,
+            y: box.height / 2,
+        },
+    })
+    await settle(page)
+
+    const saved = await downloadProjectSave(page)
+    await openProjectPathFromEditor(page, saved.path, saved.suggestedFilename)
+    await expect(page.getByText(/GRID SIZE:\s*57 × 32/i)).toBeVisible()
+
+    const reloaded = await downloadProjectSave(page)
+    const snapshot = JSON.parse(await readFile(reloaded.path, "utf8"))
+    expect(snapshot.aspectRatioId).toBe("16:9")
+    expect(snapshot.columns).toBe(57)
+    expect(snapshot.rows).toBe(32)
+    const touchedColumns = snapshot.strokeLayer.cells.map(
+        (cell: { cellIndex: number }) => cell.cellIndex % snapshot.columns
+    )
+    expect(Math.max(...touchedColumns)).toBeGreaterThanOrEqual(54)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("mobile horizontal canvas keeps controls pulled up without scroll", async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "mobile layout only")
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    await page.getByRole("button", { name: "Draw" }).click()
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
+    await expect(page.getByText(/GRID SIZE:\s*57 × 32/i)).toBeVisible()
+    await settle(page)
+
+    const canvasBox = await page.locator("canvas").first().boundingBox()
+    const brushBox = await page.getByText(/BRUSH SIZE/i).boundingBox()
+    expect(canvasBox).not.toBeNull()
+    expect(brushBox).not.toBeNull()
+    expect(brushBox!.y - (canvasBox!.y + canvasBox!.height)).toBeLessThanOrEqual(
+        36
+    )
+    expect(brushBox!.y + brushBox!.height).toBeLessThanOrEqual(915)
+    await expectNoPageScroll(page)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("desktop horizontal canvas protrudes from controls and stays interactive", async ({
+    page,
+}, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "desktop layout only")
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    await page.getByRole("button", { name: "Draw" }).click()
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
+    await expect(page.getByText(/GRID SIZE:\s*57 × 32/i)).toBeVisible()
+    await settle(page)
+
+    const canvas = page.locator("canvas").first()
+    const canvasBox = await canvas.boundingBox()
+    const gridSliderBox = await page
+        .locator('input[type="range"][max="128"]')
+        .first()
+        .boundingBox()
+    expect(canvasBox).not.toBeNull()
+    expect(gridSliderBox).not.toBeNull()
+    expect(canvasBox!.width).toBeGreaterThan(gridSliderBox!.width)
+    expect(canvasBox!.x).toBeLessThan(gridSliderBox!.x)
+    expect(canvasBox!.x + canvasBox!.width).toBeGreaterThan(
+        gridSliderBox!.x + gridSliderBox!.width
+    )
+    await expectNoPageScroll(page)
+
+    await canvas.click({
+        position: {
+            x: canvasBox!.width - 4,
+            y: canvasBox!.height / 2,
+        },
+    })
+    await settle(page)
+
+    const save = await downloadProjectSave(page)
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    const touchedColumns = snapshot.strokeLayer.cells.map(
+        (cell: { cellIndex: number }) => cell.cellIndex % snapshot.columns
+    )
+    expect(Math.max(...touchedColumns)).toBeGreaterThanOrEqual(54)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("rectangular exports preserve dimensions and edge cells", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await page.goto("/editor/")
+    await page.getByRole("button", { name: "Draw" }).click()
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await page.getByRole("button", { name: "Create Blank Canvas" }).click()
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible()
+    await settle(page)
+
+    await page.locator('button[title="Add swatch"]').first().click()
+    await page.getByLabel("HEX input").fill("#FF0000")
+    await page.getByRole("button", { name: "OK" }).click()
+    await clickSwatchByTitle(page, "#FF0000")
+
+    const canvas = page.locator("canvas").first()
+    const box = await canvas.boundingBox()
+    if (!box) throw new Error("Editor canvas was not measurable")
+    await canvas.click({
+        position: {
+            x: box.width - 4,
+            y: box.height / 2,
+        },
+    })
+    await settle(page)
+
+    const png = await downloadEditorExport(page, /^PNG$/)
+    expect(readPngDimensions(await readFile(png.path))).toEqual({
+        width: 912,
+        height: 512,
+    })
+
+    const svg = await downloadEditorExport(page, /^SVG$/)
+    const svgText = await readFile(svg.path, "utf8")
+    expect(svgText).toContain('width="912" height="512"')
+    expect(svgText).toContain('viewBox="0 0 912 512"')
+    expect(svgText).toContain('x="896"')
+    expect(svgText).toContain('fill="#FF0000"')
+
+    const xlsx = await downloadEditorExport(page, /^XLSX$/)
+    const xlsxText = await readFile(xlsx.path, "utf8")
+    expect(xlsxText).toContain('<dimension ref="A1:BE32"/>')
+    expect(xlsxText).toContain('<cols><col min="1" max="57"')
+    expect(xlsxText).toContain('orientation="landscape"')
+    expect(xlsxText).toMatch(/<c r="B[DE]\d+" s="\d+"><v>0<\/v><\/c>/)
+
+    const zip = await downloadEditorExport(page, /^ZIP/i)
+    const zipEntries = readZipStoreEntries(await readFile(zip.path))
+    expect(Object.keys(zipEntries)).toEqual([
+        "pixtudio-export.png",
+        "pixtudio-export.svg",
+        "pixtudio-export.xlsx",
+    ])
+    expect(readPngDimensions(zipEntries["pixtudio-export.png"])).toEqual({
+        width: 912,
+        height: 512,
+    })
+    expect(new TextDecoder().decode(zipEntries["pixtudio-export.svg"])).toContain(
+        'viewBox="0 0 912 512"'
+    )
+    expect(new TextDecoder().decode(zipEntries["pixtudio-export.xlsx"])).toContain(
+        '<dimension ref="A1:BE32"/>'
+    )
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("quantization recorder preview inherits rectangular project geometry", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearImageCropScreen(page)
+    await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible({ timeout: 20_000 })
+    await settle(page)
+
+    await page.getByRole("button", { name: "Quantization Recorder" }).click()
+    await page.getByRole("button", { name: "Play preview" }).click()
+
+    const recorderPreviewCanvas = page
+        .locator('[data-qr-viewport-backdrop="true"] canvas')
+        .first()
+    await expect(recorderPreviewCanvas).toBeVisible({ timeout: 20_000 })
+    const box = await recorderPreviewCanvas.boundingBox()
+    if (!box) throw new Error("Recorder preview canvas was not measurable")
+    expect(box.width / box.height).toBeCloseTo(57 / 32, 1)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("palette presets keep imported rectangular canvas geometry", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearImageCropScreen(page)
+    await page.getByRole("radio", { name: "Aspect ratio 9:16" }).click()
+    await page.getByRole("button", { name: "OK" }).click()
+    await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible({ timeout: 20_000 })
+    await settle(page)
+
+    const expectedGeometry = await readProjectGeometry(page)
+    expect(expectedGeometry.columns).not.toBe(expectedGeometry.rows)
+
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.getByRole("button", { name: /^GRAY\b/ }).click()
+    await settle(page)
+    await expectProjectGeometry(page, expectedGeometry)
+
+    await page.getByRole("button", { name: /^BLACK\/WHITE\b/ }).click()
+    await settle(page)
+    await expectProjectGeometry(page, expectedGeometry)
+
+    await page.getByRole("button", { name: /^SUNSET\b/ }).click()
+    await settle(page)
+    await expectProjectGeometry(page, expectedGeometry)
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+    await expectProjectGeometry(page, expectedGeometry)
 
     expect(errors.flush()).toEqual([])
 })
@@ -658,7 +994,7 @@ test("palette strokes survive preset-to-auto round-trips as user swatches", asyn
     const presetSnapshot = JSON.parse(await readFile(presetSave.path, "utf8"))
     const presetDrawnSwatch = getNearbyStrokeCellSwatch(
         presetSnapshot,
-        canvasPointToGridCell(180, 80, presetSnapshot.gridSize),
+        canvasPointToGridCell(180, 80, presetSnapshot),
         presetStrokeHex
     )
     expect(presetDrawnSwatch?.hex.toUpperCase()).toBe(presetStrokeHex)
@@ -678,12 +1014,12 @@ test("palette strokes survive preset-to-auto round-trips as user swatches", asyn
     const snapshot = JSON.parse(await readFile(save.path, "utf8"))
     const restoredAutoStrokeSwatch = getNearbyStrokeCellSwatch(
         snapshot,
-        canvasPointToGridCell(40, 40, snapshot.gridSize),
+        canvasPointToGridCell(40, 40, snapshot),
         strokeHex
     )
     const carriedPresetStrokeSwatch = getNearbyStrokeCellSwatch(
         snapshot,
-        canvasPointToGridCell(180, 80, snapshot.gridSize),
+        canvasPointToGridCell(180, 80, snapshot),
         presetStrokeHex
     )
 
@@ -701,7 +1037,7 @@ test("palette strokes survive preset-to-auto round-trips as user swatches", asyn
     )
     const roundTripPresetStrokeSwatch = getNearbyStrokeCellSwatch(
         roundTripPresetSnapshot,
-        canvasPointToGridCell(180, 80, roundTripPresetSnapshot.gridSize),
+        canvasPointToGridCell(180, 80, roundTripPresetSnapshot),
         presetStrokeHex
     )
     expect(roundTripPresetStrokeSwatch?.hex.toUpperCase()).toBe(presetStrokeHex)
@@ -727,7 +1063,7 @@ test("auto user swatch strokes survive immediate fixed preset application", asyn
     const strokeCell = canvasPointToGridCell(
         strokePoint.x,
         strokePoint.y,
-        autoBeforeSnapshot.gridSize
+        autoBeforeSnapshot
     )
 
     await page.locator('button[title="Add swatch"]').first().click()
@@ -789,12 +1125,12 @@ test("auto strokes survive switching through an existing preset to another prese
     const autoStrokeCell = canvasPointToGridCell(
         autoStrokePoint.x,
         autoStrokePoint.y,
-        autoSnapshot.gridSize
+        autoSnapshot
     )
     const userStrokeCell = canvasPointToGridCell(
         userStrokePoint.x,
         userStrokePoint.y,
-        autoSnapshot.gridSize
+        autoSnapshot
     )
     expect(
         getNearbyStrokeCellSwatch(autoSnapshot, autoStrokeCell, autoStrokeHex)
@@ -862,7 +1198,7 @@ test("deleting a preset stroke guest in auto removes the preset stroke only", as
     const presetStrokeCell = canvasPointToGridCell(
         180,
         80,
-        presetSnapshot.gridSize
+        presetSnapshot
     )
     const presetStrokeSwatch = getNearbyStrokeCellSwatch(
         presetSnapshot,
@@ -937,7 +1273,7 @@ test("deleting an auto user stroke from presets does not leave an auto hole", as
     const strokeCell = canvasPointToGridCell(
         strokePoint.x,
         strokePoint.y,
-        autoBeforeSnapshot.gridSize
+        autoBeforeSnapshot
     )
     const baseImportCell = getImportLayerCell(autoBeforeSnapshot, strokeCell)
 
@@ -987,7 +1323,7 @@ test("deleting an auto user stroke from presets does not leave an auto hole", as
             canvasPointToGridCell(
                 strokePoint.x,
                 strokePoint.y,
-                autoAfterDeleteSnapshot.gridSize
+                autoAfterDeleteSnapshot
             ),
             strokeHex
         )
@@ -1360,6 +1696,44 @@ async function downloadProjectSave(page: Page) {
     }
 }
 
+async function readProjectGeometry(page: Page) {
+    const save = await downloadProjectSave(page)
+    const snapshot = JSON.parse(await readFile(save.path, "utf8"))
+    expect(snapshot.importLayer.cells).toHaveLength(
+        snapshot.columns * snapshot.rows
+    )
+    return {
+        aspectRatioId: snapshot.aspectRatioId as string,
+        columns: snapshot.columns as number,
+        rows: snapshot.rows as number,
+    }
+}
+
+async function expectProjectGeometry(
+    page: Page,
+    expected: {
+        aspectRatioId: string
+        columns: number
+        rows: number
+    }
+) {
+    const snapshot = await readProjectGeometry(page)
+    expect(snapshot.aspectRatioId).toBe(expected.aspectRatioId)
+    expect(snapshot.columns).toBe(expected.columns)
+    expect(snapshot.rows).toBe(expected.rows)
+}
+
+async function expectNoPageScroll(page: Page) {
+    const scroll = await page.evaluate(() => ({
+        documentWidth: document.documentElement.scrollWidth,
+        documentHeight: document.documentElement.scrollHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+    }))
+    expect(scroll.documentWidth).toBeLessThanOrEqual(scroll.viewportWidth + 1)
+    expect(scroll.documentHeight).toBeLessThanOrEqual(scroll.viewportHeight + 1)
+}
+
 async function setPaletteSizeLikeUser(
     page: Page,
     value: number,
@@ -1543,17 +1917,30 @@ async function getVisibleSwatchTitle(page: Page, index: number) {
     return title ?? ""
 }
 
-function canvasPointToGridCell(x: number, y: number, gridSize: number) {
-    const size = Number.isFinite(gridSize) && gridSize > 0 ? gridSize : 128
+function canvasPointToGridCell(
+    x: number,
+    y: number,
+    geometry: { gridSize: number; columns?: number; rows?: number }
+) {
+    const columns =
+        Number.isFinite(geometry.columns) && (geometry.columns ?? 0) > 0
+            ? (geometry.columns ?? geometry.gridSize)
+            : geometry.gridSize
+    const rows =
+        Number.isFinite(geometry.rows) && (geometry.rows ?? 0) > 0
+            ? (geometry.rows ?? geometry.gridSize)
+            : geometry.gridSize
     return {
-        row: Math.floor((y / 512) * size),
-        column: Math.floor((x / 512) * size),
+        row: Math.floor((y / 512) * rows),
+        column: Math.floor((x / 512) * columns),
     }
 }
 
 function getStrokeCellSwatch(
     snapshot: {
         gridSize: number
+        columns?: number
+        rows?: number
         palette: {
             swatches: Array<{
                 index: number
@@ -1570,7 +1957,8 @@ function getStrokeCellSwatch(
     },
     cell: { row: number; column: number }
 ) {
-    const cellIndex = cell.row * snapshot.gridSize + cell.column
+    const columns = snapshot.columns ?? snapshot.gridSize
+    const cellIndex = cell.row * columns + cell.column
     const strokeCell = snapshot.strokeLayer.cells.find(
         (item) => item.cellIndex === cellIndex
     )
@@ -1586,13 +1974,16 @@ function getStrokeCellSwatch(
 function getImportLayerCell(
     snapshot: {
         gridSize: number
+        columns?: number
+        rows?: number
         importLayer: {
             cells: number[]
         }
     },
     cell: { row: number; column: number }
 ) {
-    return snapshot.importLayer.cells[cell.row * snapshot.gridSize + cell.column]
+    const columns = snapshot.columns ?? snapshot.gridSize
+    return snapshot.importLayer.cells[cell.row * columns + cell.column]
 }
 
 function getNearbyStrokeCellSwatch(
@@ -1610,8 +2001,8 @@ function getNearbyStrokeCellSwatch(
             if (
                 row < 0 ||
                 column < 0 ||
-                row >= snapshot.gridSize ||
-                column >= snapshot.gridSize
+                row >= (snapshot.rows ?? snapshot.gridSize) ||
+                column >= (snapshot.columns ?? snapshot.gridSize)
             ) {
                 continue
             }
@@ -1637,8 +2028,8 @@ function getNearbyAnyStrokeCellSwatch(
             if (
                 row < 0 ||
                 column < 0 ||
-                row >= snapshot.gridSize ||
-                column >= snapshot.gridSize
+                row >= (snapshot.rows ?? snapshot.gridSize) ||
+                column >= (snapshot.columns ?? snapshot.gridSize)
             ) {
                 continue
             }
@@ -1689,7 +2080,11 @@ async function expectSwatchActive(page: Page, title: string) {
 }
 
 function readZipStoreEntryNames(bytes: Uint8Array) {
-    const names: string[] = []
+    return Object.keys(readZipStoreEntries(bytes))
+}
+
+function readZipStoreEntries(bytes: Uint8Array) {
+    const entries: Record<string, Uint8Array> = {}
     const decoder = new TextDecoder()
     let offset = 0
 
@@ -1706,16 +2101,38 @@ function readZipStoreEntryNames(bytes: Uint8Array) {
         const extraLength = readUint16LE(bytes, offset + 28)
         const nameStart = offset + 30
         const nameEnd = nameStart + fileNameLength
-        names.push(decoder.decode(bytes.subarray(nameStart, nameEnd)))
+        const dataStart = nameEnd + extraLength
+        const dataEnd = dataStart + compressedSize
+        const name = decoder.decode(bytes.subarray(nameStart, nameEnd))
+        entries[name] = bytes.subarray(dataStart, dataEnd)
 
-        offset = nameEnd + extraLength + compressedSize
+        offset = dataEnd
     }
 
-    return names
+    return entries
+}
+
+function readPngDimensions(bytes: Uint8Array) {
+    expect(Array.from(bytes.subarray(0, 8))).toEqual([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ])
+    return {
+        width: readUint32BE(bytes, 16),
+        height: readUint32BE(bytes, 20),
+    }
 }
 
 function readUint16LE(bytes: Uint8Array, offset: number) {
     return bytes[offset] | (bytes[offset + 1] << 8)
+}
+
+function readUint32BE(bytes: Uint8Array, offset: number) {
+    return (
+        (bytes[offset] << 24) |
+        (bytes[offset + 1] << 16) |
+        (bytes[offset + 2] << 8) |
+        bytes[offset + 3]
+    ) >>> 0
 }
 
 function readUint32LE(bytes: Uint8Array, offset: number) {

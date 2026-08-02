@@ -38,13 +38,19 @@ type AutoOverride = {
 export type QuantizationRecorderFrame = {
     imageData: ImageData
     exportSize: number
+    exportWidth: number
+    exportHeight: number
     gridSize: number
+    columns: number
+    rows: number
     paletteSize: number
 }
 
 export type QuantizationRecorderSeed = {
     referenceSnapshot: ImageData | null
     overlaySnapshot: ImageData | null
+    columns: number
+    rows: number
     autoSwatches: FrozenSwatch[]
     userSwatches: FrozenSwatch[]
     autoOverrides: Record<string, AutoOverride>
@@ -421,6 +427,26 @@ function computeExportSize(gridSize: number) {
     return best > 0 ? best : gridSize
 }
 
+function computeRecorderTargetDimensions(params: {
+    shortSide: number
+    columns: number
+    rows: number
+}) {
+    const shortSide = Math.max(1, Math.round(params.shortSide || 0))
+    const columns = Math.max(1, Math.round(params.columns || 0))
+    const rows = Math.max(1, Math.round(params.rows || 0))
+    if (columns >= rows) {
+        return {
+            width: Math.max(1, Math.round((shortSide * columns) / rows)),
+            height: shortSide,
+        }
+    }
+    return {
+        width: shortSide,
+        height: Math.max(1, Math.round((shortSide * rows) / columns)),
+    }
+}
+
 function getExportFilename() {
     return "pixtudio-quantization.mp4"
 }
@@ -698,18 +724,28 @@ async function writeBlobToSaveTarget(
 function drawFrameIntoCanvas(
     targetCanvas: HTMLCanvasElement,
     frame: GeneratedRecorderFrame,
-    targetSize: number
+    targetDimensions: { width: number; height: number }
 ) {
     const ctx = targetCanvas.getContext("2d")
     if (!ctx) return
 
-    if (targetCanvas.width !== targetSize) targetCanvas.width = targetSize
-    if (targetCanvas.height !== targetSize) targetCanvas.height = targetSize
+    if (targetCanvas.width !== targetDimensions.width) {
+        targetCanvas.width = targetDimensions.width
+    }
+    if (targetCanvas.height !== targetDimensions.height) {
+        targetCanvas.height = targetDimensions.height
+    }
 
     ctx.imageSmoothingEnabled = false
     ctx.fillStyle = RECORDER_TRANSPARENT_MATTE
-    ctx.fillRect(0, 0, targetSize, targetSize)
-    ctx.drawImage(frame.sourceCanvas, 0, 0, targetSize, targetSize)
+    ctx.fillRect(0, 0, targetDimensions.width, targetDimensions.height)
+    ctx.drawImage(
+        frame.sourceCanvas,
+        0,
+        0,
+        targetDimensions.width,
+        targetDimensions.height
+    )
 }
 
 function sanitizeAudioExtension(filename: string) {
@@ -1026,13 +1062,17 @@ export default function QuantizationRecorder({
         ]
     )
 
-    const previewTargetSize = React.useMemo(() => {
+    const previewTargetDimensions = React.useMemo(() => {
         let max = 1
         for (const step of steps) {
             max = Math.max(max, computeExportSize(step.gridSize))
         }
-        return max
-    }, [steps])
+        return computeRecorderTargetDimensions({
+            shortSide: max,
+            columns: seed.columns,
+            rows: seed.rows,
+        })
+    }, [seed.columns, seed.rows, steps])
 
     const stepDurationSec = React.useMemo(
         () => safeDurationSeconds / Math.max(steps.length, 1),
@@ -1362,8 +1402,8 @@ export default function QuantizationRecorder({
         if (!canvas || currentVisibleFrameIndex < 0) return
         const frame = frames[currentVisibleFrameIndex]
         if (!frame) return
-        drawFrameIntoCanvas(canvas, frame, previewTargetSize)
-    }, [currentVisibleFrameIndex, frames, previewTargetSize])
+        drawFrameIntoCanvas(canvas, frame, previewTargetDimensions)
+    }, [currentVisibleFrameIndex, frames, previewTargetDimensions])
 
     const handlePlay = React.useCallback(() => {
         if (steps.length <= 0) return
@@ -1518,7 +1558,7 @@ export default function QuantizationRecorder({
                 framesReady: framesRef.current.length,
                 durationSeconds: safeDurationSeconds,
                 stepDurationSec,
-                previewTargetSize,
+                previewTargetDimensions,
             })
             setIsPlaying(false)
             setIsExporting(true)
@@ -1636,7 +1676,7 @@ export default function QuantizationRecorder({
                 name: string
             ) => {
                 const pngCanvas = document.createElement("canvas")
-                drawFrameIntoCanvas(pngCanvas, frame, previewTargetSize)
+                drawFrameIntoCanvas(pngCanvas, frame, previewTargetDimensions)
                 const pngBlob = await canvasToBlob(pngCanvas, "image/png")
                 if (!pngBlob) {
                     throw new Error("A frame could not be encoded as PNG.")
@@ -1765,7 +1805,7 @@ export default function QuantizationRecorder({
         ensureGenerationStarted,
         exportDebugLog,
         audioTrackFile,
-        previewTargetSize,
+        previewTargetDimensions,
         safeDurationSeconds,
         saveDebugLog,
         seed,
@@ -1787,6 +1827,9 @@ export default function QuantizationRecorder({
         gap: 20,
         boxSizing: "border-box",
     }
+    const previewCssHeight =
+        (PREVIEW_SIZE * previewTargetDimensions.height) /
+        Math.max(1, previewTargetDimensions.width)
 
     const cardTitleStyle: React.CSSProperties = {
         color: TEXT_LIGHT,
@@ -1937,7 +1980,7 @@ export default function QuantizationRecorder({
                             <div
                                 style={{
                                     width: PREVIEW_SIZE,
-                                    height: PREVIEW_SIZE,
+                                    height: previewCssHeight,
                                     background: "#0b2027",
                                     border: "4px solid rgba(255,255,255,0.98)",
                                     position: "relative",

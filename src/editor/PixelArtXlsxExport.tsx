@@ -4,6 +4,8 @@ export type PixelArtXlsxColor = string | null | undefined
 
 export function composePixelArtXlsxExportColors<T>(params: {
     gridSize: number
+    rows?: number
+    columns?: number
     imagePixels: (T | null)[][]
     overlayPixels: (T | null)[][]
     includeStroke?: boolean
@@ -13,14 +15,16 @@ export function composePixelArtXlsxExportColors<T>(params: {
 }): (string | null)[][] {
     const includeStroke = params.includeStroke ?? true
     const includeImage = params.includeImage ?? true
+    const rows = positiveIntegerOrFallback(params.rows, params.gridSize)
+    const columns = positiveIntegerOrFallback(params.columns, params.gridSize)
     const out: (string | null)[][] = []
 
-    for (let r = 0; r < params.gridSize; r++) {
+    for (let r = 0; r < rows; r++) {
         const imageRow = params.imagePixels[r]
         const overlayRow = params.overlayPixels[r]
         const row: (string | null)[] = []
 
-        for (let c = 0; c < params.gridSize; c++) {
+        for (let c = 0; c < columns; c++) {
             let value: T | null = null
 
             if (includeStroke) {
@@ -63,9 +67,16 @@ export function buildPixelArtXlsxBlob(params: {
     colors: PixelArtXlsxColor[][]
     sizeMm?: number
 }): Blob {
-    const size = params.colors.length
+    const rows = params.colors.length
+    const columns = params.colors.reduce(
+        (max, row) => Math.max(max, row.length),
+        0
+    )
+    const shortSideCells = Math.max(1, Math.min(rows || columns || 1, columns || rows || 1))
     const normalizedRows = params.colors.map((row) =>
-        row.map((color) => normalizeXlsxHexColor(color))
+        Array.from({ length: columns }, (_, index) =>
+            normalizeXlsxHexColor(row[index])
+        )
     )
     const uniqueColors = collectUniqueColors(normalizedRows)
     const styleByColor = new Map<string, number>()
@@ -83,7 +94,8 @@ export function buildPixelArtXlsxBlob(params: {
             "xl/worksheets/sheet1.xml",
             worksheetXml({
                 rows: normalizedRows,
-                size,
+                columns,
+                shortSideCells,
                 sizeMm: params.sizeMm ?? XLSX_TARGET_SIZE_MM,
                 styleByColor,
             })
@@ -219,20 +231,26 @@ function collectUniqueColors(rows: (string | null)[][]): string[] {
 
 function worksheetXml(params: {
     rows: (string | null)[][]
-    size: number
+    columns: number
+    shortSideCells: number
     sizeMm: number
     styleByColor: Map<string, number>
 }) {
-    const { rows, size, sizeMm, styleByColor } = params
-    const cellSizePx = excelDefaultCellSizePx(sizeMm, size)
+    const { rows, columns, shortSideCells, sizeMm, styleByColor } = params
+    const rowCount = rows.length
+    const cellSizePx = excelDefaultCellSizePx(sizeMm, shortSideCells)
     const rowHeightPt = cellSizePx * POINTS_PER_SCREEN_PIXEL
     const colWidth = excelColumnWidthForPixels(cellSizePx)
-    const dimension = size > 0 ? `A1:${cellRef(size - 1, size - 1)}` : "A1"
+    const dimension =
+        rowCount > 0 && columns > 0
+            ? `A1:${cellRef(rowCount - 1, columns - 1)}`
+            : "A1"
     const colsXml =
-        size > 0
-            ? `<cols><col min="1" max="${size}" width="${formatNumber(colWidth)}" customWidth="1"/></cols>`
+        columns > 0
+            ? `<cols><col min="1" max="${columns}" width="${formatNumber(colWidth)}" customWidth="1"/></cols>`
             : ""
-    const rowSpans = size > 0 ? ` spans="1:${size}"` : ""
+    const rowSpans = columns > 0 ? ` spans="1:${columns}"` : ""
+    const orientation = columns > rowCount ? "landscape" : "portrait"
 
     const rowsXml = rows
         .map((row, r) => {
@@ -260,7 +278,7 @@ function worksheetXml(params: {
         colsXml +
         `<sheetData>${rowsXml}</sheetData>` +
         `<pageMargins left="0.19685" right="0.19685" top="0.19685" bottom="0.19685" header="0" footer="0"/>` +
-        `<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1"/>` +
+        `<pageSetup paperSize="9" orientation="${orientation}" fitToWidth="1" fitToHeight="1"/>` +
         `</worksheet>`
     )
 }
@@ -387,6 +405,16 @@ function columnName(col: number) {
 
 function formatNumber(value: number) {
     return Number.isFinite(value) ? value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : "0"
+}
+
+function positiveIntegerOrFallback(
+    value: number | undefined,
+    fallback: number
+) {
+    if (Number.isFinite(value) && Math.round(value ?? 0) > 0) {
+        return Math.round(value ?? fallback)
+    }
+    return Math.max(1, Math.round(fallback || 1))
 }
 
 function excelDefaultCellSizePx(sizeMm: number, gridSize: number) {

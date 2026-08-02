@@ -10,6 +10,7 @@ import {
     PROJECT_SNAPSHOT_V2_MAGIC,
     PROJECT_SNAPSHOT_V2_VERSION,
     V2_CELL_NULL,
+    validateProjectSnapshotV2OrThrow,
     type ProjectSnapshotV2,
 } from "./projectSnapshotV2.ts"
 import { buildProjectLoadStateFromSnapshot } from "./projectLoadAdapter.ts"
@@ -54,7 +55,9 @@ function projectSnapshot(): ProjectSnapshotV2 {
 
 describe("projectLoadAdapter", () => {
     it("builds editor restore state from a validated project snapshot", () => {
-        const result = buildProjectLoadStateFromSnapshot(projectSnapshot(), {
+        const result = buildProjectLoadStateFromSnapshot(
+            validateProjectSnapshotV2OrThrow(projectSnapshot()),
+            {
             transparentPixel: TRANSPARENT_PIXEL,
             paletteMin: 2,
             paletteMax: 32,
@@ -65,7 +68,8 @@ describe("projectLoadAdapter", () => {
                 profile.kind === "extract"
                     ? profile
                     : { ...profile, colors: profile.colors.slice() },
-        })
+            }
+        )
 
         expect(result.smartObjectBaseForRestore).toBeNull()
         expect(result.paletteOrderIds).toEqual(["auto-0", "auto-1", "user-2"])
@@ -92,6 +96,9 @@ describe("projectLoadAdapter", () => {
             colors: ["#445566", "#AABBCC"],
         })
         expect(result.project.gridSize).toBe(2)
+        expect(result.project.aspectRatioId).toBe("1:1")
+        expect(result.project.columns).toBe(2)
+        expect(result.project.rows).toBe(2)
         expect(result.project.paletteCount).toBe(3)
         expect(result.project.brushSize).toBe(3)
         expect(result.project.showImage).toBe(false)
