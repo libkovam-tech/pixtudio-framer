@@ -105,6 +105,54 @@ test("added preset swatch keeps restored preset tab world as its own redo step",
     expect(errors.flush()).toEqual([])
 })
 
+test("added Gray preset swatch can claim matching image cells", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openGeneratedPortrait(page)
+    await applyGrayPreset(page)
+
+    const beforeSummary = await summarizeCurrentColorState(page, "#CA6702")
+    expect(beforeSummary.swatchExists).toBe(false)
+    expect(beforeSummary.importCells).toBe(0)
+
+    await addPresetSwatch(page, "#CA6702")
+
+    const afterSummary = await summarizeCurrentColorState(page, "#CA6702")
+    expect(afterSummary.swatchExists).toBe(true)
+    expect(afterSummary.importCells).toBeGreaterThan(0)
+    expect(afterSummary.canvasColorCount).toBeGreaterThan(0)
+    expect(afterSummary.canvasSignature).not.toBe(beforeSummary.canvasSignature)
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("Gray preset can use a color copied from the auto palette", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openGeneratedPortrait(page)
+    const autoColor = await getFirstColorfulSwatchTitle(page)
+    await page.locator(`button[title="${autoColor}"]`).first().click()
+
+    await applyGrayPreset(page)
+    const beforeSummary = await summarizeCurrentColorState(page, autoColor)
+    expect(beforeSummary.swatchExists).toBe(false)
+    expect(beforeSummary.importCells).toBe(0)
+
+    await addPresetSwatchUsingDefaultColor(page, autoColor)
+
+    const afterSummary = await summarizeCurrentColorState(page, autoColor)
+    expect(afterSummary.swatchExists).toBe(true)
+    expect(afterSummary.importCells).toBeGreaterThan(0)
+    expect(afterSummary.canvasColorCount).toBeGreaterThan(0)
+    expect(afterSummary.canvasSignature).not.toBe(beforeSummary.canvasSignature)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("active preset remains applied after auto Smart Object adjustment", async ({
     page,
 }, testInfo) => {
@@ -173,6 +221,12 @@ async function applySunsetPreset(page: Page) {
     await settle(page)
 }
 
+async function applyGrayPreset(page: Page) {
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await page.locator('button[title="GRAY"]').click()
+    await settle(page)
+}
+
 async function setGridSize(page: Page, value: number) {
     await clickSliderEnd(page.getByRole("slider").nth(1), page)
     await expect(page.getByText(new RegExp(`GRID SIZE:\\s*${value}`))).toBeVisible()
@@ -205,6 +259,35 @@ async function addPresetSwatch(page: Page, hex: string) {
     await page.getByLabel("HEX input").fill(hex)
     await page.getByRole("button", { name: "OK" }).click()
     await settle(page)
+}
+
+async function addPresetSwatchUsingDefaultColor(page: Page, expectedHex: string) {
+    await page.locator('button[title="Add swatch"]').first().click()
+    await expect(page.getByLabel("HEX input")).toHaveValue(expectedHex)
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+}
+
+async function getFirstColorfulSwatchTitle(page: Page) {
+    await expect(page.locator('button[title^="#"]').first()).toBeVisible()
+    const title = await page.locator('button[title^="#"]').evaluateAll(
+        (buttons) =>
+            buttons
+                .map((button) =>
+                    (button as HTMLButtonElement).getAttribute("title")
+                )
+                .find((value) => {
+                    const hex = value?.toUpperCase()
+                    if (!/^#[0-9A-F]{6}$/.test(hex ?? "")) return false
+                    if (hex === "#000000" || hex === "#FFFFFF") return false
+                    const r = parseInt(hex.slice(1, 3), 16)
+                    const g = parseInt(hex.slice(3, 5), 16)
+                    const b = parseInt(hex.slice(5, 7), 16)
+                    return Math.max(r, g, b) - Math.min(r, g, b) > 32
+                }) ?? null
+    )
+    expect(title).toMatch(/^#[0-9A-F]{6}$/i)
+    return title?.toUpperCase() ?? ""
 }
 
 async function applyMethodProfile(
@@ -253,6 +336,33 @@ async function summarizeCurrentState(page: Page) {
         whiteSwatchExists: whiteSwatch != null,
         whiteImportCells,
         canvasWhiteCount,
+    }
+}
+
+async function summarizeCurrentColorState(page: Page, hex: string) {
+    const targetHex = hex.toUpperCase()
+    const targetRgb = [
+        parseInt(targetHex.slice(1, 3), 16),
+        parseInt(targetHex.slice(3, 5), 16),
+        parseInt(targetHex.slice(5, 7), 16),
+    ]
+    const canvasSignature = await readEditorCanvasSignature(page)
+    const canvasColorCount = await countEditorCanvasRgb(page, targetRgb)
+    const snapshot = await downloadProjectSnapshot(page)
+    const swatch = snapshot.palette.swatches.find(
+        (item: { hex: string }) => item.hex.toUpperCase() === targetHex
+    )
+    const importLayerCells = snapshot.importLayer.cells as number[]
+    const importCells =
+        swatch == null
+            ? 0
+            : importLayerCells.filter((cell) => cell === swatch.index).length
+
+    return {
+        canvasSignature,
+        swatchExists: swatch != null,
+        importCells,
+        canvasColorCount,
     }
 }
 

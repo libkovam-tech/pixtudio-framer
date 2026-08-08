@@ -45,9 +45,12 @@ export function calculateCanvasLayoutPolicy(params: {
     if (isHorizontal && params.deviceClass === "desktop") {
         actualCanvasHeight = anchorWidth
         actualCanvasWidth = anchorWidth * ratio
-    } else {
+    } else if (isHorizontal) {
         actualCanvasWidth = anchorWidth
         actualCanvasHeight = anchorWidth / ratio
+    } else {
+        actualCanvasHeight = anchorWidth
+        actualCanvasWidth = anchorWidth * ratio
     }
 
     actualCanvasWidth = Math.max(1, actualCanvasWidth)

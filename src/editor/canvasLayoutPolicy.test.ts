@@ -70,6 +70,28 @@ describe("canvas layout policy", () => {
         expect(mobile.canvasRegion).toEqual(desktop.canvasRegion)
     })
 
+    it("fits vertical canvases inside the square anchor without stretching the canvas region", () => {
+        const layout = calculateCanvasLayoutPolicy({
+            deviceClass: "mobile",
+            viewportWidth: 390,
+            viewportHeight: 844,
+            anchorWidth: 390,
+            topMenuHeight: 50,
+            controlsHeight: 300,
+            columns: 32,
+            rows: 57,
+        })
+
+        expect(layout.canvasRegion).toMatchObject({
+            width: 390,
+            height: 390,
+        })
+        expect(layout.actualCanvasRect.width).toBeCloseTo(218.947)
+        expect(layout.actualCanvasRect.height).toBe(390)
+        expect(layout.actualCanvasRect.x).toBeCloseTo(85.526)
+        expect(layout.controlsRegion.y).toBe(440)
+    })
+
     it("reports scale needed to keep the whole layout inside the viewport", () => {
         const layout = calculateCanvasLayoutPolicy({
             deviceClass: "desktop",

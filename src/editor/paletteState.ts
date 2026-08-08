@@ -671,8 +671,11 @@ export function computePaletteCountFromSwatches(
 ): number {
     const autoCount = (autoSwatches ?? []).filter(isCountedPaletteSwatch).length
     const userCount = (userSwatches ?? []).filter(isCountedPaletteSwatch).length
+    const visibleColorCount = autoCount + userCount
 
-    return clampInt(autoCount + userCount, bounds.min, bounds.max)
+    if (visibleColorCount === 0) return 1
+
+    return clampInt(visibleColorCount, bounds.min, bounds.max)
 }
 
 function swatchListHasId(

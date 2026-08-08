@@ -107,13 +107,13 @@ describe("palette state", () => {
         ).toBe(2)
     })
 
-    it("clamps the count to the project palette bounds", () => {
+    it("counts transparent-only palettes as one color and clamps visible colors", () => {
         expect(
             computePaletteCountFromSwatches([], [], {
                 min: 2,
                 max: 32,
             })
-        ).toBe(2)
+        ).toBe(1)
 
         expect(
             computePaletteCountFromSwatches(

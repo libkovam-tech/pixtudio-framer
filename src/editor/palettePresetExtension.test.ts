@@ -48,6 +48,7 @@ import {
     HSL_COLOR_SPACE_ID,
     runQuantization,
 } from "./QuantizationCore.ts"
+import { QUANTIZATION_PROFILES } from "./paletteQuantizationEngine.ts"
 
 describe("palette preset extension", () => {
     const profile = {
@@ -2373,6 +2374,56 @@ describe("palette preset extension", () => {
                 { id: "auto-1", color: "#FFFFFF", isTransparent: false },
             ],
         })
+    })
+
+    it("extends the Gray preset symmetrically and lets the added color claim reference cells", () => {
+        const makeSwatch = (id: string, color: string) => ({
+            id,
+            color,
+            isTransparent: false,
+            isUser: false,
+        })
+        const graySwatches = makeAutoSwatchesFromFixedProfile(
+            QUANTIZATION_PROFILES.grayscale
+        )
+        const added = prepareImportedPresetSwatchCreateDecision({
+            profile: QUANTIZATION_PROFILES.grayscale,
+            color: "#CA6702",
+            autoSwatches: graySwatches,
+            importedPalettePresets: [],
+            makeImportedId: () => "gray-custom",
+            makeSwatch,
+        })
+
+        expect(added.kind).toBe("added")
+        if (added.kind !== "added") return
+
+        const selectedSwatch = added.selectedSwatch
+        const result = prepareFixedPaletteVocabularyExtensionWorld({
+            profile: added.profile,
+            autoSwatches: added.autoSwatches,
+            candidateAutoSwatches: makeAutoSwatchesFromFixedProfile(
+                added.profile
+            ),
+            candidateImagePixels: [
+                ["auto-32", "auto-0"],
+                ["auto-1", "auto-32"],
+            ],
+            imagePixels: [
+                ["auto-10", "auto-0"],
+                ["auto-1", "auto-10"],
+            ],
+            overlayPixels: [
+                [null, null],
+                [null, null],
+            ],
+            selectedSwatch,
+        })
+
+        expect(result.world.imagePixels).toEqual([
+            [selectedSwatch, "auto-0"],
+            ["auto-1", selectedSwatch],
+        ])
     })
 
     it("prepares vocabulary extension worlds without rebuilding pixel assignments", () => {

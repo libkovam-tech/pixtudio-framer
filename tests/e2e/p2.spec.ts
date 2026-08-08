@@ -235,7 +235,9 @@ test("blank canvas command resets a drawn blank-session canvas", async ({
 
     await page.goto("/editor/")
     await page.getByRole("button", { name: "Draw" }).click()
-    await expect(page.getByText(/CANVAS:\s*32 × 32/i)).toBeVisible()
+    await expect(
+        page.getByRole("radio", { name: "Aspect ratio 1:1" })
+    ).toBeVisible()
     await page.getByRole("button", { name: "Create Blank Canvas" }).click()
     await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible()
 
@@ -250,7 +252,9 @@ test("blank canvas command resets a drawn blank-session canvas", async ({
     await expect(page.getByRole("button", { name: "Blank canvas" })).toBeVisible()
     await page.getByRole("button", { name: "Blank canvas" }).click()
     await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
-    await expect(page.getByText(/CANVAS:\s*57 × 32/i)).toBeVisible()
+    await expect(
+        page.getByRole("radio", { name: "Aspect ratio 16:9" })
+    ).toHaveAttribute("aria-checked", "true")
     await page.getByRole("button", { name: "Create Blank Canvas" }).click()
     await settle(page)
 
@@ -407,8 +411,15 @@ test("mobile horizontal canvas keeps controls pulled up without scroll", async (
 
     const canvasBox = await page.locator("canvas").first().boundingBox()
     const brushBox = await page.getByText(/BRUSH SIZE/i).boundingBox()
+    const viewportWidth = await page.evaluate(
+        () => window.visualViewport?.width ?? window.innerWidth
+    )
     expect(canvasBox).not.toBeNull()
     expect(brushBox).not.toBeNull()
+    expect(canvasBox!.x).toBeGreaterThanOrEqual(18)
+    expect(canvasBox!.x + canvasBox!.width).toBeLessThanOrEqual(
+        viewportWidth - 18
+    )
     expect(brushBox!.y - (canvasBox!.y + canvasBox!.height)).toBeLessThanOrEqual(
         36
     )

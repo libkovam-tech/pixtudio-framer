@@ -132,9 +132,9 @@ import {
 } from "./canvasGeometry.ts"
 import { calculateCanvasLayoutPolicy } from "./canvasLayoutPolicy.ts"
 import {
-    AspectRatioSelector,
+    BlankCanvasSetupScreen,
+    ImportCropScreen,
     calculateCropViewportGeometry,
-    getAspectRatioCssValue,
     selectDefaultCropAspectRatio,
 } from "./CropDomain.tsx"
 import {
@@ -1821,7 +1821,7 @@ function hsvToRgbIntoDeg(
     out.b = Math.round((b1 + m) * 255)
 }
 
-// ---- pixelize: dominant color + rounding ----
+// ---- Pixelize: dominant color plus rounding ----
 function pixelizeFromImageDominant(
     imageData: ImageDataSampleSource,
     gridGeometry: number | { rows: number; columns: number },
@@ -2234,6 +2234,7 @@ function CameraModal({
     const streamRef = React.useRef<MediaStream | null>(null)
     const [error, setError] = React.useState<string | null>(null)
     const [starting, setStarting] = React.useState(false)
+    const [videoAspectRatio, setVideoAspectRatio] = React.useState(16 / 9)
 
     const stop = React.useCallback(() => {
         const s = streamRef.current
@@ -2247,6 +2248,7 @@ function CameraModal({
             stop()
             setError(null)
             setStarting(false)
+            setVideoAspectRatio(16 / 9)
             return
         }
 
@@ -2260,7 +2262,7 @@ function CameraModal({
                     video: {
                         facingMode: { ideal: "environment" },
                         width: { ideal: 1280 },
-                        height: { ideal: 1280 },
+                        height: { ideal: 720 },
                     },
                     audio: false,
                 })
@@ -2275,6 +2277,9 @@ function CameraModal({
                 if (v) {
                     v.srcObject = stream
                     await v.play()
+                    if (v.videoWidth > 0 && v.videoHeight > 0) {
+                        setVideoAspectRatio(v.videoWidth / v.videoHeight)
+                    }
                 }
             } catch {
                 setError(
@@ -2299,24 +2304,20 @@ function CameraModal({
         const vh = v.videoHeight || 0
         if (vw === 0 || vh === 0) return
 
-        const side = Math.min(vw, vh)
-        const sx = Math.floor((vw - side) / 2)
-        const sy = Math.floor((vh - side) / 2)
-
         const canvas = document.createElement("canvas")
-        canvas.width = side
-        canvas.height = side
+        canvas.width = vw
+        canvas.height = vh
 
         const ctx = canvas.getContext("2d")
         if (!ctx) return
 
         ctx.imageSmoothingEnabled = true
-        ctx.clearRect(0, 0, side, side)
+        ctx.clearRect(0, 0, vw, vh)
 
-        // квадрат из видео без ресайза в 512
-        ctx.drawImage(v, sx, sy, side, side, 0, 0, side, side)
+        // Capture the full camera frame; Crop chooses the final aspect ratio.
+        ctx.drawImage(v, 0, 0, vw, vh, 0, 0, vw, vh)
 
-        // P7: возвращаем SourceImage (ImageBitmap), не ImageData(512)
+        // P7: return a SourceImage (ImageBitmap), not 512px ImageData.
         ;(async () => {
             try {
                 const bmp = await createImageBitmap(canvas)
@@ -2325,13 +2326,10 @@ function CameraModal({
                 onClose()
             } catch (e) {
                 editorConsole.warn("[CAMERA] createImageBitmap failed", e)
-                // можно показать error, но минимально — просто не закрываем модалку автоматически
+                // Keep the modal open so the user can try another capture.
                 setError("Could not capture frame. Please try again.")
             }
         })()
-
-        stop()
-        onClose()
     }, [onCaptured, onClose, stop])
 
     if (!isOpen) return null
@@ -2387,7 +2385,7 @@ function CameraModal({
                 <div
                     style={{
                         width: "min(92vw, 520px)",
-                        aspectRatio: "1 / 1",
+                        aspectRatio: `${videoAspectRatio}`,
                         background: PIXTUDIO_INK,
                         borderRadius: 14,
                         overflow: "hidden",
@@ -2398,10 +2396,16 @@ function CameraModal({
                         ref={videoRef}
                         playsInline
                         muted
+                        onLoadedMetadata={(event) => {
+                            const v = event.currentTarget
+                            if (v.videoWidth > 0 && v.videoHeight > 0) {
+                                setVideoAspectRatio(v.videoWidth / v.videoHeight)
+                            }
+                        }}
                         style={{
                             width: "100%",
                             height: "100%",
-                            objectFit: "cover",
+                            objectFit: "contain",
                         }}
                     />
                     {starting && (
@@ -5457,7 +5461,16 @@ function PixelEditorFramer({
 
     function openMethodModeFromCurrentPaletteTab() {
         if (methodSessionRef.current) return
-        if (!originalImageData && countNonNullCells(canvasPixels) === 0) return
+        const methodReferenceSnapshot =
+            originalImageData ??
+            ((latestProjectStateRef.current?.referenceSnapshot as
+                | ImageDataSampleSource
+                | null
+                | undefined) ??
+                null)
+        if (!methodReferenceSnapshot && countNonNullCells(canvasPixels) === 0) {
+            return
+        }
 
         const activePaletteTab = paletteTabsState.activeTab
         const paletteContext = getMethodPaletteContextForTab(activePaletteTab)
@@ -5471,9 +5484,9 @@ function PixelEditorFramer({
 
         const before = latestProjectStateRef.current ?? makeProjectState()
         const frozenWorld = makeCurrentDerivedWorldSnapshot()
-        const methodSourcePixels = originalImageData
+        const methodSourcePixels = methodReferenceSnapshot
             ? pixelizeFromImageDominant(
-                  originalImageData,
+                  methodReferenceSnapshot,
                   { rows: gridRows, columns: gridColumns },
                   16
               )
@@ -8207,7 +8220,7 @@ function PixelEditorFramer({
             return
         }
 
-        // обновляем pointerRef + preview-рамку (шаги 1–4)
+        // Update pointerRef and the preview frame (steps 1-4).
         updatePointerFromEvent(e, true)
 
         // --- Step 9: PIPETTE tool (pick swatch from canvas/overlay) ---
@@ -8242,9 +8255,9 @@ function PixelEditorFramer({
             return
         }
 
-        // запускаем рисование (S1 STREAM-lock)
+        // Start drawing (S1 STREAM-lock).
         if (busyKindRef.current !== null) {
-            // мягкий отказ: курсор занят другим пользовательским действием
+            // Soft refusal: the cursor is busy with another user action.
             return
         }
 
@@ -8941,8 +8954,10 @@ function PixelEditorFramer({
     const currentMethodPaletteContext = getMethodPaletteContextForTab(
         paletteTabsState.activeTab
     )
+    const hasMethodReferenceSnapshot =
+        !!originalImageData || !!latestProjectStateRef.current?.referenceSnapshot
     const hasMethodSourceContent =
-        !!originalImageData || countNonNullCells(canvasPixels) > 0
+        hasMethodReferenceSnapshot || countNonNullCells(canvasPixels) > 0
     const hasMethodPaletteContextSource =
         paletteTabsState.activeTab !== "presets" ||
         (quantizationProfile.kind === "fixed" && !!activePresetButton)
@@ -9007,9 +9022,13 @@ function PixelEditorFramer({
         : pixtudioInk(0.55)
     const textColor = PIXTUDIO_INK
     const canvasMax = 640
+    const mobileEditorSideGap = isMobileUI ? 20 : 0
     const editorViewportWidth = Math.max(1, appViewportSize.w)
     const editorContentWidth = isMobileUI
-        ? Math.min(canvasMax, editorViewportWidth)
+        ? Math.min(
+              canvasMax,
+              Math.max(1, editorViewportWidth - mobileEditorSideGap * 2)
+          )
         : canvasMax
     const topMenuRegionHeight = isMethodModeActive
         ? 0
@@ -10558,7 +10577,7 @@ function PixelEditorFramer({
     void handleImageChange
 
     function openFileDialog() {
-        // единая точка: ROOT держит <input type="file" .../> и общий обработчик ошибок импорта
+        // Single entry point: ROOT owns <input type="file" .../> and shared import error handling.
         // Legacy import overlay is disabled; root owns the active Open File picker.
     }
     void openFileDialog
@@ -10589,7 +10608,23 @@ function PixelEditorFramer({
         setIsColorModalOpen(true)
     }
 
-    function getDefaultNewSwatchColor() {
+    function getDefaultNewSwatchColor(mode: Exclude<ColorModalMode, "edit">) {
+        if (mode === "create-imported-preset") {
+            const sizeSelection = paletteTabSelectedSwatchRef.current.size
+            if (sizeSelection && sizeSelection !== "transparent") {
+                const sizeWorldSwatch =
+                    paletteTabsStateRef.current.sizeWorld?.autoSwatches.find(
+                        (swatch) => swatch.id === sizeSelection
+                    ) ??
+                    (paletteTabsState.activeTab === "size"
+                        ? autoSwatches.find((swatch) => swatch.id === sizeSelection)
+                        : null)
+                if (sizeWorldSwatch && !sizeWorldSwatch.isTransparent) {
+                    return cssColorToHex(sizeWorldSwatch.color).toUpperCase()
+                }
+            }
+        }
+
         if (selectedSwatch !== "transparent") {
             const sw = swatchById.get(selectedSwatch)
             if (sw && !sw.isTransparent) {
@@ -10601,7 +10636,7 @@ function PixelEditorFramer({
     }
 
     function openCreateSwatchModal(mode: Exclude<ColorModalMode, "edit">) {
-        const hex = getDefaultNewSwatchColor()
+        const hex = getDefaultNewSwatchColor(mode)
         const rgb = hexToRgb(hex) ?? { r: 255, g: 255, b: 255 }
         const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
 
@@ -14118,105 +14153,6 @@ function commitImportTxn(
     }
 }
 
-const BLANK_SETUP_DEFAULT_GRID_SIZE = 32
-
-function BlankCanvasSetupScreen({
-    aspectRatioId,
-    onAspectRatioChange,
-    onApply,
-    onCancel,
-}: {
-    aspectRatioId: AspectRatioId
-    onAspectRatioChange: (value: AspectRatioId) => void
-    onApply: () => void
-    onCancel: () => void
-}) {
-    const geometry = React.useMemo(
-        () =>
-            calculateCanvasGridGeometry({
-                gridSize: BLANK_SETUP_DEFAULT_GRID_SIZE,
-                aspectRatioId,
-            }),
-        [aspectRatioId]
-    )
-
-    return (
-        <div
-            style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 12000,
-                background: "rgba(69,64,49,0.5)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 18,
-                boxSizing: "border-box",
-            }}
-        >
-            <div
-                style={{
-                    width: "min(92vw, 520px)",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 22,
-                }}
-            >
-                <AspectRatioSelector
-                    value={aspectRatioId}
-                    onChange={onAspectRatioChange}
-                />
-
-                <div
-                    style={{
-                        fontFamily:
-                            "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
-                        fontSize: 18,
-                        fontWeight: 900,
-                        color: PIXTUDIO_INK,
-                        background: "rgba(255,255,255,0.72)",
-                        border: `2px solid ${PIXTUDIO_INK}`,
-                        borderRadius: 6,
-                        padding: "8px 12px",
-                    }}
-                >
-                    CANVAS: {geometry.columns} × {geometry.rows}
-                </div>
-
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                    }}
-                >
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        style={okCancelButtonStyle}
-                        aria-label="Cancel Blank Canvas"
-                        className="pxUiAnim"
-                    >
-                        <SvgCancelButton style={okCancelSvgStyle} />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onApply}
-                        style={okCancelButtonStyle}
-                        aria-label="Create Blank Canvas"
-                        className="pxUiAnim"
-                    >
-                        <SvgOkButton style={okCancelSvgStyle} />
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
 // ------------------- ROOT MVP -------------------
 
 export default function PIXTUDIO_Mobile_MVP() {
@@ -14231,19 +14167,6 @@ export default function PIXTUDIO_Mobile_MVP() {
         React.useState<AspectRatioId>(DEFAULT_ASPECT_RATIO_ID)
 
     const pendingProjectOpenFromStartRef = React.useRef(false)
-    const [editorCanvasCssSize, setEditorCanvasCssSize] =
-        React.useState<EditorCanvasCssSize | null>(null)
-
-    const handleEditorCanvasCssSizeChange = React.useCallback(
-        (size: EditorCanvasCssSize | null) => {
-            setEditorCanvasCssSize((prev) => {
-                if (!size) return prev === null ? prev : null
-                if (prev?.w === size.w && prev?.h === size.h) return prev
-                return size
-            })
-        },
-        []
-    )
 
     const openPromoHome = React.useCallback(() => {
         navigate("/")
@@ -15282,6 +15205,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     type ImportStatus = "idle" | "decoding" | "ready" | "applying"
 
     const [importStatus, setImportStatus] = React.useState<ImportStatus>("idle")
+    const cropApplyInFlightRef = React.useRef(false)
 
     // legacy diagnostics only (UI must NOT branch on this anymore)
     const [, setImportError] = React.useState<string | null>(null)
@@ -15299,6 +15223,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const failImport = React.useCallback(
         (message: string) => {
+            cropApplyInFlightRef.current = false
             showImportError(message)
             setImportStatus("idle")
             setImportError(null)
@@ -15308,6 +15233,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const failImportInFlow = React.useCallback(
         (message: string) => {
+            cropApplyInFlightRef.current = false
             showImportError(message)
             setImportStatus("ready")
             setImportError(null)
@@ -15509,6 +15435,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             editorConsole.error("[IMPORT][P5] cropResult->artifact failed", e)
             failImportInFlow("Failed to bake import artifact.")
         } finally {
+            cropApplyInFlightRef.current = false
             setPendingCropResult(null)
         }
     }, [pendingCropResult])
@@ -15605,7 +15532,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             return () => mql.removeEventListener("change", apply)
         }
 
-        // fallback для старых браузеров
+        // Fallback for older browsers.
         mql.addListener(apply)
         return () => mql.removeListener(apply)
     }, [])
@@ -15623,18 +15550,10 @@ export default function PIXTUDIO_Mobile_MVP() {
         return /Android|iPhone|iPad|iPod/i.test(ua)
     }, [])
 
-    // активные pointers для pinch
-    const cropPreviewFrameTargetPx = isMobileUI
-        ? 640
-        : Math.max(1, Math.min(640, Math.round(editorCanvasCssSize?.w ?? 420)))
+    // Active pointers for pinch gestures.
     const cropPreviewInsetFrac = isMobileUI
         ? IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_MOBILE
         : IMPORT_PREVIEW_VIEWPORT_INSET_FRAC_DESKTOP
-    const cropPreviewCssTargetPx = Math.round(
-        cropPreviewFrameTargetPx / Math.max(0.01, 1 - cropPreviewInsetFrac * 2)
-    )
-    const cropMobilePreviewCssSize =
-        "min(100vw, calc(88vh - 145px), 820px)"
 
     const cropPointersRef = React.useRef<Map<number, { x: number; y: number }>>(
         new Map()
@@ -15681,7 +15600,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
 
     React.useEffect(() => {
-        const el = cropPreviewBoxRef.current
+        const el = cropPreviewMeasureRef.current
         if (!el) return
 
         const ro = new ResizeObserver((entries) => {
@@ -15856,6 +15775,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         previewCtx.restore()
     }
 
+    const cropPreviewMeasureRef = React.useRef<HTMLDivElement | null>(null)
     const cropPreviewBoxRef = React.useRef<HTMLDivElement | null>(null)
     const [cropPreviewCssPx, setCropPreviewCssPx] = React.useState(0)
 
@@ -15884,7 +15804,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     React.useLayoutEffect(() => {
         if (!cropPending) return
 
-        const el = cropPreviewBoxRef.current
+        const el = cropPreviewMeasureRef.current
         if (!el) return
 
         const measure = () => {
@@ -15914,7 +15834,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             }
             window.removeEventListener("resize", measure)
         }
-    }, [cropPending, cropPreviewCssTargetPx])
+    }, [cropPending, cropAspectRatioId])
 
     React.useEffect(() => {
         if (!cropPending) return
@@ -15922,12 +15842,12 @@ export default function PIXTUDIO_Mobile_MVP() {
         const el = cropPreviewBoxRef.current
         if (!el) return
 
-        // Важно: курсор задаём именно на контейнер рамки кропа,
-        // чтобы он работал даже если поверх канваса появляются слои.
+        // Set the cursor on the crop frame container so it still works if
+        // additional layers appear above the canvas.
         el.style.cursor = isCropDragging ? "grabbing" : "grab"
 
         return () => {
-            // Когда кроп закрывается — возвращаем дефолт
+            // Restore the default cursor when Crop closes.
             try {
                 el.style.cursor = ""
             } catch {
@@ -16182,13 +16102,14 @@ export default function PIXTUDIO_Mobile_MVP() {
     ])
 
     function cancelCrop() {
+        cropApplyInFlightRef.current = false
         setPendingCropResult(null)
         resetImportUi("cancel")
     }
 
     function confirmCrop() {
         // Guard against repeated OK presses.
-        if (importStatus === "applying") return
+        if (importStatus === "applying" || cropApplyInFlightRef.current) return
 
         const p = cropPending
         if (!p) {
@@ -16199,34 +16120,47 @@ export default function PIXTUDIO_Mobile_MVP() {
             return
         }
 
-        const prepared = applyGeometry()
+        cropApplyInFlightRef.current = true
+        setImportError(null)
+        setImportStatus("applying")
 
-        if (!prepared) {
-            editorConsole.error("[IMPORT][confirmCrop] applyGeometry returned null")
-            failImportInFlow("Failed to apply crop geometry.")
-            return
-        }
+        const runApply = () => {
+            const prepared = applyGeometry()
 
-        if (ENABLE_PREP_LOGS) {
-            editorConsole.log("[CROP][prepared]", {
-                w: prepared.width,
-                h: prepared.height,
-                a0: (() => {
-                    let z = 0
-                    const d = prepared.data
-                    for (let i = 3; i < d.length; i += 4) if (d[i] === 0) z++
-                    return z
-                })(),
+            if (!prepared) {
+                cropApplyInFlightRef.current = false
+                editorConsole.error(
+                    "[IMPORT][confirmCrop] applyGeometry returned null"
+                )
+                failImportInFlow("Failed to apply crop geometry.")
+                return
+            }
+
+            if (ENABLE_PREP_LOGS) {
+                editorConsole.log("[CROP][prepared]", {
+                    w: prepared.width,
+                    h: prepared.height,
+                    a0: (() => {
+                        let z = 0
+                        const d = prepared.data
+                        for (let i = 3; i < d.length; i += 4) {
+                            if (d[i] === 0) z++
+                        }
+                        return z
+                    })(),
+                })
+            }
+
+            // P5: Confirm publishes a neutral cropped reference.
+            setPendingCropResult({
+                preparedReference: prepared,
+                aspectRatioId: cropAspectRatioId,
+                source: cropFlowSource,
             })
         }
 
-        // P5: Confirm publishes a neutral cropped reference.
-        setImportError(null)
-        setImportStatus("applying")
-        setPendingCropResult({
-            preparedReference: prepared,
-            aspectRatioId: cropAspectRatioId,
-            source: cropFlowSource,
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(runApply)
         })
     }
 
@@ -16241,11 +16175,11 @@ export default function PIXTUDIO_Mobile_MVP() {
     })
 
     function retryImport() {
-        // A2: при error даём повторить OK без потери кропа/превью
-        // НИЧЕГО не сбрасываем: cropPending / cropDecodedRef / cropPreviewSrcCanvasRef остаются как есть
+        // A2: after an error, allow retrying OK without losing crop/preview.
+        // Do not reset cropPending / cropDecodedRef / cropPreviewSrcCanvasRef.
         setImportError(null)
 
-        // если превью уже готово — возвращаем в ready, чтобы UI был консистентным
+        // If the preview is ready, return to ready so the UI stays consistent.
         if (
             cropPending &&
             cropDecodedRef.current &&
@@ -16253,14 +16187,14 @@ export default function PIXTUDIO_Mobile_MVP() {
         ) {
             setImportStatus("ready")
         } else {
-            // иначе оставляем как есть (скорее всего decoding/error)
-            // но в большинстве кейсов попадём в ready ветку выше
+            // Otherwise keep the current state, likely decoding/error.
+            // Most cases take the ready branch above.
         }
     }
     void retryImport
 
     function handleCropWheel(e: React.WheelEvent) {
-        // важно: чтобы wheel не скроллил страницу под оверлеем
+        // Prevent the wheel from scrolling the page under the overlay.
         e.preventDefault()
 
         const delta = e.deltaY
@@ -16423,10 +16357,10 @@ export default function PIXTUDIO_Mobile_MVP() {
         const target = e.currentTarget as HTMLElement
         target.setPointerCapture(e.pointerId)
 
-        // регистрируем pointer
+        // Register the pointer.
         cropPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
-        // если стало 2 пальца/2 pointers — включаем pinch
+        // Enable pinch when two fingers/pointers are active.
         if (cropPointersRef.current.size === 2) {
             const { a, b } = getTwoPointers()
             const c = centerOf(a, b)
@@ -16444,13 +16378,13 @@ export default function PIXTUDIO_Mobile_MVP() {
             cropPinchRef.current.startOffsetX = cropUiOffset.x
             cropPinchRef.current.startOffsetY = cropUiOffset.y
 
-            // при pinch обычный drag-режим выключаем
+            // Disable the regular drag mode while pinch is active.
             cropDragRef.current.mode = "none"
             cropDragRef.current.pointerId = null
             return
         }
 
-        // одиночный pointer — обычный drag (desktop handles / pan мышью)
+        // A single pointer uses regular drag: desktop handles or mouse pan.
         cropPinchRef.current.active = false
 
         cropDragRef.current.mode = mode
@@ -16482,7 +16416,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
 
     function handleCropPointerMove(e: React.PointerEvent) {
-        // обновляем pointer в карте
+        // Update the pointer map.
         if (cropPointersRef.current.has(e.pointerId)) {
             cropPointersRef.current.set(e.pointerId, {
                 x: e.clientX,
@@ -16490,7 +16424,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             })
         }
 
-        // pinch активен только когда 2 pointers
+        // Pinch is active only while two pointers are present.
         if (cropPinchRef.current.active && cropPointersRef.current.size === 2) {
             e.preventDefault()
             e.stopPropagation()
@@ -16522,7 +16456,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             return
         }
 
-        // обычный single-pointer drag
+        // Regular single-pointer drag.
         const st = cropDragRef.current
         if (st.pointerId !== e.pointerId) return
         if (st.mode === "none") return
@@ -16575,10 +16509,10 @@ export default function PIXTUDIO_Mobile_MVP() {
         e.preventDefault()
         e.stopPropagation()
 
-        // удаляем pointer из карты
+        // Remove the pointer from the map.
         cropPointersRef.current.delete(e.pointerId)
 
-        // если pinch был активен — выключаем его, когда пальцев стало меньше 2
+        // Stop pinch when fewer than two pointers remain.
         if (cropPinchRef.current.active && cropPointersRef.current.size < 2) {
             cropPinchRef.current.active = false
         }
@@ -16784,9 +16718,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                     onCoordinatedRedo={redo}
                     coordinatedCanUndo={rootCanUndo}
                     coordinatedCanRedo={rootCanRedo}
-                    onEditorCanvasCssSizeChange={
-                        handleEditorCanvasCssSizeChange
-                    }
                     pendingProjectFile={pendingProjectFile}
                     onPendingProjectFileConsumed={() =>
                         setPendingProjectFile(null)
@@ -17023,8 +16954,28 @@ export default function PIXTUDIO_Mobile_MVP() {
                 <BlankCanvasSetupScreen
                     aspectRatioId={blankSetupAspectRatioId}
                     onAspectRatioChange={setBlankSetupAspectRatioId}
-                    onApply={applyBlankCanvasSetup}
-                    onCancel={cancelBlankCanvasSetup}
+                    cancelButton={
+                        <button
+                            type="button"
+                            onClick={cancelBlankCanvasSetup}
+                            style={{ ...okCancelButtonStyle, marginTop: 0 }}
+                            aria-label="Cancel Blank Canvas"
+                            className="pxUiAnim"
+                        >
+                            <SvgCancelButton style={okCancelSvgStyle} />
+                        </button>
+                    }
+                    applyButton={
+                        <button
+                            type="button"
+                            onClick={applyBlankCanvasSetup}
+                            style={{ ...okCancelButtonStyle, marginTop: 0 }}
+                            aria-label="Create Blank Canvas"
+                            className="pxUiAnim"
+                        >
+                            <SvgOkButton style={okCancelSvgStyle} />
+                        </button>
+                    }
                 />
             )}
 
@@ -17058,330 +17009,88 @@ export default function PIXTUDIO_Mobile_MVP() {
             />
 
             {cropPending && (
-                <div
-                    style={{
-                        position: "fixed",
-                        inset: 0,
-
-                        background: "rgba(69,64,49,0.5)",
-                        backdropFilter: "blur(10px)",
-                        WebkitBackdropFilter: "blur(10px)",
-
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 0,
-                        zIndex: 9999,
+                <ImportCropScreen
+                    aspectRatioId={cropAspectRatioId}
+                    onAspectRatioChange={(nextAspectRatioId) => {
+                        setCropAspectRatioId(nextAspectRatioId)
+                        resetCropUiIfNeeded()
                     }}
-                    onWheel={(e) => e.preventDefault()}
-                    onTouchMove={(e) => e.preventDefault()}
-                >
-                    <div
-                        style={{
-                            width: isMobileUI
-                                ? cropMobilePreviewCssSize
-                                : cropPreviewCssTargetPx,
-                            maxWidth: isMobileUI
-                                ? cropMobilePreviewCssSize
-                                : cropPreviewCssTargetPx,
-                            height: isMobileUI
-                                ? "min(88vh, 820px)"
-                                : "min(92vh, 880px)",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: isMobileUI ? 44 : 36,
-                        }}
-                    >
-                        <AspectRatioSelector
-                            value={cropAspectRatioId}
-                            onChange={(nextAspectRatioId) => {
-                                setCropAspectRatioId(nextAspectRatioId)
-                                resetCropUiIfNeeded()
-                            }}
-                            compact={isMobileUI}
-                        />
-
-                        {/* Crop preview. */}
-                        <div
+                    compactAspectSelector={isMobileUI}
+                    isMobileLayout={isMobileUI}
+                    isApplying={importStatus === "applying"}
+                    previewMeasureRef={cropPreviewMeasureRef}
+                    previewBoxRef={cropPreviewBoxRef}
+                    previewCanvasRef={cropPreviewCanvasRef}
+                    previewCanvasWidth={cropPreviewCanvasWidthPx}
+                    previewCanvasHeight={cropPreviewCanvasHeightPx}
+                    previewInsetFraction={cropPreviewInsetFrac}
+                    isDragging={isCropDragging}
+                    showPointerHandles={!isMobileOS}
+                    onPanPointerDown={(event) => {
+                        setIsCropDragging(true)
+                        handleCropPointerDown(event, "pan")
+                    }}
+                    onPointerMove={handleCropPointerMove}
+                    onPointerUp={(event) => {
+                        setIsCropDragging(false)
+                        handleCropPointerUp(event)
+                    }}
+                    onPointerCancel={(event) => {
+                        setIsCropDragging(false)
+                        handleCropPointerUp(event)
+                    }}
+                    onWheel={handleCropWheel}
+                    onRotatePointerDown={(event) =>
+                        handleCropPointerDown(event, "rotate")
+                    }
+                    onScalePointerDown={(event) =>
+                        handleCropPointerDown(event, "scale")
+                    }
+                    cancelButton={
+                        <button
+                            onClick={cancelCrop}
+                            disabled={
+                                importStatus === "decoding" ||
+                                importStatus === "applying"
+                            }
                             style={{
-                                width: "100%",
-                                flex: "0 0 auto",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                //paddingTop: "1vh",
+                                ...okCancelButtonStyle,
+                                marginTop: 0,
+                                cursor:
+                                    importStatus === "decoding" ||
+                                    importStatus === "applying"
+                                        ? "not-allowed"
+                                        : okCancelButtonStyle.cursor,
                             }}
+                            aria-label="Cancel"
+                            className="pxUiAnim"
                         >
-                            <div
-                                style={{
-                                    width: "100%",
-                                    aspectRatio:
-                                        getAspectRatioCssValue(cropAspectRatioId),
-                                    borderRadius: 8,
-                                    overflow: "visible",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <div
-                                    ref={cropPreviewBoxRef}
-                                    onPointerDown={(e) => {
-                                        setIsCropDragging(true)
-                                        handleCropPointerDown(e, "pan")
-                                    }}
-                                    onPointerMove={handleCropPointerMove}
-                                    onPointerUp={(e) => {
-                                        setIsCropDragging(false)
-                                        handleCropPointerUp(e)
-                                    }}
-                                    onPointerCancel={(e) => {
-                                        setIsCropDragging(false)
-                                        handleCropPointerUp(e)
-                                    }}
-                                    onWheel={handleCropWheel}
-                                    style={{
-                                        position: "relative",
-                                        width: "100%",
-                                        height: "100%",
-                                        touchAction: "none",
-                                        overflow: "visible",
-
-                                        cursor: isCropDragging
-                                            ? "grabbing"
-                                            : "grab",
-                                    }}
-                                >
-                                    <canvas
-                                        ref={cropPreviewCanvasRef}
-                                        width={cropPreviewCanvasWidthPx}
-                                        height={cropPreviewCanvasHeightPx}
-                                        style={{
-                                            display: "block",
-                                            width: "100%",
-                                            height: "100%",
-
-                                            cursor: isCropDragging
-                                                ? "grabbing"
-                                                : "grab",
-                                        }}
-                                    />
-
-                                    {!isMobileOS && (
-                                        <>
-                                            {/* Rotate handle. */}
-                                            <div
-                                                onPointerDown={(e) =>
-                                                    handleCropPointerDown(
-                                                        e,
-                                                        "rotate"
-                                                    )
-                                                }
-                                                style={{
-                                                    position: "absolute",
-                                                    right: 50,
-                                                    top: 50,
-                                                    width: 44,
-                                                    height: 44,
-
-                                                    background: "transparent",
-                                                    border: "none",
-                                                    cursor: "grab",
-                                                    touchAction: "none",
-                                                    zIndex: 5,
-
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    userSelect: "none",
-                                                }}
-                                            >
-                                                <svg
-                                                    width="25"
-                                                    height="25"
-                                                    viewBox="0 0 63.1 66.8"
-                                                    style={{ display: "block" }}
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                >
-                                                    <path
-                                                        fill="#fff"
-                                                        d="M32.5,66.8c-17.7,0-32.1-14.4-32.1-32.1c0-17.7,14.4-32,32.1-32c7,0,13.6,2.4,18.9,6.9l3.5,3V0h6.4v25H36.2
-	v-6.4h15.7l-4-3.7C43.6,11.1,38.3,9,32.5,9C18.3,9,6.7,20.5,6.7,34.7c0,14.2,11.5,25.7,25.7,25.7c10.7,0,20.3-6.8,24-16.8l6.2,1.7
-	C58.3,58.1,46.1,66.8,32.5,66.8z"
-                                                    />
-                                                </svg>
-                                            </div>
-
-                                            {/* Scale handle. */}
-                                            <div
-                                                onPointerDown={(e) =>
-                                                    handleCropPointerDown(
-                                                        e,
-                                                        "scale"
-                                                    )
-                                                }
-                                                style={{
-                                                    position: "absolute",
-                                                    right: 50,
-                                                    bottom: 50,
-                                                    width: 44,
-                                                    height: 44,
-
-                                                    background: "transparent",
-                                                    border: "none",
-                                                    cursor: "nesw-resize",
-                                                    touchAction: "none",
-                                                    zIndex: 5,
-
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    userSelect: "none",
-                                                }}
-                                            >
-                                                <svg
-                                                    width="25"
-                                                    height="25"
-                                                    viewBox="0 0 66.8 66.8"
-                                                    style={{ display: "block" }}
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                >
-                                                    {/* Generic resize handle icon. */}
-                                                    <path
-                                                        fill="#fff"
-                                                        d="M41.7,66.8v-6.4H57L40.3,43.7l3.4-3.4L60.4,57V41.7h6.4v25.1H41.7z M0,66.8V41.7h6.4V57l16.7-16.7l3.4,3.4
-	L9.8,60.4h15.3v6.4H0z M6.4,9.8v15.3H0V0h25.1v6.4H9.8l16.7,16.7l-3.4,3.4L6.4,9.8z M40.3,23.1L57,6.4H41.7V0h25.1v25.1h-6.4V9.8
-	L43.7,26.5L40.3,23.1z"
-                                                    />
-                                                </svg>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Presets area is intentionally inactive in Crop. */}
-                        <div
+                            <SvgCancelButton style={okCancelSvgStyle} />
+                        </button>
+                    }
+                    applyButton={
+                        <button
+                            onClick={confirmCrop}
+                            disabled={
+                                importStatus === "decoding" ||
+                                importStatus === "applying"
+                            }
                             style={{
-                                width: "100%",
-                                flex: "0 0 0",
-                                display: "none",
-                                alignItems: "center",
-                                justifyContent: "center",
+                                ...okCancelButtonStyle,
+                                marginTop: 0,
+                                cursor:
+                                    importStatus === "decoding" ||
+                                    importStatus === "applying"
+                                        ? "not-allowed"
+                                        : okCancelButtonStyle.cursor,
                             }}
+                            aria-label="OK"
+                            className="pxUiAnim"
                         >
-                            <div
-                                style={{
-                                    width: "100%",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    paddingTop: 6,
-                                    paddingBottom: 8,
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "center",
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Action buttons. */}
-                        <div
-                            style={{
-                                width: "100%",
-                                flex: "0 0 auto",
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "center",
-                                gap: 8,
-                                //paddingTop: 4,
-                            }}
-                        >
-                            {importStatus !== "idle" && (
-                                <div
-                                    style={{
-                                        display: "none",
-                                        fontSize: 12,
-                                        fontWeight: 700,
-                                        letterSpacing: 0.2,
-                                        textAlign: "center",
-                                        color:
-                                            importStatus === "applying"
-                                                ? "#04E762"
-                                                : PIXTUDIO_INK,
-                                        maxWidth: 280,
-                                    }}
-                                >
-                                    {importStatus === "decoding" &&
-                                        "Decoding image…"}
-                                    {importStatus === "ready" &&
-                                        "Ready to import"}
-                                    {importStatus === "applying" &&
-                                        "Applying import…"}
-                                </div>
-                            )}
-
-                            {/* (legacy error hint removed — unified importErrorModal handles errors) */}
-
-                            <div
-                                style={{
-                                    width: "100%",
-                                    display: "flex",
-                                    justifyContent: "center",
-                                    //gap: 28,
-                                }}
-                            >
-                                <button
-                                    onClick={cancelCrop}
-                                    disabled={
-                                        importStatus === "decoding" ||
-                                        importStatus === "applying"
-                                    }
-                                    style={{
-                                        ...okCancelButtonStyle,
-                                        cursor:
-                                            importStatus === "decoding" ||
-                                            importStatus === "applying"
-                                                ? "not-allowed"
-                                                : okCancelButtonStyle.cursor,
-                                    }}
-                                    aria-label="Cancel"
-                                    className="pxUiAnim"
-                                >
-                                    <SvgCancelButton style={okCancelSvgStyle} />
-                                </button>
-
-                                <button
-                                    onClick={confirmCrop}
-                                    disabled={
-                                        importStatus === "decoding" ||
-                                        importStatus === "applying"
-                                    }
-                                    style={{
-                                        ...okCancelButtonStyle,
-                                        cursor:
-                                            importStatus === "decoding" ||
-                                            importStatus === "applying"
-                                                ? "not-allowed"
-                                                : okCancelButtonStyle.cursor,
-                                    }}
-                                    aria-label="OK"
-                                    className="pxUiAnim"
-                                >
-                                    <SvgOkButton style={okCancelSvgStyle} />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                            <SvgOkButton style={okCancelSvgStyle} />
+                        </button>
+                    }
+                />
             )}
         </>
     )

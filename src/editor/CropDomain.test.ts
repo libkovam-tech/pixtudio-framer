@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
+    calculateCropScreenRegionLayout,
     calculateCropViewportGeometry,
+    CROP_LAYOUT_REGION_FRACTIONS,
     getAspectRatioCssValue,
     selectDefaultCropAspectRatio,
 } from "./CropDomain.tsx"
@@ -50,5 +52,30 @@ describe("crop domain", () => {
             viewportCenterX: 455,
             viewportCenterY: 256,
         })
+    })
+
+    it("keeps crop screen regions tied to viewport height", () => {
+        expect(CROP_LAYOUT_REGION_FRACTIONS).toEqual({
+            top: 5 / 24,
+            middle: 14 / 24,
+            bottom: 5 / 24,
+        })
+        expect(
+            calculateCropScreenRegionLayout({
+                viewportWidth: 1600,
+                viewportHeight: 1000,
+            })
+        ).toEqual({
+            topHeight: 1000 * (5 / 24),
+            middleHeight: 1000 * (14 / 24),
+            bottomHeight: 1000 * (5 / 24),
+            stageWidth: 1000 * (14 / 24),
+        })
+        expect(
+            calculateCropScreenRegionLayout({
+                viewportWidth: 400,
+                viewportHeight: 1000,
+            }).stageWidth
+        ).toBe(1000 * (14 / 24))
     })
 })
