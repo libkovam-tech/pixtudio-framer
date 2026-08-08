@@ -227,7 +227,7 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "p",
         content:
-          "In PIXTUDIO, you can flexibly control the grid size. Here are the three main approaches:",
+          "In PIXTUDIO, you can flexibly control the grid size and choose a square, horizontal, or vertical canvas format. Here are the three main approaches:",
       },
       {
         type: "p",

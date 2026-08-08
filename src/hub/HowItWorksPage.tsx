@@ -28,21 +28,21 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Start with a Photo",
     paragraphs: [
-      "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place — choose an image, crop it to a square, rotate or scale if needed.",
+      "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place — choose an image and a canvas format, then crop, rotate, or scale if needed.",
       "PIXTUDIO instantly converts it into beautiful pixel art. Discover your familiar photos from a fresh, unexpected new side — often revealing charm you never noticed before.",
     ],
   },
   {
     title: "Shoot with Camera",
     paragraphs: [
-      "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, crop it to a square, rotate or scale if needed.",
+      "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, choose a canvas format, then crop, rotate, or scale if needed.",
       "Watch as your photo transforms into pixel art in real time — great for spontaneous ideas and quick creative experiments.",
     ],
   },
   {
     title: "Draw from a Blank Canvas",
     paragraphs: [
-      "Tap the Blank Canvas icon on the home screen, or open the top-menu Open panel in the editor and choose Blank Canvas. Choose your brush size and start drawing with colors from the auto palette or import your own.",
+      "Tap the Blank Canvas icon on the home screen, or open the top-menu Open panel in the editor and choose Blank Canvas. Choose a canvas format and brush size, then start drawing with colors from the auto palette or import your own.",
       "Perfect when you want to create original pixel art completely from scratch and enjoy the pure creative process.",
     ],
   },
@@ -85,7 +85,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
     title: "Apply Custom Palette",
     paragraphs: [
       "Go to the Palette Presets tab and import a palette from any image or saved project.",
-      "Instantly give your artwork a completely new look using your own colors or built-in presets (Sunset, Grayscale, Black & White).",
+      "Instantly give your artwork a completely new look using your own colors or built-in presets (Sunset, Gray, Black & White).",
     ],
   },
   {

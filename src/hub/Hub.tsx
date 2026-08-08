@@ -80,7 +80,7 @@ const MOBILE_INFO_CARDS = [
   },
   {
     title: ["FULL CREATIVE", "CONTROL"],
-    body: "Smart palette, manual drawing, PNG, SVG, XLSX, ZIP export, and savable projects. Real creative tool.",
+    body: "Canvas formats, smart palette, manual drawing, PNG, SVG, XLSX, ZIP export, and savable projects. Real creative tool.",
   },
   {
     title: ["CREATORS & GAME", "DEVS LOVE IT"],
@@ -117,7 +117,7 @@ const DESKTOP_SEO_COPY = [
     accent:
       "PIXTUDIO is a browser-based pixel art editor",
     text:
-      "that turns ordinary photos into high-quality pixel art with real creative control. Unlike regular filters, you control the grid, palette, colors, and details.",
+      "that turns ordinary photos into high-quality pixel art with real creative control. Unlike regular filters, you control the canvas format, grid, palette, colors, and details.",
   },
   {
     accent:

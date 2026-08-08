@@ -456,6 +456,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             rebuild the pixel result without destroying the
                             source.
                         </SectionCopy>
+                        <SectionCopy>
+                            Before importing an image or creating a blank
+                            canvas, you can choose a square, horizontal, or
+                            vertical canvas format.
+                        </SectionCopy>
                         <SectionCopy muted>
                             <b style={{ color: TEXT }}>Important:</b> every
                             visible pixel is linked to a palette color. Editing
@@ -484,7 +489,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     Use <b>Camera</b> on the start screen or in
                                     the editor top menu to take a new picture.
                                 </>,
-                                "If needed, crop, move, rotate, or scale the image on the preparation screen.",
+                                "If needed, choose a canvas format, then crop, move, rotate, or scale the image on the preparation screen.",
                                 "After the image appears on the canvas, adjust grid size and palette size.",
                                 "Edit colors, apply a palette preset, refine the source image, or draw using the brush tool.",
                             ]}
@@ -552,7 +557,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <BulletList
                             items={[
                                 "Brush size",
-                                "Grid size (2-128 cells horizontally and vertically)",
+                                "Grid size",
                                 "Auto Palette size (2-32 colors)",
                             ]}
                         />
@@ -789,7 +794,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <SectionCopy>
                             Before the image reaches the canvas, a preparation
                             screen appears where you can adjust scale, rotate
-                            the image, and crop it to the square working area.
+                            the image, and crop it to the selected canvas
+                            format.
                         </SectionCopy>
                         <SectionCopy>
                             Drag inside the crop area to position the image. Use
@@ -833,8 +839,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         </SectionCopy>
                         <SectionCopy>
                             After taking a picture, the preparation screen lets
-                            you crop, rotate, move, or scale the photo before
-                            applying it to the canvas.
+                            you choose the canvas format, crop, rotate, move,
+                            or scale the photo before applying it to the canvas.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -1039,6 +1045,11 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             image source. In the recorder, you can animate grid
                             size, palette size, or both. You can also lock one
                             value and animate only the other.
+                        </SectionCopy>
+                        <SectionCopy>
+                            The recorder uses the current canvas format, so the
+                            video matches the shape of the project you are
+                            editing.
                         </SectionCopy>
                         <SectionCopy>
                             The recorder lets you set the duration, preview the

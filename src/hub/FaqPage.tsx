@@ -39,7 +39,7 @@ export const FAQ_ITEMS = [
     question: "Can I use PIXTUDIO to create game assets and keep a consistent style?",
     tocLabel: "Can I create consistent game assets?",
     answer:
-      "Yes. PIXTUDIO is especially useful for creating game assets because you can use the same grid size and color palette across all your images. You can import a palette from any photo or previous project and apply it instantly — this makes it easy to create consistent tiles, items, characters, and environments in the same visual style.",
+      "Yes. PIXTUDIO is especially useful for creating game assets because you can use the same canvas format, grid size, and color palette across all your images. You can import a palette from any photo or previous project and apply it instantly — this makes it easy to create consistent tiles, items, characters, and environments in the same visual style.",
   },
   {
     question: "Does the editor support importing custom color palettes?",
@@ -91,7 +91,7 @@ export const FAQ_ITEMS = [
     answer:
       "Yes. PIXTUDIO offers non-destructive adjustments where you can fine-tune Exposure, Highlights, Midtones, Shadows, Saturation, and White Balance at any time.",
     note:
-      "Additionally, you can draw and erase directly on the pixel art with a brush, and you can crop or rotate the source image before importing it onto the canvas.",
+      "Additionally, you can draw and erase directly on the pixel art with a brush, and you can choose a canvas format, crop, rotate, move, or scale the source image before importing it onto the canvas.",
   },
   {
     question: "What export formats are available?",

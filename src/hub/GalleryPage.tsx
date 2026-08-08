@@ -537,9 +537,9 @@ export default function GalleryPage() {
                 Explore before-and-after examples of photos transformed into
                 pixel art with PIXTUDIO.
               </strong>{" "}
-              Each piece shows how grid size, palettes, source-image
-              adjustments, and final retouching can reshape an ordinary image
-              into a clean pixel artwork.
+              Each piece shows how canvas format, grid size, palettes,
+              source-image adjustments, and final retouching can reshape an
+              ordinary image into a clean pixel artwork.
             </p>
           </section>
 
