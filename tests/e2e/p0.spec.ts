@@ -51,6 +51,7 @@ test("editor project, export menu, open menu, and manual are stable", async ({
 
   await page.getByRole("button", { name: "Open" }).click()
   await expect(page.getByRole("button", { name: "Open file" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Camera" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Blank canvas" })).toBeVisible()
   await expect(page).toHaveScreenshot(snapshotName(testInfo, "editor-open-menu"))
   await page.getByRole("button", { name: "Close" }).click()

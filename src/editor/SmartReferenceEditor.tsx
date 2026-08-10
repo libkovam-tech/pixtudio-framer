@@ -1,6 +1,11 @@
 import * as React from "react"
 
 import { SvgCancelButton, SvgOkButton, SvgExportSOButton } from "./SvgIcons.tsx"
+import {
+    PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
+    getViewportCompensatedActionButtonStyle,
+    getViewportCompensatedPx,
+} from "./viewportActionButtons.ts"
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB } from "../theme.ts"
 
 export type SmartReferenceAdjustments = {
@@ -22,8 +27,7 @@ export type ReferenceSnapshotEnvelope = {
 }
 
 export type SmartObjectCommittedState = {
-    // Последнее committed состояние Smart Object,
-    // которое участвует в общей истории приложения.
+    // Latest committed Smart Object state that participates in app history.
     adjustments: SmartReferenceAdjustments
     revision: number
 }
@@ -44,17 +48,14 @@ export type SmartObjectCommittedStateBridge = {
 export type SmartObjectWhitePoint = readonly [number, number, number]
 
 export type SmartObjectWhiteBalanceDomainState = {
-    // Оценка source white выполняется только по bakedBase,
-    // который Smart Object получает уже после Chinese Room.
+    // Source white estimation runs only on bakedBase, which Smart Object receives
+    // after Chinese Room.
     //
-    // Это НЕ raw import,
-    // НЕ gallery/camera source,
-    // НЕ pre-crop/pre-room image.
+    // It is not raw import, gallery/camera source, or pre-crop/pre-room image.
     //
-    // Начиная с шага 3, estimator уже реален.
-    // Начиная с шага 4, source estimate должен вычисляться
-    // один раз на новую smart-object session
-    // и оставаться стабильным при движении WB slider.
+    // From step 3 onward, the estimator is real.
+    // From step 4 onward, the source estimate is calculated once for each new
+    // Smart Object session and remains stable while the WB slider moves.
     sourceWhitePoint: SmartObjectWhitePoint | null
     sourceKelvin: number | null
     whiteBalanceConfidence: number | null
@@ -83,12 +84,12 @@ export const ZERO_SMARTOBJECT_WB_DOMAIN_STATE: SmartObjectWhiteBalanceDomainStat
 // OK / CANCEL / EXPORT BUTTON CANON (Smart Object family)
 // =====================================================
 //
-// Эта семья кнопок обязана использовать:
-// - один и тот же HTML button container
-// - один и тот же svg sizing style
-// - различаться только иконкой, opacity, cursor, disabled-state и handler'ом
+// This button family must use:
+// - the same HTML button container
+// - the same SVG sizing style
+// - only icon, opacity, cursor, disabled state, and handler may differ
 //
-// Локальные отдельные button-style для Export здесь не допускаются.
+// Local one-off Export button styles are not allowed here.
 
 const okCancelButtonStyle: React.CSSProperties = {
     width: 50,
@@ -1569,7 +1570,6 @@ const WB_THUMB: React.CSSProperties = buildMaskedThumbStyle(
 const BUTTON_ROW: React.CSSProperties = {
     display: "flex",
     justifyContent: "center",
-    gap: 30,
     marginTop: 24,
     paddingBottom: 8,
 }
@@ -2118,16 +2118,19 @@ export function SmartReferenceEditor({
         Math.min(100, effectiveAdjustments.whiteBalance * 100)
     )
 
-    const bottomButtonsCompensationScale = fitScale > 1e-6 ? 1 / fitScale : 1
-
-    const bottomActionButtonStyle: React.CSSProperties = {
-        ...okCancelButtonStyle,
-        width: 50 * bottomButtonsCompensationScale,
-        height: 50 * bottomButtonsCompensationScale,
-        marginTop: 18 * bottomButtonsCompensationScale,
-        marginLeft: 14 * bottomButtonsCompensationScale,
-        marginRight: 14 * bottomButtonsCompensationScale,
-    }
+    const bottomActionButtonStyle = getViewportCompensatedActionButtonStyle(
+        okCancelButtonStyle,
+        fitScale,
+        {
+            marginTop: 18,
+            marginLeft: 0,
+            marginRight: 0,
+        }
+    )
+    const bottomActionButtonGap = getViewportCompensatedPx(
+        PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
+        fitScale
+    )
 
     const handleApply = React.useCallback(() => {
         if (!onPublishEnvelope) {
@@ -2154,8 +2157,9 @@ export function SmartReferenceEditor({
         }
 
         // H4:
-        // committed-state Smart Object должен обновиться ДО publish envelope,
-        // чтобы Root мог сразу захватить корректный smartAfter через bridge.
+        // committed-state Smart Object must update before publishing the
+        // envelope, so Root can immediately capture the correct smartAfter
+        // through the bridge.
         committedStateRef.current = {
             adjustments: { ...nextCommittedState.adjustments },
             revision: nextCommittedState.revision,
@@ -2422,9 +2426,14 @@ export function SmartReferenceEditor({
                     </div>
 
                     {/* Smart Object bottom action row:
-                        одна каноническая семья кнопок:
+                        one canonical button family:
                         Cancel / Apply / Export */}
-                    <div style={BUTTON_ROW}>
+                    <div
+                        style={{
+                            ...BUTTON_ROW,
+                            gap: bottomActionButtonGap,
+                        }}
+                    >
                         <button
                             type="button"
                             onClick={onCancel}

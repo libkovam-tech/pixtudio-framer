@@ -103,6 +103,7 @@ import {
     preparePaletteWorldSnapshotProjectApplication,
     preparePaletteTabSwitchApplication,
     preparePaletteTabSwitch,
+    prepareTransparentSwatchRebuild,
     prepareUserSwatchCreateProjectApplication,
 } from "./paletteState.ts"
 import {
@@ -225,6 +226,8 @@ import {
     RedoIcon,
     ZoomOutIcon,
     ZoomInIcon,
+    BrushIconOn,
+    BrushIconOff,
     PipetteIcon,
     HandIconOn,
     HandIconOff,
@@ -244,6 +247,10 @@ import {
     getPinchZoomUpdate,
     type PinchPoint,
 } from "./viewportPinchZoom.ts"
+import {
+    PIXTUDIO_ACTION_BUTTON_SIDE_MARGIN,
+    PIXTUDIO_ACTION_BUTTON_VISIBLE_SIZE,
+} from "./viewportActionButtons.ts"
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 const CANVAS_SIZE = 512
@@ -1123,17 +1130,19 @@ const PIX_UI_BUTTON_ANIM_CSS = `
 // OK / CANCEL BUTTON STYLE (shared across the editor)
 // =====================================================
 
+const OK_CANCEL_BUTTON_SIZE = PIXTUDIO_ACTION_BUTTON_VISIBLE_SIZE
+
 const okCancelButtonStyle: React.CSSProperties = {
-    width: 50,
-    height: 50,
+    width: OK_CANCEL_BUTTON_SIZE,
+    height: OK_CANCEL_BUTTON_SIZE,
 
     border: "none",
     background: "transparent",
     padding: 0,
 
     marginTop: 35,
-    marginLeft: 14,
-    marginRight: 14,
+    marginLeft: PIXTUDIO_ACTION_BUTTON_SIDE_MARGIN,
+    marginRight: PIXTUDIO_ACTION_BUTTON_SIDE_MARGIN,
 
     cursor: "pointer",
     touchAction: "manipulation",
@@ -1169,17 +1178,12 @@ const SWATCH_EDIT_BORDER = `2px solid ${pixtudioInk(0.75)}`
 
 const SWATCH_EDIT_ROW_GAP = 10
 
-const SWATCH_EDIT_BOTTOM_BLOCK_GAP = 8
-
 const SWATCH_EDIT_LABEL_FONT = 11
 const SWATCH_EDIT_LABEL_LETTER_SPACING = 0.4
 
 const SWATCH_EDIT_HEX_FONT = 12
 const SWATCH_EDIT_HEX_INPUT_HEIGHT = 32
 const SWATCH_EDIT_HEX_LETTER_SPACING = 0.4
-
-const SWATCH_EDIT_HELP_FONT = 10
-const SWATCH_EDIT_HELP_LINE_HEIGHT = 1.35
 
 const SWATCH_EDIT_CHECK_SIZE = 20
 
@@ -2943,7 +2947,7 @@ type PendingFlags = {
 }
 
 // ------------------- GLOBAL LAYOUT CONSTANTS -------------------
-// ширина логотипа стартового экрана (используется и в футере)
+// Start-screen logo width, also used by the footer.
 const START_LOGO_W = 260
 
 // =====================
@@ -7159,10 +7163,6 @@ function PixelEditorFramer({
     }
 
     function prepareLoadedProjectForCommit(project: ProjectState): ProjectState {
-        const stripTransparentSwatches = (list: Swatch[]) =>
-            (list || []).filter(
-                (s) => s && !s.isTransparent && s.id !== "transparent"
-            )
         const loadedAspectRatioId =
             project.aspectRatioId ?? DEFAULT_ASPECT_RATIO_ID
         const loadedGeometry = calculateCanvasGridGeometry({
@@ -7175,8 +7175,8 @@ function PixelEditorFramer({
             aspectRatioId: loadedAspectRatioId,
             columns: project.columns ?? loadedGeometry.columns,
             rows: project.rows ?? loadedGeometry.rows,
-            autoSwatches: stripTransparentSwatches(project.autoSwatches),
-            userSwatches: stripTransparentSwatches(project.userSwatches),
+            autoSwatches: cloneSwatches(project.autoSwatches),
+            userSwatches: cloneSwatches(project.userSwatches),
             paletteCount: clampInt(project.paletteCount, PALETTE_MIN, PALETTE_MAX),
         }
 
@@ -9085,7 +9085,7 @@ function PixelEditorFramer({
     const iconButton = (clickable = false): React.CSSProperties => ({
         ...squareButton(clickable),
         background: "transparent",
-        border: "none", // если хочешь убрать и рамку
+        border: "none", // Remove the border too.
     })
 
     void iconButton
@@ -9094,12 +9094,12 @@ function PixelEditorFramer({
         const s = 38
 
         return {
-            /* ✅ ВСЕ кнопки равноправны */
+            /* All toolbar buttons share the same layout weight. */
             flex: "1 1 0",
             minWidth: 0,
             maxWidth: s,
 
-            /* квадрат, но сжимаемый */
+            /* Square, but shrinkable. */
             height: s,
             aspectRatio: "1 / 1",
 
@@ -9260,8 +9260,8 @@ function PixelEditorFramer({
     const pendingImportBeforeRef = React.useRef<ProjectState | null>(null)
 
     // H3:
-    // после входа committed reference editor должен сообщить наружу,
-    // когда новый editor committed-state уже реально собран.
+    // After a committed reference enters the editor, the editor must report
+    // when the new committed editor state has actually been assembled.
     const pendingCommittedStateSettledKindRef = React.useRef<
         | "import"
         | "load"
@@ -9497,13 +9497,13 @@ function PixelEditorFramer({
             postLoadNonce: postLoadCheckNonceRef.current,
         })
 
-        // ✅ G1: блокируем repixelize во время restore
+        // G1: block repixelize while restore is active.
         if (isRestoringFromSaveRef.current) {
             traceLoad("repixelizeEffect SKIP (restoring=true)")
             return
         }
 
-        // S4: фон не имеет права коммитить editor-state во время STREAM
+        // S4: background work must not commit editor state during STREAM.
         if (busyKindRef.current === "stream") {
             pendingRef.current.repixelize = true
             pendingRef.current.overlayRequant = true
@@ -9513,16 +9513,16 @@ function PixelEditorFramer({
             return
         }
 
-        // LOAD не должен входить в legacy ref-driven repixelize/import pipeline.
-        // Первый проход после load нужен только для завершения restore-cycle,
-        // но НЕ для rebuild из originalImageData.
+        // LOAD must not enter the legacy ref-driven repixelize/import pipeline.
+        // The first pass after load only completes the restore cycle,
+        // not a rebuild from originalImageData.
         if (postLoadCheckNonceRef.current > 0) {
             postLoadCheckNonceRef.current = 0
 
-            // ВАЖНО:
-            // первый post-load skip обязан погасить оба load-only guard'а.
-            // Иначе silentLoadHydrationRef может пережить этот return
-            // и задушить следующий уже валидный repixelize.
+            // Important:
+            // the first post-load skip must clear both load-only guards.
+            // Otherwise silentLoadHydrationRef can survive this return
+            // and suppress the next valid repixelize.
             silentLoadHydrationRef.current = false
 
             pendingImportBeforeRef.current = null
@@ -9530,9 +9530,9 @@ function PixelEditorFramer({
         }
 
         // Silent Smart Object load hydration:
-        // reference-domain должен восстановиться,
-        // но визуальный слой уже восстановлен из save-файла и не должен
-        // заново входить в ref-driven rebuild pipeline.
+        // The reference domain should be restored, but the visual layer has
+        // already been restored from the save file and must not re-enter the
+        // ref-driven rebuild pipeline.
         if (silentLoadHydrationRef.current) {
             traceLoad(
                 "repixelizeEffect SKIP (silent load hydration) — blocking rebuild from Smart Object load reference"
@@ -9673,9 +9673,16 @@ function PixelEditorFramer({
                               nextAutoSwatches: nextAuto,
                           })
                         : nextAuto
+                const transparentRebuild =
+                    prepareTransparentSwatchRebuild({
+                        previousAutoSwatches: autoSwatches,
+                        previousAutoOverrides: autoOverrides,
+                        nextAutoSwatches: nextAutoWithFixedDisplay,
+                        nextAutoOverrides: activeAutoOverrides,
+                    })
                 const nextAutoEffective = applyAutoOverrides(
-                    nextAutoWithFixedDisplay,
-                    activeAutoOverrides
+                    transparentRebuild.autoSwatches,
+                    transparentRebuild.autoOverrides
                 )
 
                 // Collapse duplicates and remap BOTH base+overlay,
@@ -9685,7 +9692,8 @@ function PixelEditorFramer({
                     overlayPixels,
                     nextAuto: nextAutoEffective,
                     nextUser: userSwatches,
-                    nextAutoOverrides: activeAutoOverrides,
+                    nextAutoOverrides:
+                        transparentRebuild.autoOverrides,
                     selectedSwatch,
                 })
 
@@ -9794,9 +9802,16 @@ function PixelEditorFramer({
                               nextAutoSwatches: nextAutoRaw,
                           })
                         : nextAutoRaw
+                const transparentRebuild =
+                    prepareTransparentSwatchRebuild({
+                        previousAutoSwatches: autoSwatches,
+                        previousAutoOverrides: autoOverrides,
+                        nextAutoSwatches: nextAutoWithFixedDisplay,
+                        nextAutoOverrides: activeAutoOverrides,
+                    })
                 const nextAutoEffective = applyAutoOverrides(
-                    nextAutoWithFixedDisplay,
-                    activeAutoOverrides
+                    transparentRebuild.autoSwatches,
+                    transparentRebuild.autoOverrides
                 )
 
                 // Collapse and remap base+overlay.
@@ -9805,7 +9820,8 @@ function PixelEditorFramer({
                     overlayPixels,
                     nextAuto: nextAutoEffective,
                     nextUser: userSwatches,
-                    nextAutoOverrides: activeAutoOverrides,
+                    nextAutoOverrides:
+                        transparentRebuild.autoOverrides,
                     selectedSwatch,
                 })
 
@@ -11030,6 +11046,7 @@ function PixelEditorFramer({
             autoSwatches,
             userSwatches,
             selectedSwatch,
+            transparentPixel: TRANSPARENT_PIXEL,
             autoOverrides,
             baseState: latestProjectStateRef.current ?? makeProjectState(),
             pruneAutoOverrides: pruneAutoOverridesForCurrentAuto,
@@ -11713,6 +11730,22 @@ function PixelEditorFramer({
         setOverlayAnchorRect(null)
     }
 
+    React.useEffect(() => {
+        if (!overlayMode) return
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== "Escape") return
+            event.preventDefault()
+            event.stopPropagation()
+            closeOverlay()
+        }
+
+        window.addEventListener("keydown", onKeyDown, true)
+        return () => {
+            window.removeEventListener("keydown", onKeyDown, true)
+        }
+    }, [overlayMode])
+
     const toggleManual = () => {
         // Safety: close Import/Export if it was open.
         closeOverlay()
@@ -12123,7 +12156,7 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 2: Open / Camera */}
+                    {/* Block 2: Open */}
                     <div style={{ display: "contents" }}>
                         <button
                             type="button"
@@ -12135,24 +12168,6 @@ function PixelEditorFramer({
                             style={iconOnlyButton(true)}
                         >
                             <LoadIcon />
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={onRequestCamera}
-                            style={iconOnlyButton(true)}
-                            aria-label="Camera"
-                            title="Camera"
-                            className="pxUiAnim"
-                        >
-                            <SvgCameraNewButton
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    display: "block",
-                                    transform: "translateY(0px)",
-                                }}
-                            />
                         </button>
                     </div>
 
@@ -12189,8 +12204,30 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 4: Pipette / Hand */}
+                    {/* Block 4: Brush / Pipette / Hand */}
                     <div style={{ display: "contents" }}>
+                        <button
+                            type="button"
+                            aria-label="Brush tool"
+                            title="Brush"
+                            className="pxUiAnim"
+                            onClick={(event) => {
+                                event.currentTarget.blur()
+                                setToolMode("brush")
+                            }}
+                            style={{
+                                ...iconOnlyButton(true),
+                                opacity: toolMode === "brush" ? 1 : 0.85,
+                                cursor: "pointer",
+                            }}
+                        >
+                            {toolMode === "brush" ? (
+                                <BrushIconOn size={38} />
+                            ) : (
+                                <BrushIconOff size={38} />
+                            )}
+                        </button>
+
                         <button
                             type="button"
                             aria-label="Pipette tool"
@@ -12969,16 +13006,16 @@ function PixelEditorFramer({
                             style={{
                                 position: "fixed",
                                 inset: 0,
-                                zIndex: 10000, // выше всех overlay’ев/кропа
+                                zIndex: 10000, // Above every overlay and crop screen.
                                 pointerEvents: "auto",
                             }}
                             onClick={(e) => {
-                                // не даём кликам проваливаться “в редактор”
+                                // Prevent clicks from falling through into the editor.
                                 e.preventDefault()
                                 e.stopPropagation()
                             }}
                         >
-                            {/* сам мануал */}
+                            {/* Manual content */}
                             <div
                                 style={{
                                     position: "absolute",
@@ -13005,7 +13042,7 @@ function PixelEditorFramer({
                                 position: "fixed",
                                 inset: 0,
 
-                                // ✅ Одинаковая подложка для Import и Export
+                                // Import and Export share the same backing.
                                 background: pixtudioInk(0.3),
                                 backdropFilter: "blur(10px)",
                                 WebkitBackdropFilter: "blur(10px)",
@@ -13013,15 +13050,15 @@ function PixelEditorFramer({
                                 zIndex: 999,
                                 pointerEvents: "auto",
                             }}
-                            onClick={(e) => e.stopPropagation()} // не закрываем по фону
+                            onClick={(e) => e.stopPropagation()} // Do not close on backdrop click.
                         >
                             {(() => {
                                 const isOpenMenu = overlayMode === "open"
                                 const MENU_W = isOpenMenu ? 50 : 300
                                 const GAP = 10
 
-                                // ✅ берём "живой" rect прямо из DOM как fallback,
-                                // чтобы не зависеть от того, успел ли state overlayAnchorRect обновиться
+                                // Read a live DOM rect as fallback so positioning
+                                // does not depend on overlayAnchorRect timing.
                                 const liveEl =
                                     overlayMode === "open"
                                         ? openBtnRef.current
@@ -13035,7 +13072,7 @@ function PixelEditorFramer({
                                         ? liveEl.getBoundingClientRect()
                                         : null)
 
-                                // ✅ используем clientWidth (без плясок из-за скроллбара)
+                                // clientWidth avoids scrollbar-related jumps.
                                 const vw =
                                     (typeof document !== "undefined" &&
                                     document.documentElement
@@ -13050,7 +13087,7 @@ function PixelEditorFramer({
                                     ? 50
                                     : (rect ? rect.bottom : 60) + 10
 
-                                // ✅ используем локальный clampN (а не "какой-то clamp" из другого контекста)
+                                // Use the local numeric clamp for this menu geometry.
                                 const left = isOpenMenu
                                     ? clampN(
                                           cx - MENU_W / 2,
@@ -13143,6 +13180,24 @@ function PixelEditorFramer({
                                                     type="button"
                                                     onClick={() => {
                                                         closeOverlay()
+                                                        onRequestCamera()
+                                                    }}
+                                                    style={openMenuItemStyle}
+                                                    aria-label="Camera"
+                                                >
+                                                    <SvgCameraNewButton
+                                                        style={{
+                                                            width: 46,
+                                                            height: 46,
+                                                            display: "block",
+                                                        }}
+                                                    />
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        closeOverlay()
                                                         onRequestBlankImport?.()
                                                     }}
                                                     style={openMenuItemStyle}
@@ -13227,15 +13282,6 @@ function PixelEditorFramer({
                                                     style={itemStyle}
                                                 >
                                                     ZIP
-                                                    <sup
-                                                        style={{
-                                                            fontSize: "0.65em",
-                                                            lineHeight: 0,
-                                                            marginLeft: 1,
-                                                        }}
-                                                    >
-                                                        *
-                                                    </sup>
                                                 </button>
 
                                                 {/* separator / spacing (same vibe as other modals, no new paradigm) */}
@@ -13466,26 +13512,6 @@ function PixelEditorFramer({
                                                         </div>
                                                     </label>
 
-                                                    {/* Export package footnote */}
-                                                    <div
-                                                        style={{
-                                                            marginTop: -2,
-                                                            fontSize:
-                                                                "clamp(9px, 3.1vw, 11px)",
-                                                            lineHeight: 1.35,
-                                                            color: "rgba(255,255,255,0.76)",
-                                                            textAlign: "left",
-                                                            textShadow:
-                                                                `0 2px 5px ${pixtudioInk(0.42)}`,
-                                                            fontStyle:
-                                                                "italic",
-                                                            fontWeight: 600,
-                                                        }}
-                                                    >
-                                                        * ZIP contains all three
-                                                        files: PNG, SVG, and
-                                                        XLSX.
-                                                    </div>
                                                 </div>
                                                 <div
                                                     style={{
@@ -13521,7 +13547,7 @@ function PixelEditorFramer({
                         document.body
                     )}
 
-                {/* COLOR MODAL — закрытие ТОЛЬКО кнопками (без клика снаружи) */}
+                {/* COLOR MODAL: closes only by buttons, not by outside click. */}
 
                 {isColorModalOpen &&
                     ReactDOM.createPortal(
@@ -13994,21 +14020,6 @@ function PixelEditorFramer({
                                         )}
                                     </div>
 
-                                    <div
-                                        style={{
-                                            marginTop:
-                                                SWATCH_EDIT_BOTTOM_BLOCK_GAP,
-                                            fontSize: SWATCH_EDIT_HELP_FONT,
-                                            lineHeight:
-                                                SWATCH_EDIT_HELP_LINE_HEIGHT,
-                                            color: pixtudioInk(0.75),
-                                            flex: "0 0 auto",
-                                        }}
-                                    >
-                                        This swatch will not paint pixels. It
-                                        behaves as an empty pixel and will not
-                                        be included in exports
-                                    </div>
                                 </div>
                             </div>
                             {/* Buttons OUTSIDE the white modal (like Crop overlay) */}
@@ -14680,6 +14691,16 @@ export default function PIXTUDIO_Mobile_MVP() {
                 editorConsole.log("H3 settled payload:", payload)
             }
 
+            if (
+                payload.routeKind === "import" &&
+                pendingCropImportSettlementRef.current
+            ) {
+                pendingCropImportSettlementRef.current = false
+                cropApplyInFlightRef.current = false
+                resetImportUi("import-settled")
+                return
+            }
+
             // Step 6:
             // smart-object-apply commits only after editor-domain
             // finishes its rebuild and yields final editorAfter.
@@ -15206,6 +15227,7 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const [importStatus, setImportStatus] = React.useState<ImportStatus>("idle")
     const cropApplyInFlightRef = React.useRef(false)
+    const pendingCropImportSettlementRef = React.useRef(false)
 
     // legacy diagnostics only (UI must NOT branch on this anymore)
     const [, setImportError] = React.useState<string | null>(null)
@@ -15316,17 +15338,18 @@ export default function PIXTUDIO_Mobile_MVP() {
     // ROOT GATEWAY ENTRY:
     // The alternative import path must also enter editor only through the
     // gateway slot, without direct setEditorImageData(...).
-    function handleImportArtifact(a: ImportArtifact) {
+    function handleImportArtifact(a: ImportArtifact): boolean {
         const bridge = smartObjectCommittedStateBridgeRef.current
         if (!bridge) {
             failImport("Import failed. Please try again.")
-            return
+            return false
         }
 
         prepareNextImportAspectRatio(a.aspectRatioId)
         bridge.importBakedBase(a.bakedReference)
         setSmartObjectHasBase(true)
         setScreen("editor")
+        return true
     }
 
     React.useEffect(() => {
@@ -15427,15 +15450,16 @@ export default function PIXTUDIO_Mobile_MVP() {
                 artifact.bakedReference,
                 "artifact.bakedReference"
             )
-            handleImportArtifact(artifact)
-            setCropPending(null)
-            setImportStatus("idle")
-            setImportError(null)
+            if (!handleImportArtifact(artifact)) return
+            pendingCropImportSettlementRef.current = true
         } catch (e: any) {
             editorConsole.error("[IMPORT][P5] cropResult->artifact failed", e)
+            pendingCropImportSettlementRef.current = false
             failImportInFlow("Failed to bake import artifact.")
         } finally {
-            cropApplyInFlightRef.current = false
+            if (!pendingCropImportSettlementRef.current) {
+                cropApplyInFlightRef.current = false
+            }
             setPendingCropResult(null)
         }
     }, [pendingCropResult])
@@ -17013,7 +17037,6 @@ export default function PIXTUDIO_Mobile_MVP() {
                     aspectRatioId={cropAspectRatioId}
                     onAspectRatioChange={(nextAspectRatioId) => {
                         setCropAspectRatioId(nextAspectRatioId)
-                        resetCropUiIfNeeded()
                     }}
                     compactAspectSelector={isMobileUI}
                     isMobileLayout={isMobileUI}

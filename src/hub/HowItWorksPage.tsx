@@ -28,21 +28,21 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Start with a Photo",
     paragraphs: [
-      "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place — choose an image and a canvas format, then crop, rotate, or scale if needed.",
+      "Tap the Open icon on the home screen or the Import menu in the editor. Choose an image and a canvas format, then crop, rotate, or scale if needed.",
       "PIXTUDIO instantly converts it into beautiful pixel art. Discover your familiar photos from a fresh, unexpected new side — often revealing charm you never noticed before.",
     ],
   },
   {
     title: "Shoot with Camera",
     paragraphs: [
-      "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, choose a canvas format, then crop, rotate, or scale if needed.",
+      "Tap the Camera icon on the home screen, or open the Import menu in the editor and choose Camera. Take a photo directly with your device, choose a canvas format, then crop, rotate, or scale if needed.",
       "Watch as your photo transforms into pixel art in real time — great for spontaneous ideas and quick creative experiments.",
     ],
   },
   {
     title: "Draw from a Blank Canvas",
     paragraphs: [
-      "Tap the Blank Canvas icon on the home screen, or open the top-menu Open panel in the editor and choose Blank Canvas. Choose a canvas format and brush size, then start drawing with colors from the auto palette or import your own.",
+      "Tap the Blank Canvas icon on the home screen, or open the Import menu in the editor and choose Blank Canvas. Choose a canvas format and brush size, then start drawing with colors from the auto palette or import your own.",
       "Perfect when you want to create original pixel art completely from scratch and enjoy the pure creative process.",
     ],
   },
@@ -56,7 +56,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Open a Saved Project",
     paragraphs: [
-      "Tap the Open icon on the home screen or in the top menu, then select your .pixtudio file.",
+      "Tap the Open icon on the home screen, or open the Import menu in the editor and select your .pixtudio file.",
       "Quickly return to any of your projects and continue right where you stopped.",
     ],
   },

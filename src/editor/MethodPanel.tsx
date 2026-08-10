@@ -16,6 +16,11 @@ import {
 } from "./QuantizationCore.ts"
 import { SvgCancelButton, SvgOkButton } from "./SvgIcons.tsx"
 import { useDesktopApplyCancelShortcuts } from "./useApplyCancelShortcuts.ts"
+import {
+    PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
+    PIXTUDIO_ACTION_BUTTON_VISIBLE_SIZE,
+    getViewportCompensatedPx,
+} from "./viewportActionButtons.ts"
 
 type MethodPanelProps = {
     paletteContext: PaletteContextKind
@@ -153,9 +158,6 @@ const DE_CONFETTI_TIE_BREAKERS: Array<{
     { value: 2, label: "C" },
     { value: 3, label: "D" },
 ]
-
-const METHOD_ACTION_BUTTON_SIZE = 82
-const MOBILE_METHOD_ACTION_BUTTON_SIZE = 50
 
 const actionButtonSvgStyle: React.CSSProperties = {
     width: "100%",
@@ -321,15 +323,18 @@ export function MethodPanel({
         colorSpaceButtons.slice(4, 8),
         colorSpaceButtons.slice(8),
     ]
-    const actionButtonCompensationScale =
-        isMobileUI && viewportScale > 1e-6 ? 1 / viewportScale : 1
-    const actionButtonSize = isMobileUI
-        ? MOBILE_METHOD_ACTION_BUTTON_SIZE * actionButtonCompensationScale
-        : METHOD_ACTION_BUTTON_SIZE
-    const actionButtonGap =
-        (isMobileUI ? 42 : 70) * actionButtonCompensationScale
-    const actionButtonMarginTop =
-        (isMobileUI ? 8 : 10) * actionButtonCompensationScale
+    const actionButtonSize = getViewportCompensatedPx(
+        PIXTUDIO_ACTION_BUTTON_VISIBLE_SIZE,
+        viewportScale
+    )
+    const actionButtonGap = getViewportCompensatedPx(
+        PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
+        viewportScale
+    )
+    const actionButtonMarginTop = getViewportCompensatedPx(
+        isMobileUI ? 8 : 10,
+        viewportScale
+    )
     const statusText =
         status === "pending"
             ? "Rendering preview"

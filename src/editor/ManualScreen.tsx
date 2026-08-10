@@ -13,6 +13,7 @@ import {
     RedoIcon,
     ZoomOutIcon,
     ZoomInIcon,
+    BrushIconManual,
     PipetteIcon,
     HandIconOff,
     SvgCameraNewButton,
@@ -239,6 +240,16 @@ function PipetteIconInline({ style }: { style?: React.CSSProperties }) {
     return (
         <span style={s}>
             <PipetteIcon size={size} />
+        </span>
+    )
+}
+
+function BrushIconInline({ style }: { style?: React.CSSProperties }) {
+    const s = { ...ICON_INLINE, ...style }
+    const size = typeof s.width === "number" ? s.width : 24
+    return (
+        <span style={s}>
+            <BrushIconManual size={size} />
         </span>
     )
 }
@@ -481,13 +492,16 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <OrderedList
                             items={[
                                 <>
-                                    On the start screen or in the editor, use{" "}
-                                    <b>Open</b> to import an image, open a saved
-                                    project, or create a blank canvas.
+                                    On the start screen, use <b>Open</b>,{" "}
+                                    <b>Camera</b>, or <b>Blank Canvas</b>. In
+                                    the editor, open the <b>Import</b> menu to
+                                    import an image, open a saved project, take
+                                    a camera photo, or create a blank canvas.
                                 </>,
                                 <>
                                     Use <b>Camera</b> on the start screen or in
-                                    the editor top menu to take a new picture.
+                                    the editor Import menu to take a new
+                                    picture.
                                 </>,
                                 "If needed, choose a canvas format, then crop, move, rotate, or scale the image on the preparation screen.",
                                 "After the image appears on the canvas, adjust grid size and palette size.",
@@ -495,10 +509,8 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             ]}
                         />
                         <SectionCopy>
-                            A new import starts a fresh editor session: the view
-                            returns to fit-to-canvas, the default brush tool is
-                            restored, and temporary tool states such as Hand or
-                            Eyedropper are cleared.
+                            A new import starts a fresh editor session with the
+                            Brush tool active.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -525,9 +537,12 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             to it.
                         </SectionCopy>
                         <SectionCopy>
-                            The brush is the default drawing tool. On desktop,
-                            you can zoom with the mouse wheel when the cursor is
-                            over the canvas. On mobile, use a two-finger pinch
+                            The brush is the default drawing tool, and the
+                            Brush icon in the top toolbar shows when drawing is
+                            active. If Eyedropper or Hand is active, click the
+                            Brush icon to return to drawing. On desktop, you can
+                            zoom with the mouse wheel when the cursor is over
+                            the canvas. On mobile, use a two-finger pinch
                             gesture to zoom. In both cases, zoom cannot go below
                             fit-to-canvas.
                         </SectionCopy>
@@ -771,26 +786,23 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
             },
             {
                 id: "import",
-                title: "Open",
-                navLabel: "Open",
+                title: "Import",
+                navLabel: "Import",
                 icon: <LoadIconInline />,
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            Open collects every file-based way to start or
-                            replace work:
+                            Import collects every way to start or replace work
+                            from inside the editor:
                         </SectionCopy>
                         <BulletList
                             items={[
-                                "import JPG/PNG images",
+                                "import image files",
                                 "open a saved .pixtudio project",
+                                "take a photo with Camera",
                                 "create a blank transparent canvas",
                             ]}
                         />
-                        <SectionCopy>
-                            Camera has its own button on the start screen and in
-                            the editor top menu.
-                        </SectionCopy>
                         <SectionCopy>
                             Before the image reaches the canvas, a preparation
                             screen appears where you can adjust scale, rotate
@@ -826,16 +838,16 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                 content: (
                     <SectionStack>
                         <SectionCopy>
-                            Camera starts the same image-opening flow as Open,
+                            Camera starts the same image-opening flow as Import,
                             but uses your device camera as the source. The
                             photo becomes the reference image that PIXTUDIO
                             quantizes into pixel art.
                         </SectionCopy>
                         <SectionCopy>
-                            It has its own button on the start screen and in
-                            the editor top menu. Use it when you want to create
-                            the quantization source directly from the camera
-                            instead of choosing an existing file.
+                            Use Camera from the start screen or from the editor
+                            Import menu when you want to create the quantization
+                            source directly from the camera instead of choosing
+                            an existing file.
                         </SectionCopy>
                         <SectionCopy>
                             After taking a picture, the preparation screen lets
@@ -885,6 +897,24 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             On mobile, use a two-finger pinch gesture on the
                             canvas to zoom in or out. Brush drawing is blocked
                             while the two-finger gesture is active.
+                        </SectionCopy>
+                    </SectionStack>
+                ),
+            },
+            {
+                id: "brush",
+                title: "Brush",
+                navLabel: "Brush",
+                icon: <BrushIconInline />,
+                content: (
+                    <SectionStack>
+                        <SectionCopy>
+                            Brush is the default drawing tool. Its icon shows
+                            when drawing is active.
+                        </SectionCopy>
+                        <SectionCopy>
+                            If Eyedropper or Hand is active, click Brush to
+                            return to painting on the canvas.
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -1501,12 +1531,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                         />
                                     ) : null}
 
-                                    {sections.map((section, idx) => {
+                                    {sections.map((section) => {
                                         const active = section.id === activeId
                                         const isIconRow = !!section.icon
-                                        const addTopGap =
-                                            idx === 5 || idx === 15
-
                                         return (
                                             <a
                                                 key={section.id}
@@ -1526,9 +1553,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                                     zIndex: 1,
                                                     alignItems: "center",
                                                     gap: isIconRow ? 10 : 0,
-                                                    marginTop: addTopGap
-                                                        ? 8
-                                                        : 0,
+                                                    marginTop: 0,
                                                     minWidth: 0,
                                                     maxWidth: "100%",
                                                     boxSizing: "border-box",

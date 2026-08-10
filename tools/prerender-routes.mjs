@@ -175,15 +175,15 @@ const faqItems = [
 const howItems = [
   [
     "Start with a Photo",
-    "Tap the Open icon on the home screen or in the top menu. All supported files open from the same place — choose an image, crop it to a square, rotate or scale if needed. PIXTUDIO instantly converts it into beautiful pixel art.",
+    "Tap the Open icon on the home screen or the Import menu in the editor. Choose an image and a canvas format, then crop, rotate, or scale if needed. PIXTUDIO instantly converts it into beautiful pixel art.",
   ],
   [
     "Shoot with Camera",
-    "Tap the Camera icon on the home screen or the separate Camera button in the top menu. Take a photo directly with your device, crop it to a square, rotate or scale if needed, and watch it transform into pixel art.",
+    "Tap the Camera icon on the home screen, or open the Import menu in the editor and choose Camera. Take a photo directly with your device, choose a canvas format, then crop, rotate, or scale if needed.",
   ],
   [
     "Draw from a Blank Canvas",
-    "Tap the Blank Canvas icon on the home screen, or open the top-menu Open panel in the editor and choose Blank Canvas. Choose your brush size and start drawing with colors from the auto palette or import your own.",
+    "Tap the Blank Canvas icon on the home screen, or open the Import menu in the editor and choose Blank Canvas. Choose a canvas format and brush size, then start drawing with colors from the auto palette or import your own.",
   ],
   [
     "Save Your Project",
@@ -191,7 +191,7 @@ const howItems = [
   ],
   [
     "Open a Saved Project",
-    "Tap the Open icon on the home screen or in the top menu, then select your .pixtudio file. Quickly return to any of your projects and continue right where you stopped.",
+    "Tap the Open icon on the home screen, or open the Import menu in the editor and select your .pixtudio file. Quickly return to any of your projects and continue right where you stopped.",
   ],
   [
     "Export Your Pixel Art",

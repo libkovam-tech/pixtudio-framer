@@ -57,6 +57,7 @@ export type StrokeSwatchIndexV2 = typeof V2_CELL_TRANSPARENT | number
 export type AutoSwatchOverrideV2 = {
     hex?: string
     isTransparent?: boolean
+    transparentSourceHex?: string
 }
 
 export type AutoSwatchOverridesMapV2 = Record<string, AutoSwatchOverrideV2>
@@ -927,12 +928,21 @@ export function pruneProjectSnapshotV2AutoOverrides(
         const hasHex =
             typeof override.hex === "string" && override.hex.length > 0
         const hasTransparent = typeof override.isTransparent === "boolean"
-        if (!hasHex && !hasTransparent) continue
+        const hasTransparentSourceHex =
+            typeof override.transparentSourceHex === "string" &&
+            /^#[0-9A-F]{6}$/.test(override.transparentSourceHex.toUpperCase())
+        if (!hasHex && !hasTransparent && !hasTransparentSourceHex) continue
 
         out[key] = {
             ...(hasHex ? { hex: override.hex } : {}),
             ...(hasTransparent
                 ? { isTransparent: override.isTransparent }
+                : {}),
+            ...(hasTransparentSourceHex
+                ? {
+                      transparentSourceHex:
+                          override.transparentSourceHex?.toUpperCase(),
+                  }
                 : {}),
         }
     }
@@ -1129,7 +1139,11 @@ export function validateProjectSnapshotV2OrThrow(
             }
 
             for (const kk of Object.keys(v)) {
-                if (kk !== "hex" && kk !== "isTransparent") {
+                if (
+                    kk !== "hex" &&
+                    kk !== "isTransparent" &&
+                    kk !== "transparentSourceHex"
+                ) {
                     throw makeLoadGateError(
                         "E_ROOT_KEYS",
                         `autoOverrides["${k}"]: unexpected key "${kk}"`
@@ -1156,7 +1170,26 @@ export function validateProjectSnapshotV2OrThrow(
                 )
             }
 
-            if (!("hex" in v) && !("isTransparent" in v)) {
+            if ("transparentSourceHex" in v) {
+                const transparentSourceHex = v.transparentSourceHex
+                assertString(
+                    transparentSourceHex,
+                    "E_ROOT_KEYS",
+                    `autoOverrides["${k}"].transparentSourceHex`
+                )
+                if (!/^#[0-9A-F]{6}$/.test(transparentSourceHex.toUpperCase())) {
+                    throw makeLoadGateError(
+                        "E_ROOT_KEYS",
+                        `autoOverrides["${k}"].transparentSourceHex invalid`
+                    )
+                }
+            }
+
+            if (
+                !("hex" in v) &&
+                !("isTransparent" in v) &&
+                !("transparentSourceHex" in v)
+            ) {
                 throw makeLoadGateError("E_ROOT_KEYS", `autoOverrides["${k}"] empty`)
             }
         }

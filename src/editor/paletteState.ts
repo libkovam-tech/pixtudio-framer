@@ -36,6 +36,7 @@ export type PaletteAutoOverridesMap<TOverride = unknown> = Record<
 export type PaletteAutoOverrideLike = {
     hex?: string
     isTransparent?: boolean
+    transparentSourceHex?: string
 }
 
 type RgbColor = { r: number; g: number; b: number }
@@ -785,6 +786,122 @@ function normalizeSwatchColor(color: string | null | undefined): string {
     return upperColor
 }
 
+export function prepareTransparentSwatchRebuild<
+    TSwatch extends PalettePaintSwatchLike & { id: string },
+>(input: {
+    previousAutoSwatches: ReadonlyArray<TSwatch>
+    previousAutoOverrides?: PaletteAutoOverridesMap<PaletteAutoOverrideLike> | null
+    nextAutoSwatches: ReadonlyArray<TSwatch>
+    nextAutoOverrides?: PaletteAutoOverridesMap<PaletteAutoOverrideLike> | null
+}): {
+    autoSwatches: TSwatch[]
+    autoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike>
+    changed: boolean
+} {
+    const autoOverrides: PaletteAutoOverridesMap<PaletteAutoOverrideLike> = {
+        ...(input.nextAutoOverrides || {}),
+    }
+    const nextAutoSwatches = clonePaletteSwatches(input.nextAutoSwatches)
+    let changed = false
+
+    const transparentColorKeys = new Map<string, string>()
+    const previousAutoById = new Map(
+        input.previousAutoSwatches
+            .filter((swatch) => swatch?.id)
+            .map((swatch) => [swatch.id, swatch])
+    )
+    const previousOverrides = input.previousAutoOverrides || {}
+    const overrideEntries = Object.entries(previousOverrides).filter(
+        ([key, override]) =>
+            key.startsWith("auto-") && override?.isTransparent === true
+    )
+
+    for (const [swatchId, override] of overrideEntries) {
+        const sourceHex = normalizeSwatchColor(
+            override.transparentSourceHex ||
+                override.hex ||
+                previousAutoById.get(swatchId)?.color
+        )
+        if (!/^#[0-9A-F]{6}$/.test(sourceHex)) continue
+        transparentColorKeys.set(sourceHex, sourceHex)
+    }
+
+    for (const [swatchId, override] of Object.entries(autoOverrides)) {
+        if (!swatchId.startsWith("auto-")) continue
+        if (override?.isTransparent !== true) continue
+
+        const nextOverride = { ...override }
+        delete nextOverride.isTransparent
+        delete nextOverride.transparentSourceHex
+
+        if (!nextOverride.hex) {
+            delete autoOverrides[swatchId]
+        } else {
+            autoOverrides[swatchId] = nextOverride
+        }
+        changed = true
+    }
+
+    if (overrideEntries.length === 0) {
+        for (const swatch of input.previousAutoSwatches) {
+            if (!swatch?.isTransparent) continue
+            const sourceHex = normalizeSwatchColor(swatch.color)
+            if (!/^#[0-9A-F]{6}$/.test(sourceHex)) continue
+            transparentColorKeys.set(sourceHex, sourceHex)
+        }
+    }
+
+    if (transparentColorKeys.size === 0) {
+        return {
+            autoSwatches: nextAutoSwatches,
+            autoOverrides,
+            changed,
+        }
+    }
+
+    for (let i = 0; i < nextAutoSwatches.length; i += 1) {
+        const swatch = nextAutoSwatches[i]
+        if (!swatch?.id || !swatch.id.startsWith("auto-")) continue
+        const sourceHex = transparentColorKeys.get(
+            normalizeSwatchColor(swatch.color)
+        )
+        if (!sourceHex) {
+            continue
+        }
+
+        if (!swatch.isTransparent) {
+            nextAutoSwatches[i] = {
+                ...swatch,
+                isTransparent: true,
+            } as TSwatch
+            changed = true
+        }
+
+        if (autoOverrides[swatch.id]?.isTransparent !== true) {
+            autoOverrides[swatch.id] = {
+                ...(autoOverrides[swatch.id] || {}),
+                isTransparent: true,
+                transparentSourceHex: sourceHex,
+            }
+            changed = true
+        } else if (
+            autoOverrides[swatch.id]?.transparentSourceHex !== sourceHex
+        ) {
+            autoOverrides[swatch.id] = {
+                ...(autoOverrides[swatch.id] || {}),
+                transparentSourceHex: sourceHex,
+            }
+            changed = true
+        }
+    }
+
+    return {
+        autoSwatches: nextAutoSwatches,
+        autoOverrides,
+        changed,
+    }
+}
+
 function colorToDeletedAutoHex(color: string | null | undefined): string {
     const normalized = normalizeSwatchColor(color)
     return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : "#FF0000"
@@ -980,6 +1097,9 @@ export function prepareAutoOverridesForSwatchEdit(input: {
     const entry: PaletteAutoOverrideLike = {}
     if (!nextIsTransparent && hasHex) entry.hex = nextHex
     entry.isTransparent = nextIsTransparent
+    if (nextIsTransparent && hasHex) {
+        entry.transparentSourceHex = nextHex
+    }
     nextAutoOverrides[input.swatchId] = entry
 
     return nextAutoOverrides
@@ -1447,6 +1567,38 @@ function moveCollapsedAutoOverrides<TOverride>(
     return outOverrides
 }
 
+function promoteSwatchPixelsToTransparentOverlay<
+    TPixel extends string | null,
+>(input: {
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+    swatchId: string
+    transparentPixel: TPixel
+}): TPixel[][] {
+    let changed = false
+    const nextOverlay = input.overlayPixels.map((row, rowIndex) => {
+        let nextRow: TPixel[] | null = null
+        const imageRow = input.imagePixels[rowIndex] || []
+
+        for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
+            const overlayValue = row[columnIndex]
+            const shouldPromote =
+                overlayValue === input.swatchId ||
+                (overlayValue == null && imageRow[columnIndex] === input.swatchId)
+
+            if (!shouldPromote) continue
+
+            if (!nextRow) nextRow = row.slice()
+            nextRow[columnIndex] = input.transparentPixel
+            changed = true
+        }
+
+        return nextRow || row
+    })
+
+    return changed ? nextOverlay : input.overlayPixels
+}
+
 export function collapseDuplicateSwatchesAndRemapPixels<
     TSwatch extends PalettePaintSwatchLike,
     TPixel extends string | null,
@@ -1526,6 +1678,7 @@ export function preparePaletteSwatchEditApplication<
     autoSwatches: ReadonlyArray<TSwatch>
     userSwatches: ReadonlyArray<TSwatch>
     selectedSwatch: PaletteSelection
+    transparentPixel?: TPixel
     autoOverrides?: PaletteAutoOverridesMap<PaletteAutoOverrideLike> | null
     pruneAutoOverrides?: (
         currentAuto: TSwatch[],
@@ -1555,13 +1708,27 @@ export function preparePaletteSwatchEditApplication<
         currentOverrides: input.autoOverrides,
     })
 
+    const overlayPixelsForApplication =
+        input.makeTransparent && input.transparentPixel !== undefined
+            ? promoteSwatchPixelsToTransparentOverlay({
+                  imagePixels: input.imagePixels,
+                  overlayPixels: input.overlayPixels,
+                  swatchId: input.swatchId,
+                  transparentPixel: input.transparentPixel,
+              })
+            : input.overlayPixels
+    const selectedSwatchForApplication =
+        input.makeTransparent && input.transparentPixel !== undefined
+            ? "transparent"
+            : input.swatchId
+
     return collapseDuplicateSwatchesAndRemapPixels({
         imagePixels: input.imagePixels,
-        overlayPixels: input.overlayPixels,
+        overlayPixels: overlayPixelsForApplication,
         nextAuto,
         nextUser,
         nextAutoOverrides,
-        selectedSwatch: input.swatchId,
+        selectedSwatch: selectedSwatchForApplication,
         pruneAutoOverrides: input.pruneAutoOverrides,
     })
 }
@@ -1579,6 +1746,7 @@ export function preparePaletteSwatchEditProjectApplication<
     autoSwatches: ReadonlyArray<TSwatch>
     userSwatches: ReadonlyArray<TSwatch>
     selectedSwatch: PaletteSelection
+    transparentPixel?: TPixel
     autoOverrides?: EditorCommittedState<
         TPixel,
         TSwatch,
@@ -1607,6 +1775,7 @@ export function preparePaletteSwatchEditProjectApplication<
         autoSwatches: input.autoSwatches,
         userSwatches: input.userSwatches,
         selectedSwatch: input.selectedSwatch,
+        transparentPixel: input.transparentPixel,
         autoOverrides: input.autoOverrides,
         pruneAutoOverrides: input.pruneAutoOverrides,
     })

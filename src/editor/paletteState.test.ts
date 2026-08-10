@@ -24,6 +24,7 @@ import {
     preparePaletteTabSwitch,
     prepareProjectStateFromPaletteWorld,
     preparePaletteSwatchEditProjectApplication,
+    prepareTransparentSwatchRebuild,
     prepareSwatchesForEdit,
     prepareSwatchDelete,
     prepareUserSwatchCreateProjectApplication,
@@ -1223,7 +1224,147 @@ describe("palette state", () => {
                 currentOverrides: {},
             })
         ).toEqual({
-            "auto-0": { isTransparent: true },
+            "auto-0": {
+                isTransparent: true,
+                transparentSourceHex: "#AABBCC",
+            },
+        })
+    })
+
+    it("carries transparent auto swatch decisions across rebuilds by color", () => {
+        const result = prepareTransparentSwatchRebuild({
+            previousAutoSwatches: [
+                {
+                    id: "auto-4",
+                    color: "#AABBCC",
+                    isTransparent: true,
+                    isUser: false,
+                },
+            ],
+            previousAutoOverrides: {
+                "auto-4": {
+                    isTransparent: true,
+                    transparentSourceHex: "#AABBCC",
+                },
+            },
+            nextAutoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#000000",
+                    isTransparent: false,
+                    isUser: false,
+                },
+                {
+                    id: "auto-8",
+                    color: "#aabbcc",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            nextAutoOverrides: {
+                "auto-0": { hex: "#010101", isTransparent: false },
+                "auto-4": {
+                    isTransparent: true,
+                    transparentSourceHex: "#AABBCC",
+                },
+            },
+        })
+
+        expect(result.changed).toBe(true)
+        expect(result.autoSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#000000",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-8",
+                color: "#aabbcc",
+                isTransparent: true,
+                isUser: false,
+            },
+        ])
+        expect(result.autoOverrides).toEqual({
+            "auto-0": { hex: "#010101", isTransparent: false },
+            "auto-8": {
+                isTransparent: true,
+                transparentSourceHex: "#AABBCC",
+            },
+        })
+    })
+
+    it("does not chain rebuilt transparent swatches as new transparent colors", () => {
+        const result = prepareTransparentSwatchRebuild({
+            previousAutoSwatches: [
+                {
+                    id: "auto-4",
+                    color: "#BBBBBB",
+                    isTransparent: true,
+                    isUser: false,
+                },
+            ],
+            previousAutoOverrides: {
+                "auto-4": {
+                    isTransparent: true,
+                    transparentSourceHex: "#AABBCC",
+                },
+            },
+            nextAutoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#BBBBBB",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            nextAutoOverrides: {
+                "auto-4": {
+                    isTransparent: true,
+                    transparentSourceHex: "#AABBCC",
+                },
+            },
+        })
+
+        expect(result.changed).toBe(true)
+        expect(result.autoSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#BBBBBB",
+                isTransparent: false,
+                isUser: false,
+            },
+        ])
+        expect(result.autoOverrides).toEqual({})
+    })
+
+    it("seeds transparent rebuild source from legacy transparent auto swatches", () => {
+        const result = prepareTransparentSwatchRebuild({
+            previousAutoSwatches: [
+                {
+                    id: "auto-4",
+                    color: "#AABBCC",
+                    isTransparent: true,
+                    isUser: false,
+                },
+            ],
+            nextAutoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#AABBCC",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            nextAutoOverrides: {},
+        })
+
+        expect(result.changed).toBe(true)
+        expect(result.autoOverrides).toEqual({
+            "auto-0": {
+                isTransparent: true,
+                transparentSourceHex: "#AABBCC",
+            },
         })
     })
 
@@ -1420,6 +1561,72 @@ describe("palette state", () => {
         })
 
         expect(result.selectedSwatch).toBe("auto-1")
+    })
+
+    it("promotes edited auto swatch cells to transparent overlay", () => {
+        const transparentPixel = "__PX_TRANSPARENT__"
+        const result = preparePaletteSwatchEditApplication({
+            swatchId: "auto-0",
+            newColorUpper: "#112233",
+            makeTransparent: true,
+            transparentPixel,
+            imagePixels: [
+                ["auto-0", "auto-1"],
+                ["auto-0", null],
+            ],
+            overlayPixels: [
+                [null, "user-0"],
+                ["auto-0", null],
+            ],
+            autoSwatches: [
+                { id: "auto-0", color: "#112233" },
+                { id: "auto-1", color: "#445566" },
+            ],
+            userSwatches: [{ id: "user-0", color: "#778899", isUser: true }],
+            selectedSwatch: "auto-0",
+            autoOverrides: {},
+        })
+
+        expect(result.imagePixels).toEqual([
+            ["auto-0", "auto-1"],
+            ["auto-0", null],
+        ])
+        expect(result.overlayPixels).toEqual([
+            [transparentPixel, "user-0"],
+            [transparentPixel, null],
+        ])
+        expect(result.selectedSwatch).toBe("transparent")
+        expect(result.autoSwatches[0]).toMatchObject({
+            id: "auto-0",
+            isTransparent: true,
+        })
+        expect(result.autoOverrides["auto-0"]).toMatchObject({
+            isTransparent: true,
+            transparentSourceHex: "#112233",
+        })
+    })
+
+    it("does not overwrite unrelated overlay pixels when promoting transparency", () => {
+        const transparentPixel = "__PX_TRANSPARENT__"
+        const result = preparePaletteSwatchEditApplication({
+            swatchId: "auto-0",
+            newColorUpper: "#112233",
+            makeTransparent: true,
+            transparentPixel,
+            imagePixels: [["auto-0", "auto-0", "auto-0"]],
+            overlayPixels: [[null, "user-0", "auto-1"]],
+            autoSwatches: [
+                { id: "auto-0", color: "#112233" },
+                { id: "auto-1", color: "#445566" },
+            ],
+            userSwatches: [{ id: "user-0", color: "#778899", isUser: true }],
+            selectedSwatch: "auto-0",
+            autoOverrides: {},
+        })
+
+        expect(result.overlayPixels).toEqual([
+            [transparentPixel, "user-0", "auto-1"],
+        ])
     })
 
     it("prepares swatch edit applications with duplicate collapse remaps", () => {

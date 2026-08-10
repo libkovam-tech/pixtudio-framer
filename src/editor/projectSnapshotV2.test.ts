@@ -958,7 +958,11 @@ describe("ProjectSnapshotV2 invariants", () => {
 
     it("copies meaningful auto overrides without mutating the input map", () => {
         const overrides = {
-            "auto-0": { hex: "#FF0000", isTransparent: false },
+            "auto-0": {
+                hex: "#FF0000",
+                isTransparent: false,
+                transparentSourceHex: "#AABBCC",
+            },
             "auto-1": { hex: "" },
         }
 
@@ -968,12 +972,20 @@ describe("ProjectSnapshotV2 invariants", () => {
         )
 
         expect(result).toEqual({
-            "auto-0": { hex: "#FF0000", isTransparent: false },
+            "auto-0": {
+                hex: "#FF0000",
+                isTransparent: false,
+                transparentSourceHex: "#AABBCC",
+            },
         })
         expect(result).not.toBe(overrides)
         expect(result["auto-0"]).not.toBe(overrides["auto-0"])
         expect(overrides).toEqual({
-            "auto-0": { hex: "#FF0000", isTransparent: false },
+            "auto-0": {
+                hex: "#FF0000",
+                isTransparent: false,
+                transparentSourceHex: "#AABBCC",
+            },
             "auto-1": { hex: "" },
         })
     })

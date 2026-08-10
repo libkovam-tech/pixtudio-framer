@@ -813,6 +813,8 @@ test("iPadOS desktop Safari opens native camera file input", async (
     const errors = collectBrowserErrors(page)
 
     await openBearProject(page)
+    await page.getByRole("button", { name: "Open" }).click()
+    await expect(page.getByRole("button", { name: "Camera" })).toBeVisible()
     const fileChooserPromise = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "Camera" }).click()
     const chooser = await fileChooserPromise

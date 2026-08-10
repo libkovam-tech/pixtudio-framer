@@ -10,6 +10,11 @@ import {
     SvgOkButton,
 } from "./SvgIcons.tsx"
 import {
+    PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
+    getViewportCompensatedActionButtonStyle,
+    getViewportCompensatedPx,
+} from "./viewportActionButtons.ts"
+import {
     runQuantizationExportPipeline,
     type RecorderExportAudioTrack,
     type RecorderExportDebugLog,
@@ -1933,17 +1938,20 @@ export default function QuantizationRecorder({
         <>
             <FitToViewport background={SURFACE_BG}>
                 {(fitScale) => {
-                    const bottomButtonsCompensationScale =
-                        fitScale > 1e-6 ? 1 / fitScale : 1
-
-                    const bottomActionButtonStyle: React.CSSProperties = {
-                        ...okCancelButtonStyle,
-                        width: 50 * bottomButtonsCompensationScale,
-                        height: 50 * bottomButtonsCompensationScale,
-                        marginTop: 18 * bottomButtonsCompensationScale,
-                        marginLeft: 14 * bottomButtonsCompensationScale,
-                        marginRight: 14 * bottomButtonsCompensationScale,
-                    }
+                    const bottomActionButtonStyle =
+                        getViewportCompensatedActionButtonStyle(
+                            okCancelButtonStyle,
+                            fitScale,
+                            {
+                                marginTop: 18,
+                                marginLeft: 0,
+                                marginRight: 0,
+                            }
+                        )
+                    const bottomActionButtonGap = getViewportCompensatedPx(
+                        PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
+                        fitScale
+                    )
 
                     return (
                 <>
@@ -2328,7 +2336,7 @@ export default function QuantizationRecorder({
                             display: "flex",
                             justifyContent: "center",
                             alignItems: "center",
-                            gap: 16,
+                            gap: bottomActionButtonGap,
                             paddingTop: 4,
                         }}
                     >

@@ -316,7 +316,16 @@ describe("MethodPanel", () => {
         })
 
         expect(markup).toContain("width:62.5px;height:62.5px")
-        expect(markup).toContain("gap:52.5px")
+        expect(markup).toContain("gap:35px")
+    })
+
+    it("compensates desktop action buttons for the editor fit scale", () => {
+        const markup = renderMethodPanel({
+            viewportScale: 0.8,
+        })
+
+        expect(markup).toContain("width:62.5px;height:62.5px")
+        expect(markup).toContain("gap:35px")
     })
 
     it("evaluates compatibility from method, color space, and palette context", () => {
