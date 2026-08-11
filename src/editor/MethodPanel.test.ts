@@ -309,6 +309,13 @@ describe("MethodPanel", () => {
         )
     })
 
+    it("does not render the temporary Method status marker", () => {
+        const markup = renderMethodPanel()
+
+        expect(markup).not.toContain("Status:")
+        expect(markup).not.toContain("Ready")
+    })
+
     it("compensates mobile action buttons for the editor fit scale", () => {
         const markup = renderMethodPanel({
             isMobileUI: true,

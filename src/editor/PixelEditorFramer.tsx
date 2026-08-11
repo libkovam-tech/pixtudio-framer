@@ -165,9 +165,9 @@ import {
     completeMethodSessionPreview,
     createMethodSession,
     failMethodSessionPreview,
-    requestMethodSessionPreview,
     selectMethodSessionDeConfettiSettings,
     selectMethodSessionProfile,
+    seedMethodSessionPreview,
     type MethodSessionPreviewRequest,
     type MethodSessionState,
 } from "./MethodSession.ts"
@@ -257,6 +257,7 @@ import {
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 const CANVAS_SIZE = 512
+const CANVAS_RENDER_EDGE_BLEED_PX = 2
 const TRANSPARENT_PIXEL = "__PX_TRANSPARENT__" as const
 
 const MODAL_OVERLAY_STYLE: React.CSSProperties = {
@@ -5348,6 +5349,8 @@ function PixelEditorFramer({
                       colors: source.fixedPaletteProfile.colors.slice(),
                       applicationColors:
                           source.fixedPaletteProfile.applicationColors?.slice(),
+                      transparentSwatchIds:
+                          source.fixedPaletteProfile.transparentSwatchIds?.slice(),
                   }
                 : undefined,
             excludedColors: source.excludedColors.slice(),
@@ -5391,11 +5394,30 @@ function PixelEditorFramer({
             excludedColors: request.frozenSource.excludedColors,
             requestId: request.requestId,
         })
+        const transparentSwatchIds = new Set(
+            request.frozenSource.fixedPaletteProfile?.transparentSwatchIds ?? []
+        )
+        const autoSwatches = cloneSwatches(result.autoSwatches).map((swatch) =>
+            transparentSwatchIds.has(swatch.id)
+                ? { ...swatch, isTransparent: true }
+                : swatch
+        )
         return {
-            autoSwatches: cloneSwatches(result.autoSwatches),
+            autoSwatches,
             imagePixels: clonePixelsGrid(result.imagePixels),
             overlayPixels: clonePixelsGrid(result.overlayPixels),
             canvasPixels: clonePixelsGrid(result.canvasPixels),
+        }
+    }
+
+    function buildMethodPreviewFromCurrentWorld(
+        world: DerivedWorld<PixelValue>
+    ): MethodPreviewState {
+        return {
+            autoSwatches: cloneSwatches(world.autoSwatches),
+            imagePixels: clonePixelsGrid(world.imagePixels),
+            overlayPixels: clonePixelsGrid(world.overlayPixels),
+            canvasPixels: clonePixelsGrid(world.canvasPixels),
         }
     }
 
@@ -5524,24 +5546,27 @@ function PixelEditorFramer({
                       : undefined,
             excludedColors: deletedAutoPaletteColors.slice(),
         }
-        const session = createMethodSession<
-            ProjectState,
-            MethodFrozenSource,
-            MethodPreviewState
-        >({
-            beforeState: before,
-            frozenSource,
-            paletteContext,
-            methodProfilesByPaletteContext,
-            deConfettiByPaletteContext,
-            cloneBeforeState: cloneProjectStateForMethodSession,
-            cloneFrozenSource: cloneMethodFrozenSource,
-        })
-        const transition = requestMethodSessionPreview(session)
+        const session = seedMethodSessionPreview(
+            createMethodSession<
+                ProjectState,
+                MethodFrozenSource,
+                MethodPreviewState
+            >({
+                beforeState: before,
+                frozenSource,
+                paletteContext,
+                methodProfilesByPaletteContext,
+                deConfettiByPaletteContext,
+                cloneBeforeState: cloneProjectStateForMethodSession,
+                cloneFrozenSource: cloneMethodFrozenSource,
+            }),
+            {
+                preview: buildMethodPreviewFromCurrentWorld(frozenWorld),
+            }
+        )
 
-        methodSessionRef.current = transition.session
-        setMethodSession(transition.session)
-        runMethodPreviewRequest(transition.request)
+        methodSessionRef.current = session
+        setMethodSession(session)
     }
 
     function cancelMethodMode() {
@@ -8329,6 +8354,48 @@ function PixelEditorFramer({
         return true
     }
 
+    function beginCanvasPanFromPointerEvent(e: any) {
+        const view = viewportViewRef.current
+        panSessionRef.current = {
+            active: true,
+            startClientX: e.clientX,
+            startClientY: e.clientY,
+            startPanX: view.panX,
+            startPanY: view.panY,
+        }
+        setIsPanning(true)
+        hideBrushPreview()
+        clearPipetteHoverCell()
+
+        try {
+            ;(e.currentTarget as any)?.setPointerCapture?.(e.pointerId)
+        } catch {
+            // Ignore browsers that do not support pointer capture here.
+        }
+    }
+
+    function updateCanvasPanFromPointerEvent(e: any): boolean {
+        if (!panSessionRef.current.active || toolMode !== "hand") return false
+
+        const fit = Math.max(0.0001, fitScaleRef.current || 1)
+        const dx = (e.clientX - panSessionRef.current.startClientX) / fit
+        const dy = (e.clientY - panSessionRef.current.startClientY) / fit
+
+        const nextX = panSessionRef.current.startPanX + dx
+        const nextY = panSessionRef.current.startPanY + dy
+        const next = clampPan(nextX, nextY, viewportViewRef.current.zoom)
+
+        viewportViewRef.current = {
+            zoom: viewportViewRef.current.zoom,
+            panX: next.x,
+            panY: next.y,
+        }
+        setPanX(next.x)
+        setPanY(next.y)
+
+        return true
+    }
+
     function makeUserPaintSwatchId() {
         return `user-${Date.now().toString(36)}-${Math.random()
             .toString(36)
@@ -8384,21 +8451,7 @@ function PixelEditorFramer({
 
         // --- Step 7: HAND tool starts panning instead of drawing ---
         if (toolMode === "hand") {
-            panSessionRef.current = {
-                active: true,
-                startClientX: e.clientX,
-                startClientY: e.clientY,
-                startPanX: panX,
-                startPanY: panY,
-            }
-            setIsPanning(true)
-
-            try {
-                ;(e.currentTarget as any)?.setPointerCapture?.(e.pointerId)
-            } catch {
-                // Ignore browsers that do not support pointer capture here.
-            }
-
+            beginCanvasPanFromPointerEvent(e)
             return
         }
 
@@ -8432,7 +8485,7 @@ function PixelEditorFramer({
         activeStrokePresetCellKeysRef.current =
             paletteTabsState.activeTab === "presets" ? new Set() : null
 
-        // переводим позицию указателя (0..CANVAS_SIZE) в индексы клетки
+        // Convert pointer position (0..CANVAS_SIZE) into cell indices.
         const x = pointerRef.current.x
         const y = pointerRef.current.y
 
@@ -8523,26 +8576,12 @@ function PixelEditorFramer({
         }
 
         // --- Step 8: panning ---
-        if (panSessionRef.current.active && toolMode === "hand") {
-            const fit = Math.max(0.0001, fitScaleRef.current || 1)
-            const dx = (e.clientX - panSessionRef.current.startClientX) / fit
-            const dy = (e.clientY - panSessionRef.current.startClientY) / fit
+        if (updateCanvasPanFromPointerEvent(e)) return
 
-            const nextX = panSessionRef.current.startPanX + dx
-            const nextY = panSessionRef.current.startPanY + dy
-
-            const clamped = clampPan(nextX, nextY, zoom)
-
-            if (clamped.x !== panX) setPanX(clamped.x)
-            if (clamped.y !== panY) setPanY(clamped.y)
-
-            return
-        }
-
-        // обновляем pointerRef + preview-рамку (шаги 1–4)
+        // Update pointerRef and the preview frame (steps 1-4).
         updatePointerFromEvent(e, true)
 
-        // если не рисуем — просто двигаем рамку
+        // If we are not drawing, only move the preview frame.
         if (toolMode === "pipette") {
             updatePipetteHoverFromEvent(e)
             return
@@ -8603,13 +8642,14 @@ function PixelEditorFramer({
             vw: number,
             vh: number
         ) => {
-            // Content по базовой геометрии равен viewport (width/height 100%),
-            // а масштабируется zoom-ом.
+            // Content matches the base viewport geometry (width/height 100%)
+            // and is scaled by zoom.
             const contentW = vw * nextZoom
             const contentH = vh * nextZoom
 
-            // Если zoom=1 → content==viewport → pan должен быть 0.
-            // Если zoom>1 → можно двигать в пределах [vw - contentW, 0].
+            // At zoom=1 the content equals the viewport, so pan stays at 0.
+            // At zoom>1, movement is limited to the real canvas edge; visual
+            // edge bleed is handled by the rendered canvas layer, not by pan.
             const minX = Math.min(0, vw - contentW)
             const maxX = 0
             const minY = Math.min(0, vh - contentH)
@@ -8618,7 +8658,7 @@ function PixelEditorFramer({
             const x = Math.max(minX, Math.min(maxX, nextPanX))
             const y = Math.max(minY, Math.min(maxY, nextPanY))
 
-            // ✅ ПАТЧ 3: убиваем субпиксели на выходе
+            // Snap output values to whole CSS pixels.
             return { x: Math.round(x), y: Math.round(y) }
         },
         []
@@ -8635,8 +8675,7 @@ function PixelEditorFramer({
         [clampPanWithSize, getViewportSizeUnscaled]
     )
 
-    // Поджимать pan, если:
-    // - изменился zoom (уменьшили — чтобы pan не оказался вне диапазона)
+    // Clamp pan when zoom changes, especially after zooming out.
     React.useEffect(() => {
         if (!viewportSize.w || !viewportSize.h) return
 
@@ -8825,6 +8864,11 @@ function PixelEditorFramer({
         (event: React.WheelEvent<HTMLDivElement>) => {
             if (!ENABLE_DESKTOP_CANVAS_WHEEL_ZOOM) return
             if (isMobileUI) return
+            if (methodSessionRef.current) {
+                event.preventDefault()
+                event.stopPropagation()
+                return
+            }
 
             const viewport = viewportRef.current
             if (!viewport) return
@@ -8919,6 +8963,7 @@ function PixelEditorFramer({
 
         const handleSpaceDown = (event: KeyboardEvent) => {
             if (shouldIgnoreSpaceHandTarget(event.target)) return
+            if (methodSessionRef.current) return
 
             const next = startSpaceHandTool(spaceHandStateRef.current, {
                 enabled: ENABLE_DESKTOP_SPACE_HAND_TOOL,
@@ -9172,6 +9217,20 @@ function PixelEditorFramer({
     const canvasBorderColor = isMethodModeActive
         ? "rgba(255,255,255,0.74)"
         : pixtudioInk(0.55)
+    const canvasRenderEdgeBleed =
+        zoom > 1 ? CANVAS_RENDER_EDGE_BLEED_PX : 0
+    const canvasRenderLayerSize = canvasRenderEdgeBleed
+        ? `calc(100% + ${canvasRenderEdgeBleed}px)`
+        : "100%"
+    const canvasCursor = isMethodModeActive
+        ? "default"
+        : toolMode === "hand"
+          ? isPanning
+              ? "grabbing"
+              : "grab"
+          : toolMode === "pipette"
+            ? "crosshair"
+            : "crosshair"
     const textColor = PIXTUDIO_INK
     const canvasMax = 640
     const mobileEditorSideGap = isMobileUI ? 20 : 0
@@ -10403,6 +10462,7 @@ function PixelEditorFramer({
         const canShowPreview =
             SHOW_BRUSH_PREVIEW &&
             toolMode === "brush" &&
+            !methodSessionRef.current &&
             !isPanning &&
             p.inside
 
@@ -10544,7 +10604,7 @@ function PixelEditorFramer({
     }, [brushSize, cols, rows, toolMode, isPanning])
 
     function handleCanvasViewportPointerEnter(e: any) {
-        if (isMobileUI || overlayMode) return
+        if (isMobileUI || overlayMode || methodSessionRef.current) return
 
         updatePointerFromEvent(e, true)
         updatePipetteHoverFromEvent(e)
@@ -10569,6 +10629,12 @@ function PixelEditorFramer({
             e.preventDefault()
         }
 
+        if (panSessionRef.current.active) {
+            panSessionRef.current.active = false
+            setIsPanning(false)
+            return
+        }
+
         if (methodSessionRef.current) return
 
         if (
@@ -10582,13 +10648,6 @@ function PixelEditorFramer({
                 }
                 return
             }
-        }
-
-        // --- Step 7: stop panning ---
-        if (panSessionRef.current.active) {
-            panSessionRef.current.active = false
-            setIsPanning(false)
-            return
         }
 
         lastDrawPointRef.current = null
@@ -11139,8 +11198,7 @@ function PixelEditorFramer({
 
             if (
                 quantizationProfile.kind === "fixed" &&
-                editingSwatchId.startsWith("auto-") &&
-                !pendingTransparent
+                editingSwatchId.startsWith("auto-")
             ) {
                 const preparedEdit =
                     USE_LEGACY_FIXED_PRESET_SWATCH_EDIT_ROLLBACK
@@ -11152,6 +11210,7 @@ function PixelEditorFramer({
                               swatchId: editingSwatchId,
                               displayedColor: currentSwatch.color,
                               nextColor: colorUpper,
+                              nextIsTransparent: pendingTransparent,
                               autoSwatches,
                               importedPalettePresets,
                           })
@@ -11160,6 +11219,7 @@ function PixelEditorFramer({
                                   profile: quantizationProfile,
                                   swatchId: editingSwatchId,
                                   nextColor: colorUpper,
+                                  nextIsTransparent: pendingTransparent,
                                   autoSwatches,
                                   importedPalettePresets,
                                   makeImportedId: makeImportedPalettePresetId,
@@ -12465,7 +12525,7 @@ function PixelEditorFramer({
                         width: actualCanvasWidth,
                         height: actualCanvasHeight,
                         border: `2px solid ${canvasBorderColor}`,
-                        background: "#ffffff",
+                        background: checkerBackground,
                         backgroundClip: "padding-box",
                         display: "flex",
                         alignItems: "center",
@@ -12487,14 +12547,7 @@ function PixelEditorFramer({
                             overflow: "hidden", // Clip the canvas window.
 
                             // --- Step 10: cursors ---
-                            cursor:
-                                toolMode === "hand"
-                                    ? isPanning
-                                        ? "grabbing"
-                                        : "grab"
-                                    : toolMode === "pipette"
-                                      ? "crosshair"
-                                      : "crosshair",
+                            cursor: canvasCursor,
 
                             userSelect: "none",
 
@@ -12517,8 +12570,8 @@ function PixelEditorFramer({
                             <div
                                 style={{
                                     position: "relative",
-                                    width: "100%",
-                                    height: "100%",
+                                    width: canvasRenderLayerSize,
+                                    height: canvasRenderLayerSize,
                                 }}
                             >
                                 <canvas
@@ -12530,11 +12583,7 @@ function PixelEditorFramer({
                                         touchAction: "none",
                                         cursor: overlayMode
                                             ? "default"
-                                            : toolMode === "hand"
-                                              ? isPanning
-                                                  ? "grabbing"
-                                                  : "grab"
-                                              : "crosshair",
+                                            : canvasCursor,
 
                                         display: "block",
                                     }}

@@ -19,6 +19,7 @@ export type QuantizationProfile =
           applicationSource?: "builtin" | "imported"
           applicationProfileId?: string
           applicationColors?: string[]
+          transparentSwatchIds?: string[]
       }
 
 export type PaletteTab = "size" | "presets"

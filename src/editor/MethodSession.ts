@@ -102,6 +102,12 @@ export type MethodSessionCancelResult<TBeforeState> = {
     committedDeConfetti: DeConfettiSettings
 }
 
+export type MethodSessionPreviewSeedInput<TPreview> = {
+    preview: TPreview
+    renderedProfile?: Partial<MethodProfile> | null
+    renderedDeConfetti?: Partial<DeConfettiSettings> | null
+}
+
 export type MethodSessionApplyResult<TBeforeState, TPreview> =
     | {
           ok: true
@@ -304,6 +310,39 @@ export function requestMethodSessionPreview<
     return {
         session: nextSession,
         request: makePreviewRequest(nextSession),
+    }
+}
+
+export function seedMethodSessionPreview<
+    TBeforeState,
+    TFrozenSource,
+    TPreview,
+>(
+    session: MethodSessionState<TBeforeState, TFrozenSource, TPreview>,
+    input: MethodSessionPreviewSeedInput<TPreview>
+): MethodSessionState<TBeforeState, TFrozenSource, TPreview> {
+    const renderedProfile = resolveMethodProfile(
+        input.renderedProfile ?? session.selectedProfile,
+        session.frozenPaletteContext
+    )
+    const renderedDeConfetti =
+        input.renderedDeConfetti == null
+            ? session.selectedDeConfetti
+            : resolveDeConfettiByPaletteContext({
+                  [session.frozenPaletteContext]: {
+                      ...session.selectedDeConfetti,
+                      ...input.renderedDeConfetti,
+                  },
+              })[session.frozenPaletteContext]
+
+    return {
+        ...session,
+        renderedProfile: cloneMethodProfile(renderedProfile),
+        renderedDeConfetti: cloneDeConfettiSettings(renderedDeConfetti),
+        pendingRequestId: null,
+        status: "ready",
+        error: null,
+        lastValidPreview: input.preview,
     }
 }
 

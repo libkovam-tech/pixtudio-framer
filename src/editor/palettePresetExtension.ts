@@ -45,6 +45,7 @@ export type EditableFixedPaletteProfile = {
     applicationSource?: "builtin" | "imported"
     applicationProfileId?: string
     applicationColors?: string[]
+    transparentSwatchIds?: string[]
 }
 
 export type FixedPaletteExtensionResult<
@@ -668,12 +669,26 @@ function normalizeEditablePaletteColor(color: string): string {
 export function makeAutoSwatchesFromFixedProfile(
     profile: EditableFixedPaletteProfile
 ): FixedPaletteAutoSwatch[] {
+    const transparentSwatchIds = new Set(profile.transparentSwatchIds ?? [])
     return getFixedProfilePaletteForDisplay(profile).map((color, index) => ({
         id: `auto-${index}`,
         color,
-        isTransparent: false,
+        isTransparent: transparentSwatchIds.has(`auto-${index}`),
         isUser: false,
     }))
+}
+
+function applyFixedPaletteProfileTransparentSwatches<
+    TSwatch extends FixedPaletteEditSwatchLike,
+>(
+    profile: EditableFixedPaletteProfile,
+    autoSwatches: ReadonlyArray<TSwatch>
+): TSwatch[] {
+    const transparentSwatchIds = new Set(profile.transparentSwatchIds ?? [])
+    return autoSwatches.map((swatch) => ({
+        ...swatch,
+        isTransparent: transparentSwatchIds.has(swatch.id),
+    })) as TSwatch[]
 }
 
 function getFixedPaletteSwatchIndex(swatchId: string): number | null {
@@ -694,6 +709,10 @@ export function applyFixedPaletteDisplayOverrideSwatches<
     const fixedColors = getFixedProfilePaletteForApplication(input.profile).map(
         (color) => normalizeEditablePaletteColor(color)
     )
+    const displayColors = getFixedProfilePaletteForDisplay(input.profile).map(
+        (color) => normalizeEditablePaletteColor(color)
+    )
+    const transparentSwatchIds = new Set(input.profile.transparentSwatchIds ?? [])
     const previousById = new Map(
         input.previousAutoSwatches.map((swatch) => [swatch.id, swatch])
     )
@@ -702,10 +721,20 @@ export function applyFixedPaletteDisplayOverrideSwatches<
         const swatchIndex = getFixedPaletteSwatchIndex(swatch.id)
         const fixedColor =
             swatchIndex == null ? null : fixedColors[swatchIndex] ?? null
+        const displayColor =
+            swatchIndex == null ? null : displayColors[swatchIndex] ?? null
         const previousSwatch = previousById.get(swatch.id)
         const previousColor = previousSwatch
             ? normalizeImportedPaletteHex(previousSwatch.color)
             : null
+
+        if (transparentSwatchIds.has(swatch.id)) {
+            return {
+                ...swatch,
+                color: displayColor ?? previousColor ?? swatch.color,
+                isTransparent: true,
+            } as TSwatch
+        }
 
         if (
             !previousSwatch ||
@@ -996,7 +1025,13 @@ function preparePaletteWorldFromReference<
         result: ReturnType<typeof runQuantization<TPixel>>
     ) => {
         return {
-            autoSwatches: result.autoSwatches,
+            autoSwatches:
+                input.profile.kind === "fixed"
+                    ? applyFixedPaletteProfileTransparentSwatches(
+                          input.profile,
+                          result.autoSwatches
+                      )
+                    : result.autoSwatches,
             imagePixels: result.imagePixels,
             overlayPixels: result.overlayPixels,
             canvasPixels: result.canvasPixels,
@@ -1565,6 +1600,7 @@ export function makeEditableFixedPresetProfile<
             applicationColors: profile.applicationColors?.map(
                 normalizeEditablePaletteColor
             ),
+            transparentSwatchIds: profile.transparentSwatchIds?.slice(),
         } as EditableFixedPaletteProfile & { source: "imported" }
     }
 
@@ -1581,7 +1617,28 @@ export function makeEditableFixedPresetProfile<
         applicationColors: getFixedProfilePaletteForApplication(profile).map(
             normalizeEditablePaletteColor
         ),
+        transparentSwatchIds: profile.transparentSwatchIds?.slice(),
     }
+}
+
+function replaceFixedProfileTransparentSwatchId<
+    T extends EditableFixedPaletteProfile,
+>(profile: T, swatchId: string, isTransparent: boolean): T {
+    const current = profile.transparentSwatchIds ?? []
+    const next = isTransparent
+        ? current.includes(swatchId)
+            ? current.slice()
+            : [...current, swatchId]
+        : current.filter((id) => id !== swatchId)
+
+    if (next.length === current.length && next.every((id, i) => id === current[i])) {
+        return profile
+    }
+
+    const { transparentSwatchIds: _transparentSwatchIds, ...rest } = profile
+    return (next.length > 0
+        ? { ...profile, transparentSwatchIds: next }
+        : rest) as T
 }
 
 function replaceFixedProfileDisplaySwatchColor<
@@ -1810,11 +1867,13 @@ export function prepareFixedPaletteSwatchEdit<
     swatchId: string
     displayedColor: string
     nextColor: string
+    nextIsTransparent?: boolean
     autoSwatches: ReadonlyArray<TSwatch>
 }): FixedPaletteSwatchEditResult<TProfile, TSwatch> {
     const targetColor = normalizeImportedPaletteHex(input.displayedColor)
     const nextColor = normalizeImportedPaletteHex(input.nextColor)
-    if (!targetColor || !nextColor) {
+    const nextIsTransparent = input.nextIsTransparent === true
+    if (!targetColor || (!nextColor && !nextIsTransparent)) {
         return {
             profile: input.profile,
             autoSwatches: input.autoSwatches.slice(),
@@ -1827,7 +1886,7 @@ export function prepareFixedPaletteSwatchEdit<
         const colorHex = normalizeImportedPaletteHex(color)
         if (!replaced && colorHex === targetColor) {
             replaced = true
-            return nextColor
+            return nextColor ?? targetColor
         }
         return colorHex ?? color
     })
@@ -1841,16 +1900,20 @@ export function prepareFixedPaletteSwatchEdit<
     }
 
     return {
-        profile: {
-            ...input.profile,
-            colors: nextColors,
-        },
+        profile: replaceFixedProfileTransparentSwatchId(
+            {
+                ...input.profile,
+                colors: nextColors,
+            },
+            input.swatchId,
+            nextIsTransparent
+        ),
         autoSwatches: input.autoSwatches.map((swatch) =>
             swatch.id === input.swatchId
                 ? ({
                       ...swatch,
-                      color: nextColor,
-                      isTransparent: false,
+                      color: nextColor ?? targetColor,
+                      isTransparent: nextIsTransparent,
                   } as TSwatch)
                 : swatch
         ),
@@ -1867,6 +1930,7 @@ export function prepareFixedPalettePresetSwatchEditApplication<
     swatchId: string
     displayedColor: string
     nextColor: string
+    nextIsTransparent?: boolean
     autoSwatches: ReadonlyArray<TSwatch>
     importedPalettePresets: ReadonlyArray<TPreset>
 }): FixedPalettePresetSwatchEditApplicationResult<
@@ -1879,6 +1943,7 @@ export function prepareFixedPalettePresetSwatchEditApplication<
         swatchId: input.swatchId,
         displayedColor: input.displayedColor,
         nextColor: input.nextColor,
+        nextIsTransparent: input.nextIsTransparent,
         autoSwatches: input.autoSwatches,
     })
     if (!preparedEdit.edited) return { kind: "ignored" }
@@ -1901,6 +1966,7 @@ export function prepareFixedPaletteDisplayOverrideSwatchEditApplication<
     profile: EditableFixedPaletteProfile
     swatchId: string
     nextColor: string
+    nextIsTransparent?: boolean
     autoSwatches: ReadonlyArray<TSwatch>
     importedPalettePresets: ReadonlyArray<TPreset>
     makeImportedId: () => string
@@ -1910,25 +1976,42 @@ export function prepareFixedPaletteDisplayOverrideSwatchEditApplication<
     TSwatch
 > {
     const nextColor = normalizeImportedPaletteHex(input.nextColor)
-    if (!nextColor) return { kind: "ignored" }
+    const nextIsTransparent = input.nextIsTransparent === true
+    const editableProfile = makeEditableFixedPresetProfile(
+        input.profile,
+        input.makeImportedId
+    )
 
     let edited = false
     const autoSwatches = input.autoSwatches.map((swatch) => {
         if (swatch.id !== input.swatchId) return swatch
+        const swatchColor = normalizeImportedPaletteHex(swatch.color)
+        if (!nextColor && (!nextIsTransparent || !swatchColor)) return swatch
+        const replacementColor = nextIsTransparent
+            ? swatchColor ?? nextColor
+            : nextColor
+        if (!replacementColor) return swatch
         edited = true
         return {
             ...swatch,
-            color: nextColor,
-            isTransparent: false,
+            color: replacementColor,
+            isTransparent: nextIsTransparent,
         } as TSwatch
     })
 
     if (!edited) return { kind: "ignored" }
 
-    const profile = replaceFixedProfileDisplaySwatchColor(
-        makeEditableFixedPresetProfile(input.profile, input.makeImportedId),
+    const profileWithColor = nextIsTransparent
+        ? editableProfile
+        : replaceFixedProfileDisplaySwatchColor(
+              editableProfile,
+              input.swatchId,
+              nextColor as string
+          )
+    const profile = replaceFixedProfileTransparentSwatchId(
+        profileWithColor,
         input.swatchId,
-        nextColor
+        nextIsTransparent
     )
 
     return {

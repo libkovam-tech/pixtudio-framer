@@ -2072,6 +2072,87 @@ describe("palette preset extension", () => {
         })
     })
 
+    it("creates custom preset registry entries for builtin fixed transparency edits", () => {
+        const builtinProfile = {
+            ...profile,
+            source: "builtin" as const,
+            id: "sunset-10",
+            name: "SUNSET",
+        }
+        const autoSwatches = [
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+        ]
+
+        const result =
+            prepareFixedPaletteDisplayOverrideSwatchEditApplication({
+                profile: builtinProfile,
+                swatchId: "auto-1",
+                nextColor: "#E9D8A6",
+                nextIsTransparent: true,
+                autoSwatches,
+                importedPalettePresets: [],
+                makeImportedId: () => "sunset-custom",
+            })
+
+        expect(result).toEqual({
+            kind: "edited",
+            profile: {
+                ...builtinProfile,
+                source: "imported",
+                id: "sunset-custom",
+                name: "SUNSET Custom",
+                colors: ["#001219", "#E9D8A6"],
+                applicationSource: "builtin",
+                applicationProfileId: "sunset-10",
+                applicationColors: builtinProfile.colors,
+                transparentSwatchIds: ["auto-1"],
+            },
+            autoSwatches: [
+                autoSwatches[0],
+                {
+                    id: "auto-1",
+                    color: "#E9D8A6",
+                    isTransparent: true,
+                },
+            ],
+            importedPalettePresets: [
+                {
+                    id: "sunset-custom",
+                    name: "SUNSET Custom",
+                    profile: {
+                        ...builtinProfile,
+                        source: "imported",
+                        id: "sunset-custom",
+                        name: "SUNSET Custom",
+                        colors: ["#001219", "#E9D8A6"],
+                        applicationSource: "builtin",
+                        applicationProfileId: "sunset-10",
+                        applicationColors: builtinProfile.colors,
+                        transparentSwatchIds: ["auto-1"],
+                    },
+                },
+            ],
+        })
+
+        if (result.kind !== "edited") throw new Error("expected edited")
+
+        expect(makeAutoSwatchesFromFixedProfile(result.profile)).toEqual([
+            {
+                id: "auto-0",
+                color: "#001219",
+                isTransparent: false,
+                isUser: false,
+            },
+            {
+                id: "auto-1",
+                color: "#E9D8A6",
+                isTransparent: true,
+                isUser: false,
+            },
+        ])
+    })
+
     it("builds fixed custom swatches from display colors after preset switches", () => {
         const customProfile = {
             ...profile,
@@ -2154,6 +2235,29 @@ describe("palette preset extension", () => {
         expect(result).toEqual([
             { id: "auto-0", color: "#001219", isTransparent: false },
             { id: "auto-1", color: "#FFFFFF", isTransparent: false },
+        ])
+    })
+
+    it("applies fixed display override transparency after requantize", () => {
+        const result = applyFixedPaletteDisplayOverrideSwatches({
+            profile: {
+                ...profile,
+                applicationColors: profile.colors,
+                transparentSwatchIds: ["auto-1"],
+            },
+            previousAutoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#E9D8A6", isTransparent: true },
+            ],
+            nextAutoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+            ],
+        })
+
+        expect(result).toEqual([
+            { id: "auto-0", color: "#001219", isTransparent: false },
+            { id: "auto-1", color: "#E9D8A6", isTransparent: true },
         ])
     })
 

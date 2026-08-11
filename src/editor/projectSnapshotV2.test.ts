@@ -578,6 +578,7 @@ describe("ProjectSnapshotV2 invariants", () => {
                     applicationSource: "builtin",
                     applicationProfileId: "sunset-10",
                     applicationColors: ["#001219", "#e9d8a6"],
+                    transparentSwatchIds: ["auto-1"],
                 },
                 (color) => (color.startsWith("rgb") ? "#010203" : color.toUpperCase())
             )
@@ -590,6 +591,7 @@ describe("ProjectSnapshotV2 invariants", () => {
             applicationSource: "builtin",
             applicationProfileId: "sunset-10",
             applicationColors: ["#001219", "#E9D8A6"],
+            transparentSwatchIds: ["auto-1"],
         })
     })
 
@@ -808,6 +810,7 @@ describe("ProjectSnapshotV2 invariants", () => {
                         applicationSource: "builtin",
                         applicationProfileId: "sunset-10",
                         applicationColors: ["#001219", "#E9D8A6"],
+                        transparentSwatchIds: ["auto-1"],
                     },
                 },
                 { fallback, resolveBuiltin }
@@ -821,6 +824,7 @@ describe("ProjectSnapshotV2 invariants", () => {
             applicationSource: "builtin",
             applicationProfileId: "sunset-10",
             applicationColors: ["#001219", "#E9D8A6"],
+            transparentSwatchIds: ["auto-1"],
         })
     })
 

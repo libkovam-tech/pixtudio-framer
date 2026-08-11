@@ -17,6 +17,7 @@ import {
     requestMethodSessionPreview,
     selectMethodSessionDeConfettiSettings,
     selectMethodSessionProfile,
+    seedMethodSessionPreview,
 } from "./MethodSession.ts"
 
 type BeforeState = {
@@ -107,6 +108,26 @@ describe("MethodSession", () => {
             methodId: FIXED_PALETTE_MAPPING_METHOD_ID,
             colorSpaceId: OKLAB_COLOR_SPACE_ID,
         })
+    })
+
+    it("seeds an initial preview without creating a pending request", () => {
+        const session = createMethodSession<BeforeState, FrozenSource, Preview>({
+            beforeState: beforeState(),
+            frozenSource: frozenSource(),
+            paletteContext: "auto",
+            requestId: 7,
+        })
+        const preview = { pixels: [["auto-0"]] }
+
+        const seeded = seedMethodSessionPreview(session, { preview })
+
+        expect(seeded.status).toBe("ready")
+        expect(seeded.requestId).toBe(7)
+        expect(seeded.pendingRequestId).toBeNull()
+        expect(seeded.lastValidPreview).toBe(preview)
+        expect(seeded.renderedProfile).toEqual(session.selectedProfile)
+        expect(seeded.renderedDeConfetti).toEqual(session.selectedDeConfetti)
+        expect(canApplyMethodSession(seeded)).toBe(true)
     })
 
     it("creates a new session id for each METHOD session", () => {

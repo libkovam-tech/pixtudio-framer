@@ -113,6 +113,7 @@ export type ProjectSnapshotV2 = {
               applicationSource?: "builtin" | "imported"
               applicationProfileId?: string
               applicationColors?: string[]
+              transparentSwatchIds?: string[]
           }
     smartObjectState?: {
         version: typeof PROJECT_SNAPSHOT_V2_SMART_REFERENCE_VERSION
@@ -163,6 +164,7 @@ export type ProjectSnapshotV2ResolvedQuantizationProfile =
           applicationSource?: "builtin" | "imported"
           applicationProfileId?: string
           applicationColors?: string[]
+          transparentSwatchIds?: string[]
       }
 export type ProjectSnapshotV2MethodProfilesByPaletteContextInput =
     MethodProfilesByPaletteContext
@@ -521,6 +523,9 @@ export function serializeQuantizationProfileForSnapshot(
             normalizeColor(color)
         )
     }
+    if (profile.transparentSwatchIds) {
+        serialized.transparentSwatchIds = profile.transparentSwatchIds.slice()
+    }
 
     return serialized
 }
@@ -795,6 +800,9 @@ export function resolveProjectSnapshotV2QuantizationProfile(
     }
     if (saved.applicationColors) {
         importedProfile.applicationColors = saved.applicationColors
+    }
+    if (saved.transparentSwatchIds) {
+        importedProfile.transparentSwatchIds = saved.transparentSwatchIds
     }
     return importedProfile
 }
@@ -1085,6 +1093,11 @@ export function canonicalizeSnapshotV2(
                     ...s.quantizationProfile.applicationColors,
                 ]
             }
+            if (s.quantizationProfile.transparentSwatchIds) {
+                importedProfile.transparentSwatchIds = [
+                    ...s.quantizationProfile.transparentSwatchIds,
+                ]
+            }
             canonical.quantizationProfile = importedProfile
         }
     }
@@ -1233,6 +1246,9 @@ export function validateProjectSnapshotV2OrThrow(
                 if ("applicationColors" in qp) {
                     importedKeys.push("applicationColors")
                 }
+                if ("transparentSwatchIds" in qp) {
+                    importedKeys.push("transparentSwatchIds")
+                }
                 assertExactKeys(
                     qp,
                     importedKeys,
@@ -1315,6 +1331,34 @@ export function validateProjectSnapshotV2OrThrow(
                             throw makeLoadGateError(
                                 "E_PALETTE",
                                 `quantizationProfile.applicationColors[${i}]: invalid hex`
+                            )
+                        }
+                    }
+                }
+                if ("transparentSwatchIds" in qp) {
+                    if (!Array.isArray(qp.transparentSwatchIds)) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.transparentSwatchIds: not array"
+                        )
+                    }
+                    if (qp.transparentSwatchIds.length > 256) {
+                        throw makeLoadGateError(
+                            "E_PALETTE",
+                            "quantizationProfile.transparentSwatchIds: invalid length"
+                        )
+                    }
+                    for (let i = 0; i < qp.transparentSwatchIds.length; i++) {
+                        const id = qp.transparentSwatchIds[i]
+                        assertString(
+                            id,
+                            "E_PALETTE",
+                            `quantizationProfile.transparentSwatchIds[${i}]`
+                        )
+                        if (!/^auto-\d+$/.test(id)) {
+                            throw makeLoadGateError(
+                                "E_PALETTE",
+                                `quantizationProfile.transparentSwatchIds[${i}]: invalid id`
                             )
                         }
                     }

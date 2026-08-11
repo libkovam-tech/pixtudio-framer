@@ -116,6 +116,7 @@ export function cloneQuantizationProfileForHistory(
         ...profile,
         colors: profile.colors.slice(),
         applicationColors: profile.applicationColors?.slice(),
+        transparentSwatchIds: profile.transparentSwatchIds?.slice(),
     }
 }
 
@@ -241,6 +242,7 @@ export function areCommittedQuantizationProfilesEqual(
         if (aa.colors[i] !== bb.colors[i]) return false
     }
     return areColorArraysEqual(aa.applicationColors, bb.applicationColors)
+        && areColorArraysEqual(aa.transparentSwatchIds, bb.transparentSwatchIds)
 }
 
 export function areCommittedMethodProfilesEqual(

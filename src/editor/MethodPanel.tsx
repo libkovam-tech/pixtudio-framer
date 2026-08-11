@@ -296,7 +296,6 @@ export function MethodPanel({
     paletteContext,
     selectedProfile,
     deConfettiSettings,
-    status,
     canApply,
     isMobileUI,
     viewportScale = 1,
@@ -335,13 +334,6 @@ export function MethodPanel({
         isMobileUI ? 8 : 10,
         viewportScale
     )
-    const statusText =
-        status === "pending"
-            ? "Rendering preview"
-            : status === "error"
-              ? "Preview unavailable"
-              : ""
-
     return (
         <div
             style={{
@@ -531,20 +523,6 @@ export function MethodPanel({
                         })}
                     </div>
                 </div>
-            </div>
-
-            <div
-                style={{
-                    minHeight: 18,
-                    marginTop: isMobileUI ? 18 : 22,
-                    color: "rgba(255,255,255,0.58)",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: 0,
-                    textAlign: "center",
-                }}
-            >
-                {statusText}
             </div>
 
             <div
