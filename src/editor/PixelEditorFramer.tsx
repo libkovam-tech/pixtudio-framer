@@ -117,12 +117,15 @@ import {
     areEditorCommittedStatesEqual,
     cloneDeConfettiByPaletteContextForHistory,
     cloneMethodProfilesByPaletteContextForHistory,
+    cloneEditorPaletteTabsSnapshotForHistory,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
     cloneSwatches,
     imageDataSampleSignature,
     type EditorCommittedState,
+    type EditorPaletteTabWorldSnapshot,
+    type EditorPaletteTabsSnapshot,
     type ImageDataSampleSource,
 } from "./editorHistoryState.ts"
 import {
@@ -301,6 +304,10 @@ const ENABLE_SAVE_PATH_DEBUG_OVERLAY = false
 const ENABLE_DESKTOP_CANVAS_WHEEL_ZOOM = true
 const ENABLE_DESKTOP_SPACE_HAND_TOOL = true
 const ENABLE_MOBILE_CANVAS_PINCH_ZOOM = true
+const USE_COMMITTED_PALETTE_TABS_SNAPSHOT = true
+const MOBILE_MODULE_TABS_SCALE = 2 / 3
+const MODULE_TAB_BUTTON_SIZE = 60
+const MODULE_TAB_BUTTON_COUNT = 3
 const SPACE_HAND_SUPPRESS_FOCUS_CLASS = "pxSpaceHandSuppressFocus"
 
 const editorConsole = {
@@ -3825,7 +3832,7 @@ function PixelEditorFramer({
     }, [buildProjectSnapshotV2, showSaveLoadError])
 
     function onLoadProject(e: React.MouseEvent) {
-        coreLifecycleLog("load:menu-opened")
+        coreLifecycleLog("import:menu-opened")
         openOpenMenu(e)
     }
 
@@ -5318,6 +5325,9 @@ function PixelEditorFramer({
                 state.deletedAutoPaletteColors ?? []
             ).slice(),
             autoOverrides: { ...state.autoOverrides },
+            paletteTabsSnapshot: cloneEditorPaletteTabsSnapshotForHistory(
+                state.paletteTabsSnapshot
+            ),
         }
     }
 
@@ -6560,7 +6570,7 @@ function PixelEditorFramer({
                 quantizationProfile
             )
 
-        return {
+        const state = {
             gridSize,
             aspectRatioId,
             columns: gridColumns,
@@ -6591,11 +6601,12 @@ function PixelEditorFramer({
                     committedImportedPalettePresets
                 ),
             hiddenPresetIds: hiddenPresetIds.slice(),
-            activePaletteTab: paletteTabsState.activeTab,
+            activePaletteTab: paletteTabsStateRef.current.activeTab,
             deletedAutoPaletteColors: deletedAutoPaletteColors.slice(),
 
             autoOverrides: { ...autoOverrides },
         } as ProjectState
+        return withPaletteTabsSnapshotForProjectState(state)
     }
 
     function renderRecorderExportFrameImageData(params: {
@@ -6663,6 +6674,110 @@ function PixelEditorFramer({
     }
 
     const latestProjectStateRef = React.useRef<ProjectState | null>(null)
+
+    type ProjectPaletteTabWorldSnapshot = EditorPaletteTabWorldSnapshot<
+        PixelValue,
+        Swatch
+    >
+    type ProjectPaletteTabsSnapshot = EditorPaletteTabsSnapshot<
+        PixelValue,
+        Swatch
+    >
+
+    function makePaletteTabWorldSnapshot(
+        world: DerivedWorld<PixelValue> | null
+    ): ProjectPaletteTabWorldSnapshot | null {
+        if (!world) return null
+
+        return {
+            profile: cloneQuantizationProfileForHistory(world.profile),
+            referenceSignature: world.referenceSignature ?? null,
+            autoSwatches: cloneSwatches(world.autoSwatches),
+            imagePixels: clonePixelsGrid(world.imagePixels),
+            overlayPixels: clonePixelsGrid(world.overlayPixels),
+        }
+    }
+
+    function makePaletteTabsSnapshot(
+        state = paletteTabsStateRef.current
+    ): ProjectPaletteTabsSnapshot {
+        return {
+            activeTab: state.activeTab,
+            sizeWorld: makePaletteTabWorldSnapshot(state.sizeWorld),
+            presetsWorld: makePaletteTabWorldSnapshot(state.presetsWorld),
+        }
+    }
+
+    function restorePaletteTabWorldSnapshot(
+        snapshot: ProjectPaletteTabWorldSnapshot | null | undefined
+    ): DerivedWorld<PixelValue> | null {
+        if (!snapshot) return null
+
+        const imagePixels = clonePixelsGrid(snapshot.imagePixels)
+        const overlayPixels = clonePixelsGrid(snapshot.overlayPixels)
+        return {
+            profile: cloneQuantizationProfileForHistory(snapshot.profile),
+            referenceSignature: snapshot.referenceSignature ?? null,
+            autoSwatches: cloneSwatches(snapshot.autoSwatches),
+            imagePixels,
+            overlayPixels,
+            canvasPixels:
+                overlayOverBaseGrid(imagePixels, overlayPixels) ??
+                clonePixelsGrid(imagePixels),
+        }
+    }
+
+    function restorePaletteTabsSnapshot(
+        snapshot: ProjectPaletteTabsSnapshot
+    ): PaletteTabsState<PixelValue> {
+        return {
+            activeTab: snapshot.activeTab,
+            sizeWorld: restorePaletteTabWorldSnapshot(snapshot.sizeWorld),
+            presetsWorld: restorePaletteTabWorldSnapshot(snapshot.presetsWorld),
+        }
+    }
+
+    function makePaletteTabWorldSnapshotFromProjectState(
+        state: ProjectState
+    ): ProjectPaletteTabWorldSnapshot {
+        return {
+            profile: cloneQuantizationProfileForHistory(
+                state.quantizationProfile ?? EXTRACT_QUANTIZATION_PROFILE
+            ),
+            referenceSignature: imageDataSampleSignature(
+                state.referenceSnapshot ?? null
+            ),
+            autoSwatches: cloneSwatches(state.autoSwatches),
+            imagePixels: clonePixelsGrid(state.imagePixels),
+            overlayPixels: clonePixelsGrid(state.overlayPixels),
+        }
+    }
+
+    function withPaletteTabsSnapshotForProjectState(
+        state: ProjectState,
+        tabsState = paletteTabsStateRef.current
+    ): ProjectState {
+        const activeTab = state.activePaletteTab ?? tabsState.activeTab
+        const activeWorld = makePaletteTabWorldSnapshotFromProjectState(state)
+        const tabsSnapshot = makePaletteTabsSnapshot(tabsState)
+        const nextTabsSnapshot: ProjectPaletteTabsSnapshot = {
+            ...tabsSnapshot,
+            activeTab,
+            sizeWorld: activeTab === "size" ? activeWorld : tabsSnapshot.sizeWorld,
+            presetsWorld:
+                activeTab === "presets"
+                    ? activeWorld
+                    : tabsSnapshot.presetsWorld,
+        }
+
+        return {
+            ...state,
+            activePaletteTab: activeTab,
+            paletteTabsSnapshot: cloneEditorPaletteTabsSnapshotForHistory(
+                nextTabsSnapshot
+            ),
+        } as ProjectState
+    }
 
     const buildQuantizationRecorderSeed =
         React.useCallback((): QuantizationRecorderSeed | null => {
@@ -6980,6 +7095,7 @@ function PixelEditorFramer({
         quantizationProfile,
         importedPalettePresets,
         hiddenPresetIds,
+        paletteTabsState,
     ])
 
     function makeProjectStateWithOverlay(
@@ -7095,18 +7211,41 @@ function PixelEditorFramer({
             overlayPixels: clonePixelsGrid(state.overlayPixels),
             canvasPixels: restoredCanvas,
         }
+        const committedPaletteTabsSnapshot =
+            cloneEditorPaletteTabsSnapshotForHistory(
+                state.paletteTabsSnapshot
+            ) as ProjectPaletteTabsSnapshot | undefined
+        let restoredPaletteTabsSnapshot:
+            | ProjectPaletteTabsSnapshot
+            | undefined
         setPaletteTabsState((prev) => {
-            const nextTabsState = preparePaletteProjectStateRestoreTabs({
-                state: prev,
-                world: restoredWorld,
-                activePaletteTab: state.activePaletteTab,
-                fallbackActiveTab: paletteTabsState.activeTab,
-            })
+            const nextTabsState =
+                USE_COMMITTED_PALETTE_TABS_SNAPSHOT &&
+                committedPaletteTabsSnapshot
+                    ? restorePaletteTabsSnapshot({
+                          ...committedPaletteTabsSnapshot,
+                          activeTab:
+                              state.activePaletteTab ??
+                              committedPaletteTabsSnapshot.activeTab,
+                      })
+                    : preparePaletteProjectStateRestoreTabs({
+                          state: prev,
+                          world: restoredWorld,
+                          activePaletteTab: state.activePaletteTab,
+                          fallbackActiveTab: paletteTabsState.activeTab,
+                      })
             paletteUndoTrace("applyProjectState:tabs-restore", {
                 to: nextTabsState.activeTab,
                 profile: quantizationProfileTraceSummary(nextProfile),
                 previousActiveTab: prev.activeTab,
+                mode:
+                    USE_COMMITTED_PALETTE_TABS_SNAPSHOT &&
+                    committedPaletteTabsSnapshot
+                        ? "snapshot"
+                        : "legacy",
             })
+            paletteTabsStateRef.current = nextTabsState
+            restoredPaletteTabsSnapshot = makePaletteTabsSnapshot(nextTabsState)
             return nextTabsState
         })
 
@@ -7131,6 +7270,9 @@ function PixelEditorFramer({
                 (state as any).deletedAutoPaletteColors || []
             ).slice(),
             autoOverrides: { ...ao },
+            paletteTabsSnapshot: cloneEditorPaletteTabsSnapshotForHistory(
+                restoredPaletteTabsSnapshot ?? committedPaletteTabsSnapshot
+            ),
         } as ProjectState
 
         // Important: history flags are not changed here; undo/redo/pushCommit
@@ -7508,7 +7650,9 @@ function PixelEditorFramer({
         kind: EditorActionTransactionKind,
         beforeState?: ProjectState
     ) {
-        const before = beforeState ?? makeProjectState()
+        const before = withPaletteTabsSnapshotForProjectState(
+            beforeState ?? makeProjectState()
+        )
         paletteUndoTrace("editorAction:begin", {
             kind,
             before: editorCommittedStateTraceSummary(before),
@@ -7569,7 +7713,9 @@ function PixelEditorFramer({
             afterState?: ProjectState
         }
     ) {
-        const now = options?.afterState ?? makeProjectState()
+        const now = withPaletteTabsSnapshotForProjectState(
+            options?.afterState ?? makeProjectState()
+        )
         paletteUndoTrace("pushCommit", {
             before: editorCommittedStateTraceSummary(before),
             after: editorCommittedStateTraceSummary(now),
@@ -7593,6 +7739,7 @@ function PixelEditorFramer({
         // pushCommit no longer writes root history directly. It only closes
         // the local editor transaction; root history receives the commit
         // through the unified user-action protocol.
+        latestProjectStateRef.current = now
         commitEditorActionTransaction(now)
     }
 
@@ -8933,7 +9080,7 @@ function PixelEditorFramer({
     const [exportIncludeImage, setExportIncludeImage] = React.useState(true)
 
     const toggleExportStroke = React.useCallback(() => {
-        // нельзя оставить оба OFF — мягко игнорируем попытку снять последнюю галочку
+        // Do not allow both export layers to be off.
         if (exportIncludeStroke && !exportIncludeImage) return
         setExportIncludeStroke(!exportIncludeStroke)
     }, [exportIncludeStroke, exportIncludeImage])
@@ -8951,6 +9098,11 @@ function PixelEditorFramer({
     const cols = gridColumns
     const isMethodModeActive = methodSession !== null
     const editorControlsDisabled = !!overlayMode || isMethodModeActive
+    const moduleTabsScale = isMobileUI ? MOBILE_MODULE_TABS_SCALE : 1
+    const moduleTabsBaseWidth =
+        MODULE_TAB_BUTTON_SIZE * MODULE_TAB_BUTTON_COUNT
+    const moduleTabsScaledWidth = moduleTabsBaseWidth * moduleTabsScale
+    const moduleTabsScaledHeight = MODULE_TAB_BUTTON_SIZE * moduleTabsScale
     const currentMethodPaletteContext = getMethodPaletteContextForTab(
         paletteTabsState.activeTab
     )
@@ -12028,8 +12180,8 @@ function PixelEditorFramer({
                     margin: "0 auto",
                     width: "100%",
 
-                    // важно: как и в StartScreen — не держим "100%" высоты,
-                    // чтобы FitToViewport мерил естественный контент
+                    // As in StartScreen, keep natural height so FitToViewport
+                    // measures the real content.
                     height: "auto",
                     minHeight: "auto",
 
@@ -12054,7 +12206,7 @@ function PixelEditorFramer({
                         display: "flex",
                         alignItems: "stretch",
 
-                        // ✅ распределяем кнопки на всю ширину тулбара (ширина = ширина холста)
+                        // Spread buttons across the full toolbar width.
                         justifyContent: "space-between",
                         gap: 8,
 
@@ -12083,12 +12235,12 @@ function PixelEditorFramer({
                         </button>
                     </div>
 
-                    {/* Block 0: Save / Export */}
+                    {/* Block 0: Save / Export / Import */}
                     <div style={{ display: "contents" }}>
                         <button
                             type="button"
                             onClick={onSaveProject}
-                            aria-label="Save"
+                            aria-label="Save Project"
                             title="Save project"
                             className="pxUiAnim"
                             style={iconOnlyButton(true)}
@@ -12112,6 +12264,18 @@ function PixelEditorFramer({
                                     transform: "translateY(0px)",
                                 }}
                             />
+                        </button>
+
+                        <button
+                            type="button"
+                            ref={openBtnRef}
+                            onClick={onLoadProject}
+                            aria-label="Import"
+                            title="Import"
+                            className="pxUiAnim"
+                            style={iconOnlyButton(true)}
+                        >
+                            <LoadIcon />
                         </button>
                     </div>
 
@@ -12153,21 +12317,6 @@ function PixelEditorFramer({
                             }}
                         >
                             <RedoIcon />
-                        </button>
-                    </div>
-
-                    {/* Block 2: Open */}
-                    <div style={{ display: "contents" }}>
-                        <button
-                            type="button"
-                            ref={openBtnRef}
-                            onClick={onLoadProject}
-                            aria-label="Open"
-                            title="Open"
-                            className="pxUiAnim"
-                            style={iconOnlyButton(true)}
-                        >
-                            <LoadIcon />
                         </button>
                     </div>
 
@@ -12335,7 +12484,7 @@ function PixelEditorFramer({
                             position: "relative",
                             width: "100%",
                             height: "100%",
-                            overflow: "hidden", // важно: клиппинг "окна холста"
+                            overflow: "hidden", // Clip the canvas window.
 
                             // --- Step 10: cursors ---
                             cursor:
@@ -12352,7 +12501,7 @@ function PixelEditorFramer({
                             touchAction: "manipulation",
                         }}
                     >
-                        {/* Content layer (пока без transform) */}
+                        {/* Content layer (no transform yet) */}
                         <div
                             style={{
                                 position: "absolute",
@@ -12399,7 +12548,7 @@ function PixelEditorFramer({
                                     onPointerCancel={handleCanvasPointerCancel}
                                 />
 
-                                {/* overlay слой (Единственный) */}
+                                {/* Single overlay layer */}
                                 <div
                                     style={{
                                         position: "absolute",
@@ -12407,7 +12556,7 @@ function PixelEditorFramer({
                                         pointerEvents: "none",
                                     }}
                                 >
-                                    {/* рамка кисти (двигается через brushPreviewRef) */}
+                                    {/* Brush frame, moved through brushPreviewRef */}
                                     {renderPipetteHoverCell()}
 
                                     {SHOW_BRUSH_PREVIEW && !overlayMode && (
@@ -12418,7 +12567,7 @@ function PixelEditorFramer({
                                                 border: "2px solid rgba(255,255,255,0.9)",
                                                 boxSizing: "border-box",
                                                 borderRadius: 0,
-                                                display: "none", // покажем, когда inside:true
+                                                display: "none", // Shown when inside:true.
                                             }}
                                         />
                                     )}
@@ -12491,23 +12640,23 @@ function PixelEditorFramer({
                                 {/* ---------- RANGE THUMB: use RangeCircle SVG as native slider thumb ---------- */}
                                 <style>{`
   :root{
-    --px-range-thumb: 30px; /* размер кружка */
-    --px-track-h: 6px;      /* толщина полоски */
+    --px-range-thumb: 30px; /* circle size */
+    --px-track-h: 6px;      /* track thickness */
   }
 
   input.pxRange[type="range"]{
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    background: transparent; /* ВАЖНО: не красим сам input */
+    background: transparent; /* Keep the input itself unpainted. */
     cursor: pointer;
 
-    /* чтобы трек и thumb красиво центрировались по высоте */
+    /* Keep the track and thumb vertically centered. */
     height: var(--px-range-thumb);
     display: block;
   }
 
-  /* ===== TRACK (рисуем заливку ТОЛЬКО здесь) ===== */
+  /* ===== TRACK (draw the fill only here) ===== */
   input.pxRange[type="range"]::-webkit-slider-runnable-track{
     height: var(--px-track-h);
     border-radius: 0px;
@@ -12553,7 +12702,7 @@ function PixelEditorFramer({
             mask-position: center;
             mask-size: 100% 100%;
 
-    /* ✅ Центрирование кружка по вертикали относительно полоски */
+    /* Center the circle vertically against the track. */
     margin-top: calc((var(--px-track-h) - var(--px-range-thumb)) / 2);
   }
 
@@ -12707,10 +12856,25 @@ function PixelEditorFramer({
 
                             <div
                                 style={{
+                                    position: "relative",
+                                    width: moduleTabsScaledWidth,
+                                    height: moduleTabsScaledHeight,
+                                    flex: `0 0 ${moduleTabsScaledWidth}px`,
+                                    alignSelf: "flex-start",
+                                }}
+                            >
+                            <div
+                                style={{
+                                    position: "absolute",
+                                    top: 0,
+                                    right: 0,
                                     display: "flex",
                                     alignItems: "flex-start",
                                     gap: 0,
-                                    flex: "0 0 auto",
+                                    width: moduleTabsBaseWidth,
+                                    height: MODULE_TAB_BUTTON_SIZE,
+                                    transform: `scale(${moduleTabsScale})`,
+                                    transformOrigin: "top right",
                                 }}
                             >
                                 <button
@@ -12721,9 +12885,9 @@ function PixelEditorFramer({
                                     title={methodButtonTitle}
                                     className="pxUiAnim"
                                     style={{
-                                        width: 60,
-                                        height: 60,
-                                        flex: "0 0 60px",
+                                        width: MODULE_TAB_BUTTON_SIZE,
+                                        height: MODULE_TAB_BUTTON_SIZE,
+                                        flex: `0 0 ${MODULE_TAB_BUTTON_SIZE}px`,
                                         alignSelf: "flex-start",
                                         border: "0",
                                         borderRadius: 0,
@@ -12756,9 +12920,9 @@ function PixelEditorFramer({
                                     title="Pixelization Record"
                                     className="pxUiAnim"
                                     style={{
-                                        width: 60,
-                                        height: 60,
-                                        flex: "0 0 60px",
+                                        width: MODULE_TAB_BUTTON_SIZE,
+                                        height: MODULE_TAB_BUTTON_SIZE,
+                                        flex: `0 0 ${MODULE_TAB_BUTTON_SIZE}px`,
                                         alignSelf: "flex-start",
                                         border: "0",
                                         borderRadius: 0,
@@ -12791,9 +12955,9 @@ function PixelEditorFramer({
                                     title="Reference Setup"
                                     className="pxUiAnim"
                                     style={{
-                                        width: 60,
-                                        height: 60,
-                                        flex: "0 0 60px",
+                                        width: MODULE_TAB_BUTTON_SIZE,
+                                        height: MODULE_TAB_BUTTON_SIZE,
+                                        flex: `0 0 ${MODULE_TAB_BUTTON_SIZE}px`,
                                         alignSelf: "flex-start",
                                         border: "0",
                                         borderRadius: 0,
@@ -12820,6 +12984,7 @@ function PixelEditorFramer({
                                         }}
                                     />
                                 </button>
+                            </div>
                             </div>
                         </div>
 

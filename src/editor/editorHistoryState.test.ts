@@ -9,6 +9,7 @@ import {
     areEditorCommittedStatesEqual,
     cloneMethodProfileForHistory,
     cloneMethodProfilesByPaletteContextForHistory,
+    cloneEditorPaletteTabsSnapshotForHistory,
     clonePixelsGrid,
     cloneImportedPalettePresetsForHistory,
     cloneQuantizationProfileForHistory,
@@ -120,6 +121,59 @@ describe("editor history state", () => {
                             isTransparent: true,
                         },
                     },
+                })
+            )
+        ).toBe(false)
+    })
+
+    it("compares committed palette tab snapshots", () => {
+        const baseSnapshot = {
+            activeTab: "size" as const,
+            sizeWorld: {
+                profile: EXTRACT_QUANTIZATION_PROFILE,
+                referenceSignature: "ref-a",
+                autoSwatches: [swatch("auto-0", "#000000")],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+            },
+            presetsWorld: {
+                profile: {
+                    kind: "fixed" as const,
+                    id: "sunset",
+                    name: "Sunset",
+                    source: "builtin" as const,
+                    colors: ["#112233"],
+                },
+                referenceSignature: "ref-a",
+                autoSwatches: [swatch("auto-0", "#112233")],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+            },
+        }
+        const changedPresetSnapshot = {
+            ...baseSnapshot,
+            presetsWorld: {
+                ...baseSnapshot.presetsWorld,
+                autoSwatches: [
+                    {
+                        ...baseSnapshot.presetsWorld.autoSwatches[0],
+                        isTransparent: true,
+                    },
+                ],
+            },
+        }
+
+        expect(
+            areEditorCommittedStatesEqual(
+                committedState({ paletteTabsSnapshot: baseSnapshot }),
+                committedState({ paletteTabsSnapshot: baseSnapshot })
+            )
+        ).toBe(true)
+        expect(
+            areEditorCommittedStatesEqual(
+                committedState({ paletteTabsSnapshot: baseSnapshot }),
+                committedState({
+                    paletteTabsSnapshot: changedPresetSnapshot,
                 })
             )
         ).toBe(false)
@@ -303,6 +357,41 @@ describe("editor history state", () => {
         expect(cloned[0]).not.toBe(presets[0])
         expect(cloned[0]?.profile).not.toBe(presets[0]?.profile)
         expect(cloned[0]?.profile.colors).not.toBe(presets[0]?.profile.colors)
+    })
+
+    it("clones palette tab snapshots without sharing references", () => {
+        const snapshot = {
+            activeTab: "presets" as const,
+            sizeWorld: null,
+            presetsWorld: {
+                profile: {
+                    kind: "fixed" as const,
+                    id: "sunset",
+                    name: "Sunset",
+                    source: "builtin" as const,
+                    colors: ["#112233"],
+                },
+                referenceSignature: "ref-a",
+                autoSwatches: [swatch("auto-0", "#112233")],
+                imagePixels: [["auto-0"]],
+                overlayPixels: [[null]],
+            },
+        }
+
+        const cloned = cloneEditorPaletteTabsSnapshotForHistory(snapshot)
+
+        expect(cloned).toEqual(snapshot)
+        expect(cloned).not.toBe(snapshot)
+        expect(cloned?.presetsWorld).not.toBe(snapshot.presetsWorld)
+        expect(cloned?.presetsWorld?.autoSwatches).not.toBe(
+            snapshot.presetsWorld.autoSwatches
+        )
+        expect(cloned?.presetsWorld?.imagePixels[0]).not.toBe(
+            snapshot.presetsWorld.imagePixels[0]
+        )
+        expect(cloned?.presetsWorld?.profile).not.toBe(
+            snapshot.presetsWorld.profile
+        )
     })
 
     it("creates stable image data sample signatures", () => {

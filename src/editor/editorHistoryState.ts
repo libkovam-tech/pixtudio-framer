@@ -32,6 +32,26 @@ export type EditorHistorySwatch = {
     isUser: boolean
 }
 
+export type EditorPaletteTabWorldSnapshot<
+    TPixel = string | null,
+    TSwatch extends EditorHistorySwatch = EditorHistorySwatch,
+> = {
+    profile: QuantizationProfile
+    referenceSignature?: string | null
+    autoSwatches: TSwatch[]
+    imagePixels: TPixel[][]
+    overlayPixels: TPixel[][]
+}
+
+export type EditorPaletteTabsSnapshot<
+    TPixel = string | null,
+    TSwatch extends EditorHistorySwatch = EditorHistorySwatch,
+> = {
+    activeTab: "size" | "presets"
+    sizeWorld: EditorPaletteTabWorldSnapshot<TPixel, TSwatch> | null
+    presetsWorld: EditorPaletteTabWorldSnapshot<TPixel, TSwatch> | null
+}
+
 export type ImageDataSampleSource = {
     width: number
     height: number
@@ -70,8 +90,10 @@ export type EditorCommittedState<
         {
             hex?: string
             isTransparent?: boolean
+            transparentSourceHex?: string
         }
     >
+    paletteTabsSnapshot?: EditorPaletteTabsSnapshot<TPixel, TSwatch>
 }
 
 export function clonePixelsGrid<TPixel>(
@@ -153,6 +175,48 @@ export function cloneImportedPalettePresetsForHistory<
             preset.profile
         ) as FixedQuantizationProfileForHistory,
     }))
+}
+
+export function cloneEditorPaletteTabWorldSnapshotForHistory<
+    TPixel,
+    TSwatch extends EditorHistorySwatch,
+>(
+    world:
+        | EditorPaletteTabWorldSnapshot<TPixel, TSwatch>
+        | null
+        | undefined
+): EditorPaletteTabWorldSnapshot<TPixel, TSwatch> | null {
+    if (!world) return null
+
+    return {
+        profile: cloneQuantizationProfileForHistory(world.profile),
+        referenceSignature: world.referenceSignature ?? null,
+        autoSwatches: cloneSwatches(world.autoSwatches),
+        imagePixels: clonePixelsGrid(world.imagePixels),
+        overlayPixels: clonePixelsGrid(world.overlayPixels),
+    }
+}
+
+export function cloneEditorPaletteTabsSnapshotForHistory<
+    TPixel,
+    TSwatch extends EditorHistorySwatch,
+>(
+    snapshot:
+        | EditorPaletteTabsSnapshot<TPixel, TSwatch>
+        | null
+        | undefined
+): EditorPaletteTabsSnapshot<TPixel, TSwatch> | undefined {
+    if (!snapshot) return undefined
+
+    return {
+        activeTab: snapshot.activeTab,
+        sizeWorld: cloneEditorPaletteTabWorldSnapshotForHistory(
+            snapshot.sizeWorld
+        ),
+        presetsWorld: cloneEditorPaletteTabWorldSnapshotForHistory(
+            snapshot.presetsWorld
+        ),
+    }
 }
 
 export function areCommittedQuantizationProfilesEqual(
@@ -321,6 +385,21 @@ export function areEditorCommittedStatesEqual<
         const bValue = bOverrides[key]
         if ((aValue?.hex ?? null) !== (bValue?.hex ?? null)) return false
         if (!!aValue?.isTransparent !== !!bValue?.isTransparent) return false
+        if (
+            (aValue?.transparentSourceHex ?? null) !==
+            (bValue?.transparentSourceHex ?? null)
+        ) {
+            return false
+        }
+    }
+
+    if (
+        !areEditorPaletteTabsSnapshotsEqual(
+            a.paletteTabsSnapshot,
+            b.paletteTabsSnapshot
+        )
+    ) {
+        return false
     }
 
     if (!areSwatchListsEqual(a.autoSwatches, b.autoSwatches)) return false
@@ -328,6 +407,62 @@ export function areEditorCommittedStatesEqual<
     if (!arePixelGridsEqual(a.imagePixels, b.imagePixels)) return false
     if (!arePixelGridsEqual(a.overlayPixels, b.overlayPixels)) return false
 
+    return true
+}
+
+export function areEditorPaletteTabsSnapshotsEqual<
+    TPixel,
+    TSwatch extends EditorHistorySwatch,
+>(
+    a:
+        | EditorPaletteTabsSnapshot<TPixel, TSwatch>
+        | null
+        | undefined,
+    b:
+        | EditorPaletteTabsSnapshot<TPixel, TSwatch>
+        | null
+        | undefined
+): boolean {
+    const aa = a ?? null
+    const bb = b ?? null
+    if (aa === bb) return true
+    if (!aa || !bb) return false
+    return (
+        aa.activeTab === bb.activeTab &&
+        areEditorPaletteTabWorldSnapshotsEqual(aa.sizeWorld, bb.sizeWorld) &&
+        areEditorPaletteTabWorldSnapshotsEqual(
+            aa.presetsWorld,
+            bb.presetsWorld
+        )
+    )
+}
+
+function areEditorPaletteTabWorldSnapshotsEqual<
+    TPixel,
+    TSwatch extends EditorHistorySwatch,
+>(
+    a:
+        | EditorPaletteTabWorldSnapshot<TPixel, TSwatch>
+        | null
+        | undefined,
+    b:
+        | EditorPaletteTabWorldSnapshot<TPixel, TSwatch>
+        | null
+        | undefined
+): boolean {
+    const aa = a ?? null
+    const bb = b ?? null
+    if (aa === bb) return true
+    if (!aa || !bb) return false
+    if ((aa.referenceSignature ?? null) !== (bb.referenceSignature ?? null)) {
+        return false
+    }
+    if (!areCommittedQuantizationProfilesEqual(aa.profile, bb.profile)) {
+        return false
+    }
+    if (!areSwatchListsEqual(aa.autoSwatches, bb.autoSwatches)) return false
+    if (!arePixelGridsEqual(aa.imagePixels, bb.imagePixels)) return false
+    if (!arePixelGridsEqual(aa.overlayPixels, bb.overlayPixels)) return false
     return true
 }
 

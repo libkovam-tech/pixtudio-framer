@@ -686,7 +686,10 @@ function CropRotateHandle({
                 width="25"
                 height="25"
                 viewBox="0 0 63.1 66.8"
-                style={{ display: "block" }}
+                style={{
+                    display: "block",
+                    filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.2))",
+                }}
                 xmlns="http://www.w3.org/2000/svg"
             >
                 <path
@@ -729,7 +732,10 @@ function CropScaleHandle({
                 width="25"
                 height="25"
                 viewBox="0 0 66.8 66.8"
-                style={{ display: "block" }}
+                style={{
+                    display: "block",
+                    filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.2))",
+                }}
                 xmlns="http://www.w3.org/2000/svg"
             >
                 <path

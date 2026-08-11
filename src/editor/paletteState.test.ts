@@ -39,7 +39,7 @@ type TestPaletteTabWorld = {
         kind: "extract" | "fixed"
         id?: string
     }
-    autoSwatches: { id: string }[]
+    autoSwatches: { id: string; isTransparent?: boolean }[]
 }
 
 describe("palette state", () => {
@@ -428,6 +428,76 @@ describe("palette state", () => {
             activePresetButton: "fixed-preset",
             traceLabel: "presets rebuilt lazily",
         })
+    })
+
+    it("keeps fixed preset swatch transparency across lazy preset rebuilds", () => {
+        const stalePresetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [
+                { id: "auto-0" },
+                { id: "auto-1", isTransparent: true },
+            ],
+        }
+        const rebuiltPresetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-0" }, { id: "auto-1" }],
+        }
+
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "presets",
+            nextState: {
+                activeTab: "presets",
+                sizeWorld: null,
+                presetsWorld: stalePresetWorld,
+            },
+            restoredWorld: null,
+            lazyWorld: rebuiltPresetWorld,
+            userSwatches: [],
+        })
+
+        expect(result.kind).toBe("lazy-presets")
+        expect(result.worldToApply?.autoSwatches).toEqual([
+            { id: "auto-0" },
+            { id: "auto-1", isTransparent: true },
+        ])
+        expect(result.nextState.presetsWorld?.autoSwatches).toEqual([
+            { id: "auto-0" },
+            { id: "auto-1", isTransparent: true },
+        ])
+        expect(rebuiltPresetWorld.autoSwatches).toEqual([
+            { id: "auto-0" },
+            { id: "auto-1" },
+        ])
+    })
+
+    it("does not carry fixed preset swatch transparency into lazy auto worlds", () => {
+        const stalePresetWorld: TestPaletteTabWorld = {
+            profile: { kind: "fixed" as const, id: "fixed-preset" },
+            autoSwatches: [{ id: "auto-0", isTransparent: true }],
+        }
+        const lazyAutoWorld: TestPaletteTabWorld = {
+            profile: { kind: "extract" as const },
+            autoSwatches: [{ id: "auto-0" }],
+        }
+
+        const result = preparePaletteTabSwitchApplication({
+            nextTab: "size",
+            nextState: {
+                activeTab: "size",
+                sizeWorld: null,
+                presetsWorld: stalePresetWorld,
+            },
+            restoredWorld: null,
+            lazyWorld: lazyAutoWorld,
+            userSwatches: [],
+        })
+
+        expect(result.kind).toBe("lazy-size")
+        expect(result.worldToApply?.autoSwatches).toEqual([{ id: "auto-0" }])
+        expect(result.nextState.sizeWorld?.autoSwatches).toEqual([
+            { id: "auto-0" },
+        ])
+        expect(result.nextState.presetsWorld).toBe(stalePresetWorld)
     })
 
     it("plans empty presets palette tab applications", () => {
@@ -1724,6 +1794,73 @@ describe("palette state", () => {
         expect(result.projectState.autoSwatches).not.toBe(
             baseState.autoSwatches
         )
+    })
+
+    it("does not store fixed preset transparency edits in auto overrides", () => {
+        const fixedProfile = {
+            kind: "fixed" as const,
+            id: "sunset",
+            name: "Sunset",
+            source: "builtin" as const,
+            colors: ["#112233"],
+        }
+        const baseState = {
+            gridSize: 2,
+            aspectRatioId: "1:1" as const,
+            columns: 1,
+            rows: 1,
+            paletteCount: 1,
+            brushSize: 1,
+            imagePixels: [["auto-0"]],
+            overlayPixels: [[null]],
+            showImage: true,
+            hasOriginalImageData: true,
+            autoSwatches: [
+                {
+                    id: "auto-0",
+                    color: "#112233",
+                    isTransparent: false,
+                    isUser: false,
+                },
+            ],
+            userSwatches: [],
+            selectedSwatch: "auto-0",
+            quantizationProfile: fixedProfile,
+            activePaletteTab: "presets" as const,
+            autoOverrides: {
+                "auto-0": {
+                    isTransparent: true,
+                    transparentSourceHex: "#112233",
+                },
+            },
+        }
+
+        const result = preparePaletteSwatchEditProjectApplication({
+            swatchId: "auto-0",
+            newColorUpper: "#112233",
+            makeTransparent: true,
+            imagePixels: baseState.imagePixels,
+            overlayPixels: baseState.overlayPixels,
+            autoSwatches: baseState.autoSwatches,
+            userSwatches: baseState.userSwatches,
+            selectedSwatch: baseState.selectedSwatch,
+            transparentPixel: "__PX_TRANSPARENT__",
+            autoOverrides: baseState.autoOverrides,
+            baseState,
+        })
+
+        expect(result.autoSwatches).toEqual([
+            {
+                id: "auto-0",
+                color: "#112233",
+                isTransparent: true,
+                isUser: false,
+            },
+        ])
+        expect(result.autoOverrides).toEqual({})
+        expect(result.projectState.autoOverrides).toEqual({})
+        expect(result.projectState.quantizationProfile).toEqual(fixedProfile)
+        expect(result.projectState.activePaletteTab).toBe("presets")
     })
 
     it("prepares fixed palette world snapshot applications for presets", () => {

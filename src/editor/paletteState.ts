@@ -1779,9 +1779,14 @@ export function preparePaletteSwatchEditProjectApplication<
         autoOverrides: input.autoOverrides,
         pruneAutoOverrides: input.pruneAutoOverrides,
     })
+    const nextAutoOverrides =
+        input.baseState.quantizationProfile?.kind === "fixed"
+            ? {}
+            : { ...application.autoOverrides }
 
     return {
         ...application,
+        autoOverrides: nextAutoOverrides,
         projectState: {
             ...input.baseState,
             imagePixels: clonePixelsGrid(application.imagePixels),
@@ -1789,7 +1794,7 @@ export function preparePaletteSwatchEditProjectApplication<
             autoSwatches: cloneSwatches(application.autoSwatches),
             userSwatches: cloneSwatches(application.userSwatches),
             selectedSwatch: application.selectedSwatch,
-            autoOverrides: { ...application.autoOverrides },
+            autoOverrides: nextAutoOverrides,
         },
     }
 }
@@ -2047,6 +2052,61 @@ function getPaletteWorldActivePresetButton(input: {
     return input.profile.kind === "fixed" ? input.profile.id ?? null : null
 }
 
+function preserveFixedPresetTransparentSwatches<
+    TWorld extends {
+        profile: {
+            kind: "extract" | "fixed"
+            id?: string | null
+        }
+        autoSwatches:
+            | ReadonlyArray<PaletteSwatchLike | null | undefined>
+            | null
+            | undefined
+    },
+>(input: {
+    rebuiltWorld: TWorld
+    staleWorld?: TWorld | null
+}): TWorld {
+    const { rebuiltWorld, staleWorld } = input
+
+    if (
+        rebuiltWorld.profile.kind !== "fixed" ||
+        staleWorld?.profile.kind !== "fixed"
+    ) {
+        return rebuiltWorld
+    }
+
+    const rebuiltProfileId = rebuiltWorld.profile.id ?? null
+    const staleProfileId = staleWorld.profile.id ?? null
+    if (rebuiltProfileId && staleProfileId && rebuiltProfileId !== staleProfileId) {
+        return rebuiltWorld
+    }
+
+    const transparentStaleIds = new Set(
+        (staleWorld.autoSwatches || [])
+            .filter((swatch) => swatch?.id && swatch.isTransparent)
+            .map((swatch) => String(swatch?.id))
+    )
+    if (transparentStaleIds.size === 0) return rebuiltWorld
+
+    let changed = false
+    const autoSwatches = (rebuiltWorld.autoSwatches || []).map((swatch) => {
+        if (!swatch?.id || !transparentStaleIds.has(String(swatch.id))) {
+            return swatch
+        }
+        if (swatch.isTransparent) return swatch
+        changed = true
+        return { ...swatch, isTransparent: true }
+    })
+
+    return changed
+        ? ({
+              ...rebuiltWorld,
+              autoSwatches,
+          } as TWorld)
+        : rebuiltWorld
+}
+
 function preparePaletteTabStateWithWorld<TWorld>(
     state: PaletteTabWorldState<TWorld>,
     tab: PaletteTabKey,
@@ -2104,21 +2164,29 @@ export function preparePaletteTabSwitchApplication<
 
     if (input.lazyWorld) {
         const kind = input.nextTab === "size" ? "lazy-size" : "lazy-presets"
+        const lazyWorld =
+            input.nextTab === "presets"
+                ? preserveFixedPresetTransparentSwatches({
+                      rebuiltWorld: input.lazyWorld,
+                      staleWorld: input.nextState.presetsWorld,
+                  })
+                : input.lazyWorld
+
         return {
             kind,
             nextState: preparePaletteTabStateWithWorld(
                 input.nextState,
                 input.nextTab,
-                input.lazyWorld
+                lazyWorld
             ),
-            worldToApply: input.lazyWorld,
+            worldToApply: lazyWorld,
             selectedSwatch: resolvePaletteTabTargetSelection({
-                targetWorld: input.lazyWorld,
+                targetWorld: lazyWorld,
                 userSwatches: input.userSwatches,
                 preferredSwatch: input.preferredSwatch,
             }),
             activePresetButton: getPaletteWorldActivePresetButton(
-                input.lazyWorld
+                lazyWorld
             ),
             traceLabel:
                 input.nextTab === "size"
