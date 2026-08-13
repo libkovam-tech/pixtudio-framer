@@ -8498,7 +8498,7 @@ function PixelEditorFramer({
 
         lastDrawPointRef.current = { x, y }
 
-        // чтобы при отпускании вне canvas onPointerUp всё равно сработал
+        // Keep pointerup delivered even if release happens outside canvas.
         try {
             ;(e.currentTarget as any)?.setPointerCapture?.(e.pointerId)
         } catch {
@@ -10629,6 +10629,17 @@ function PixelEditorFramer({
             e.preventDefault()
         }
 
+        const wasCanvasTouchZoomEvent = isCanvasTouchZoomEvent(e)
+        const wasPinchZoomActive =
+            wasCanvasTouchZoomEvent && pinchZoomSessionRef.current.active
+        if (wasCanvasTouchZoomEvent) {
+            touchPointersRef.current.delete(e.pointerId)
+
+            if (wasPinchZoomActive && touchPointersRef.current.size < 2) {
+                pinchZoomSessionRef.current.active = false
+            }
+        }
+
         if (panSessionRef.current.active) {
             panSessionRef.current.active = false
             setIsPanning(false)
@@ -10637,18 +10648,7 @@ function PixelEditorFramer({
 
         if (methodSessionRef.current) return
 
-        if (
-            isCanvasTouchZoomEvent(e)
-        ) {
-            touchPointersRef.current.delete(e.pointerId)
-
-            if (pinchZoomSessionRef.current.active) {
-                if (touchPointersRef.current.size < 2) {
-                    pinchZoomSessionRef.current.active = false
-                }
-                return
-            }
-        }
+        if (wasPinchZoomActive) return
 
         lastDrawPointRef.current = null
         setIsDrawing(false)
@@ -10725,7 +10725,7 @@ function PixelEditorFramer({
             }
         }
 
-        // сброс refs stroke
+        // Reset stroke refs.
         strokeBeforeRef.current = null
         strokeDidMutateRef.current = false
         strokeAfterOverlayRef.current = null
