@@ -28,7 +28,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Start with a Photo",
     paragraphs: [
-      "Tap the Open icon on the home screen or the Import menu in the editor. Choose an image and a canvas format, then crop, rotate, or scale if needed.",
+      "Tap the Open icon on the home screen, drag a supported image into the browser window, or use the Import menu in the editor. Choose an image and a canvas format, then crop, rotate, or scale if needed.",
       "PIXTUDIO instantly converts it into beautiful pixel art. Discover your familiar photos from a fresh, unexpected new side — often revealing charm you never noticed before.",
     ],
   },
@@ -56,7 +56,7 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Open a Saved Project",
     paragraphs: [
-      "Tap the Open icon on the home screen, or open the Import menu in the editor and select your .pixtudio file.",
+      "Tap the Open icon on the home screen, drag a .pixtudio project into the browser window, or open the Import menu in the editor and select your .pixtudio file.",
       "Quickly return to any of your projects and continue right where you stopped.",
     ],
   },

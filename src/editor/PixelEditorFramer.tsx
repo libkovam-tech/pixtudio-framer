@@ -181,9 +181,9 @@ import {
 } from "./spaceHandTool.ts"
 import {
     EXTRACT_QUANTIZATION_PROFILE,
-    QUANTIZATION_PROFILES,
     getFixedProfilePaletteForApplication,
     quantizeWithFixedPalette,
+    resolveBuiltinQuantizationProfile,
     type DerivedWorld,
     type PaletteTab,
     type PaletteTabsState,
@@ -2488,11 +2488,13 @@ function CameraModal({
 
 function StartScreen({
     onPickImage,
+    onDropFile,
     onOpenCamera,
     onOpenDraw,
     onOpenHome,
 }: {
     onPickImage: () => void
+    onDropFile: (file: File) => void
     onOpenCamera: () => void
     onOpenDraw: () => void
     onOpenHome: () => void
@@ -2513,8 +2515,59 @@ function StartScreen({
     )
 
     const taglineRef = React.useRef<HTMLSpanElement | null>(null)
+    const dragDepthRef = React.useRef(0)
     const [taglineFontPx, setTaglineFontPx] = React.useState(12)
     const [taglineScaleX, setTaglineScaleX] = React.useState(1)
+    const [isFileDragActive, setIsFileDragActive] = React.useState(false)
+
+    const hasDraggedFiles = React.useCallback((event: DragEvent) => {
+        return Array.from(event.dataTransfer?.types ?? []).includes("Files")
+    }, [])
+
+    React.useEffect(() => {
+        const handleDragEnter = (event: DragEvent) => {
+            if (!hasDraggedFiles(event)) return
+            event.preventDefault()
+            dragDepthRef.current += 1
+            setIsFileDragActive(true)
+        }
+
+        const handleDragOver = (event: DragEvent) => {
+            if (!hasDraggedFiles(event)) return
+            event.preventDefault()
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+            setIsFileDragActive(true)
+        }
+
+        const handleDragLeave = (event: DragEvent) => {
+            if (!hasDraggedFiles(event)) return
+            event.preventDefault()
+            dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+            if (dragDepthRef.current === 0) setIsFileDragActive(false)
+        }
+
+        const handleDrop = (event: DragEvent) => {
+            if (!hasDraggedFiles(event)) return
+            event.preventDefault()
+            dragDepthRef.current = 0
+            setIsFileDragActive(false)
+
+            const file = event.dataTransfer?.files?.[0] ?? null
+            if (file) onDropFile(file)
+        }
+
+        window.addEventListener("dragenter", handleDragEnter)
+        window.addEventListener("dragover", handleDragOver)
+        window.addEventListener("dragleave", handleDragLeave)
+        window.addEventListener("drop", handleDrop)
+
+        return () => {
+            window.removeEventListener("dragenter", handleDragEnter)
+            window.removeEventListener("dragover", handleDragOver)
+            window.removeEventListener("dragleave", handleDragLeave)
+            window.removeEventListener("drop", handleDrop)
+        }
+    }, [hasDraggedFiles, onDropFile])
 
     useIsomorphicLayoutEffect(() => {
         const el = taglineRef.current
@@ -2615,6 +2668,58 @@ function StartScreen({
 
 .pxStartTagline {
     margin-top: 8px;
+}
+
+.pxStartDropOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    background: rgba(233, 216, 166, 0.5);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    pointer-events: none;
+}
+
+.pxStartDropFrame {
+    position: absolute;
+    left: 23vw;
+    top: 22dvh;
+    width: 54vw;
+    height: 60dvh;
+    container-type: size;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 4px dashed rgba(255, 255, 255, 0.96);
+    border-radius: 22px;
+    box-sizing: border-box;
+}
+
+.pxStartDropText {
+    width: 100%;
+    max-width: 86cqw;
+    color: ${PIXTUDIO_INK};
+    font-family: Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: clamp(22px, min(4.6cqw, 7cqh), 34px);
+    line-height: 1.12;
+    font-weight: 500;
+    text-align: center;
+    letter-spacing: 0;
+}
+
+@media (max-width: 640px) {
+    .pxStartDropFrame {
+        left: 8vw;
+        top: 16dvh;
+        width: 84vw;
+        height: 68dvh;
+    }
+
+    .pxStartDropText {
+        max-width: 76cqw;
+        font-size: clamp(18px, min(7.4cqw, 5.2cqh), 28px);
+        line-height: 1.16;
+    }
 }
 
 @property --px-start-wave-y {
@@ -2838,9 +2943,28 @@ function StartScreen({
         imageRendering: "pixelated",
     }
 
+    const dropOverlay =
+        isFileDragActive && typeof document !== "undefined"
+            ? ReactDOM.createPortal(
+                  <div
+                      className="pxStartDropOverlay"
+                      data-testid="start-drop-overlay"
+                  >
+                      <div className="pxStartDropFrame">
+                          <div className="pxStartDropText">
+                              Drop your file inside the frame
+                          </div>
+                      </div>
+                  </div>,
+                  document.body
+              )
+            : null
+
     return (
         <FitToViewport background={bg}>
             <style>{startScreenCss}</style>
+
+            {dropOverlay}
 
             <div
                 style={{
@@ -3871,11 +3995,7 @@ function PixelEditorFramer({
                 paletteMax: PALETTE_MAX,
                 defaultBrushSize: DEFAULT_BRUSH_SIZE,
                 defaultQuantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
-                resolveBuiltinQuantizationProfile: (id) =>
-                    Object.values(QUANTIZATION_PROFILES).find(
-                        (profile) =>
-                            profile.kind === "fixed" && profile.id === id
-                    ),
+                resolveBuiltinQuantizationProfile,
                 cloneQuantizationProfile: cloneQuantizationProfileForHistory,
             })
 
@@ -16851,19 +16971,8 @@ export default function PIXTUDIO_Mobile_MVP() {
     }
     void onCaptured
 
-    const handlePickedProjectFile = React.useCallback(
-        async (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0] ?? null
-            if (!file) {
-                setScreen(
-                    pendingProjectOpenFromStartRef.current ? "start" : "editor"
-                )
-                return
-            }
-
-            // важно: чтобы повторный выбор того же файла срабатывал
-            event.target.value = ""
-
+    const openDroppedOrPickedFile = React.useCallback(
+        async (file: File, openedFromStart: boolean) => {
             const route = routeOpenFile(file)
             if (route === "project") {
                 setPendingProjectFile(file)
@@ -16877,8 +16986,29 @@ export default function PIXTUDIO_Mobile_MVP() {
             }
 
             failImport(FILE_INTAKE_MESSAGES.unsupportedFile)
-            setScreen(pendingProjectOpenFromStartRef.current ? "start" : "editor")
+            setScreen(openedFromStart ? "start" : "editor")
             return
+        },
+        [failImport, importImageFileThroughCurrentPipeline, setScreen]
+    )
+
+    const handlePickedProjectFile = React.useCallback(
+        async (event: React.ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0] ?? null
+            if (!file) {
+                setScreen(
+                    pendingProjectOpenFromStartRef.current ? "start" : "editor"
+                )
+                return
+            }
+
+            // важно: чтобы повторный выбор того же файла срабатывал
+            event.target.value = ""
+
+            await openDroppedOrPickedFile(
+                file,
+                pendingProjectOpenFromStartRef.current
+            )
 
             /*
 
@@ -16889,13 +17019,21 @@ export default function PIXTUDIO_Mobile_MVP() {
             setScreen("editor")
             */
         },
-        [failImport, importImageFileThroughCurrentPipeline, setScreen]
+        [openDroppedOrPickedFile, setScreen]
+    )
+
+    const handleStartScreenDroppedFile = React.useCallback(
+        async (file: File) => {
+            await openDroppedOrPickedFile(file, true)
+        },
+        [openDroppedOrPickedFile]
     )
 
     const content =
         screen === "start" ? (
             <StartScreen
                 onPickImage={openImagePicker}
+                onDropFile={handleStartScreenDroppedFile}
                 onOpenCamera={openCamera}
                 onOpenDraw={openBlankCanvasSetup}
                 onOpenHome={openPromoHome}

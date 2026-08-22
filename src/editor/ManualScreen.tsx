@@ -492,11 +492,14 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         <OrderedList
                             items={[
                                 <>
-                                    On the start screen, use <b>Open</b>,{" "}
-                                    <b>Camera</b>, or <b>Blank Canvas</b>. In
-                                    the editor, open the <b>Import</b> menu to
-                                    import an image, open a saved project, take
-                                    a camera photo, or create a blank canvas.
+                                    On the start screen, use <b>Open</b>, drag
+                                    a supported image or <code>.pixtudio</code>{" "}
+                                    project into the browser window, choose{" "}
+                                    <b>Camera</b>, or choose{" "}
+                                    <b>Blank Canvas</b>. In the editor, open the{" "}
+                                    <b>Import</b> menu to import an image, open
+                                    a saved project, take a camera photo, or
+                                    create a blank canvas.
                                 </>,
                                 <>
                                     Use <b>Camera</b> on the start screen or in
@@ -803,6 +806,12 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                 "create a blank transparent canvas",
                             ]}
                         />
+                        <SectionCopy>
+                            On the start screen, you can also drag a supported
+                            raster image or saved <code>.pixtudio</code>{" "}
+                            project directly into the browser window. Dropped
+                            files use the same opening flow as the Open button.
+                        </SectionCopy>
                         <SectionCopy>
                             Before the image reaches the canvas, a preparation
                             screen appears where you can adjust scale, rotate

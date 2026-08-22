@@ -8,7 +8,7 @@ import {
     BLACK_WHITE_2,
     EXTRACT_QUANTIZATION_PROFILE,
     GRAYSCALE_32,
-    NEON_COLD_32,
+    LEGACY_BUILTIN_QUANTIZATION_PROFILES,
     QUANTIZATION_PROFILES,
     SUNSET_10,
     USE_LEGACY_AUTO_PALETTE_EXTRACTOR_ROLLBACK,
@@ -20,6 +20,7 @@ import {
     quantizeWithFixedProfile,
     quantizeWithFixedPalette,
     remapOverlay,
+    resolveBuiltinQuantizationProfile,
     runAutoPaletteExtractorGateway,
 } from "./paletteQuantizationEngine.ts"
 import { quantizeFixedPaletteOklab } from "./quantizationMethods/fixedPaletteOklab.ts"
@@ -262,12 +263,19 @@ describe("palette quantization engine", () => {
         expect(world.autoSwatches[0].color).toBe("#FF0000")
     })
 
-    it("registers NEON_COLD_32 as a built-in fixed profile", () => {
-        expect(QUANTIZATION_PROFILES.neon.kind).toBe("fixed")
-        expect(QUANTIZATION_PROFILES.neon.source).toBe("builtin")
-        expect(QUANTIZATION_PROFILES.neon.colors).toEqual(NEON_COLD_32)
-        expect(QUANTIZATION_PROFILES.neon.colors).toContain("#F6CAFD")
-        expect(QUANTIZATION_PROFILES.neon.colors).not.toContain("#FFF34D")
+    it("keeps NEON as a legacy-only built-in fixed profile", () => {
+        expect("neon" in QUANTIZATION_PROFILES).toBe(false)
+        expect(LEGACY_BUILTIN_QUANTIZATION_PROFILES.neon.kind).toBe("fixed")
+        expect(LEGACY_BUILTIN_QUANTIZATION_PROFILES.neon.source).toBe("builtin")
+        expect(LEGACY_BUILTIN_QUANTIZATION_PROFILES.neon.colors).toContain(
+            "#F6CAFD"
+        )
+        expect(LEGACY_BUILTIN_QUANTIZATION_PROFILES.neon.colors).not.toContain(
+            "#FFF34D"
+        )
+        expect(resolveBuiltinQuantizationProfile("neon-cold-32")).toBe(
+            LEGACY_BUILTIN_QUANTIZATION_PROFILES.neon
+        )
     })
 
     it("registers SUNSET_10 as a built-in fixed profile", () => {
@@ -407,9 +415,10 @@ describe("palette quantization engine", () => {
         expect(world.canvasPixels).toEqual([["auto-1"]])
     })
 
-    it("builds a neon fixed world and preserves user swatches in overlay", () => {
+    it("builds a legacy neon fixed world and preserves user swatches in overlay", () => {
+        const legacyNeon = LEGACY_BUILTIN_QUANTIZATION_PROFILES.neon
         const world = buildDerivedWorld({
-            profile: QUANTIZATION_PROFILES.neon,
+            profile: legacyNeon,
             sourcePixels: [["rgb(255, 240, 60)", "rgb(12, 10, 28)"]],
             overlayPixels: [["auto-0", "user-1"]],
             previousSwatches: [
@@ -431,9 +440,9 @@ describe("palette quantization engine", () => {
             paletteCountTarget: 2,
         })
 
-        expect(world.autoSwatches).toHaveLength(NEON_COLD_32.length)
+        expect(world.autoSwatches).toHaveLength(legacyNeon.colors.length)
         expect(world.autoSwatches.map((swatch) => swatch.color)).toEqual(
-            QUANTIZATION_PROFILES.neon.colors
+            legacyNeon.colors
         )
         expect(world.overlayPixels[0][0]).toMatch(/^auto-/)
         expect(world.overlayPixels[0][1]).toBe("user-1")

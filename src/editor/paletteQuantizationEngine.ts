@@ -71,7 +71,7 @@ export const EXTRACT_QUANTIZATION_PROFILE: Extract<
     kind: "extract",
 }
 
-export const NEON_COLD_32: string[] = [
+const NEON_COLD_32: string[] = [
     "#0B0A1A",
     "#16132B",
     "#1E1A3A",
@@ -158,13 +158,6 @@ export const SUNSET_10: string[] = [
 
 export const QUANTIZATION_PROFILES = {
     extract: EXTRACT_QUANTIZATION_PROFILE,
-    neon: {
-        kind: "fixed",
-        id: "neon-cold-32",
-        name: "NEON",
-        source: "builtin",
-        colors: NEON_COLD_32,
-    },
     sunset: {
         kind: "fixed",
         id: "sunset-10",
@@ -187,6 +180,27 @@ export const QUANTIZATION_PROFILES = {
         colors: BLACK_WHITE_2,
     },
 } satisfies Record<string, QuantizationProfile>
+
+export const LEGACY_BUILTIN_QUANTIZATION_PROFILES = {
+    // Compatibility only: older .pixtudio snapshots may reference this removed
+    // preset by id. Keep it loadable without exposing it as an active preset.
+    neon: {
+        kind: "fixed",
+        id: "neon-cold-32",
+        name: "NEON",
+        source: "builtin",
+        colors: NEON_COLD_32,
+    },
+} satisfies Record<string, QuantizationProfile>
+
+export function resolveBuiltinQuantizationProfile(id: string) {
+    return [
+        ...Object.values(QUANTIZATION_PROFILES),
+        ...Object.values(LEGACY_BUILTIN_QUANTIZATION_PROFILES),
+    ].find(
+        (profile) => profile.kind === "fixed" && profile.id === id
+    )
+}
 
 type Rgb = { r: number; g: number; b: number }
 

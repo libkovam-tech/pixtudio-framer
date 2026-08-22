@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { EXTRACT_QUANTIZATION_PROFILE } from "./paletteQuantizationEngine.ts"
+import {
+    EXTRACT_QUANTIZATION_PROFILE,
+    resolveBuiltinQuantizationProfile,
+} from "./paletteQuantizationEngine.ts"
 import {
     DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     DEFAULT_METHOD_PROFILE,
@@ -128,5 +131,44 @@ describe("projectLoadAdapter", () => {
         expect(result.project.importedPalettePresets?.[0]?.name).toBe(
             "Imported Test"
         )
+    })
+
+    it("restores legacy builtin quantization profiles by id", () => {
+        const snapshot = projectSnapshot()
+        snapshot.quantizationProfile = {
+            kind: "fixed",
+            source: "builtin",
+            id: "neon-cold-32",
+            name: "NEON",
+        }
+
+        const result = buildProjectLoadStateFromSnapshot(
+            validateProjectSnapshotV2OrThrow(snapshot),
+            {
+                transparentPixel: TRANSPARENT_PIXEL,
+                paletteMin: 2,
+                paletteMax: 32,
+                defaultBrushSize: 3,
+                defaultQuantizationProfile: EXTRACT_QUANTIZATION_PROFILE,
+                resolveBuiltinQuantizationProfile,
+                cloneQuantizationProfile: (profile) =>
+                    profile.kind === "extract"
+                        ? profile
+                        : { ...profile, colors: profile.colors.slice() },
+            }
+        )
+
+        expect(result.quantizationProfile).toMatchObject({
+            kind: "fixed",
+            source: "builtin",
+            id: "neon-cold-32",
+            name: "NEON",
+        })
+        expect(
+            result.quantizationProfile.kind === "fixed"
+                ? result.quantizationProfile.colors.length
+                : 0
+        ).toBeGreaterThan(0)
+        expect(result.project.importedPalettePresets).toEqual([])
     })
 })

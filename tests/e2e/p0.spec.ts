@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test"
+import fs from "node:fs/promises"
+import path from "node:path"
 import {
   collectBrowserErrors,
+  fixturesDir,
   installStableVisualEnvironment,
   openBearProject,
   promoDynamicMasks,
@@ -33,6 +36,54 @@ test("start screen is stable", async ({ page }, testInfo) => {
   expect(errors.flush()).toEqual([])
 })
 
+test("start screen shows a file drop affordance while dragging a file", async ({
+  page,
+}) => {
+  const errors = collectBrowserErrors(page)
+
+  await page.goto("/editor/")
+  await expect(page.getByRole("button", { name: "Open File" })).toBeVisible()
+  await dispatchWindowFileDrag(page, "dragenter", {
+    name: "portrait.png",
+    type: "image/png",
+    bytes: [137, 80, 78, 71],
+  })
+
+  const overlay = page.getByTestId("start-drop-overlay")
+  await expect(overlay).toBeVisible()
+  await expect(overlay).toContainText("Drop your file inside the frame")
+
+  await dispatchWindowFileDrag(page, "dragleave", {
+    name: "portrait.png",
+    type: "image/png",
+    bytes: [137, 80, 78, 71],
+  })
+  await expect(overlay).toBeHidden()
+
+  expect(errors.flush()).toEqual([])
+})
+
+test("start screen opens a dropped PIXTUDIO project file", async ({ page }) => {
+  const errors = collectBrowserErrors(page)
+  const fixturePath = path.join(fixturesDir, "de-confetti-single-cell.pixtudio")
+  const projectBytes = [...(await fs.readFile(fixturePath))]
+
+  await page.goto("/editor/")
+  await expect(page.getByRole("button", { name: "Open File" })).toBeVisible()
+  await dispatchWindowFileDrag(page, "drop", {
+    name: "de-confetti-single-cell.pixtudio",
+    type: "application/json",
+    bytes: projectBytes,
+  })
+
+  await expect(page.getByRole("button", { name: "Export" })).toBeVisible({
+    timeout: 20_000,
+  })
+  await expect(page.getByText(/BRUSH SIZE/i)).toBeVisible({ timeout: 20_000 })
+
+  expect(errors.flush()).toEqual([])
+})
+
 test("editor project, export menu, open menu, and manual are stable", async ({
   page,
 }, testInfo) => {
@@ -49,7 +100,7 @@ test("editor project, export menu, open menu, and manual are stable", async ({
   await expect(page).toHaveScreenshot(snapshotName(testInfo, "editor-export-menu"))
   await page.getByRole("button", { name: "Close" }).click()
 
-  await page.getByRole("button", { name: "Open" }).click()
+  await page.getByRole("button", { name: "Import" }).click()
   await expect(page.getByRole("button", { name: "Open file" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Camera" })).toBeVisible()
   await expect(page.getByRole("button", { name: "Blank canvas" })).toBeVisible()
@@ -119,4 +170,29 @@ async function waitForMobileHomeCarouselSnap(
       }
     )
     .toBe(true)
+}
+
+async function dispatchWindowFileDrag(
+  page: Page,
+  type: "dragenter" | "dragleave" | "drop",
+  file: { name: string; type: string; bytes: number[] }
+) {
+  await page.evaluate(
+    ({ eventType, fileInput }) => {
+      const dataTransfer = new DataTransfer()
+      dataTransfer.items.add(
+        new File([new Uint8Array(fileInput.bytes)], fileInput.name, {
+          type: fileInput.type,
+        })
+      )
+      window.dispatchEvent(
+        new DragEvent(eventType, {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+        })
+      )
+    },
+    { eventType: type, fileInput: file }
+  )
 }
