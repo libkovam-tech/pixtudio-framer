@@ -2,6 +2,7 @@ import { type ReactNode, useEffect } from "react"
 import { Link } from "react-router-dom"
 import {
   SiteFooterEmailIcon,
+  SiteFooterInstagramIconWhite,
   SiteFooterShareIcon,
   SvgLogo,
 } from "../editor/SvgIcons"
@@ -9,6 +10,7 @@ import {
 export const DESKTOP_EDITOR_URL = "/editor"
 export const SITE_SHARE_URL = "https://pixtudio.app"
 export const SUPPORT_EMAIL = "support@pixtudio.app"
+export const INSTAGRAM_URL = "https://www.instagram.com/pixtudio.app/"
 
 export type SitePage = "home" | "faq" | "how" | "gallery" | "learn" | "links"
 
@@ -256,6 +258,15 @@ export function SiteFooter({ className = "" }: { className?: string }) {
           >
             <SiteFooterShareIcon />
           </button>
+          <a
+            href={INSTAGRAM_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Instagram"
+            className="siteFooterButton"
+          >
+            <SiteFooterInstagramIconWhite />
+          </a>
         </div>
       </div>
     </footer>

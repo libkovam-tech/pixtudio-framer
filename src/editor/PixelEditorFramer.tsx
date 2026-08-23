@@ -237,6 +237,7 @@ import {
     SvgSmartObject,
     SvgQuantizationRecorderButton,
     SvgMethodButton,
+    StartFooterInstagramIconBlack,
 } from "./SvgIcons.tsx"
 
 import { track } from "./analytics.ts"
@@ -258,6 +259,7 @@ import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 
 const CANVAS_SIZE = 512
 const CANVAS_RENDER_EDGE_BLEED_PX = 2
+const INSTAGRAM_URL = "https://www.instagram.com/pixtudio.app/"
 const TRANSPARENT_PIXEL = "__PX_TRANSPARENT__" as const
 
 const MODAL_OVERLAY_STYLE: React.CSSProperties = {
@@ -17321,6 +17323,17 @@ export default function PIXTUDIO_Mobile_MVP() {
                                     </g>
                                 </svg>
                             </button>
+
+                            <a
+                                href={INSTAGRAM_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={footerIconStyle}
+                                aria-label="Instagram"
+                                className="pxUiAnim"
+                            >
+                                <StartFooterInstagramIconBlack />
+                            </a>
                         </div>
                     </div>
                 </div>
