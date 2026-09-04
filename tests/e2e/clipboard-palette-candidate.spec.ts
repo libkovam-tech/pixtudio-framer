@@ -9,6 +9,7 @@ import {
 declare global {
     interface Window {
         __pixtudioClipboardMode?: "image" | "unsupported" | "fail"
+        __pixtudioClipboardReadDelayMs?: number
         __pixtudioClipboardReadCount?: number
     }
 }
@@ -56,6 +57,31 @@ test("clipboard image prompt imports a palette on Yes", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("clipboard activity spinner covers the Presets area while checking", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.evaluate(() => {
+        window.__pixtudioClipboardReadDelayMs = 800
+    })
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+
+    await expect(
+        page.getByRole("status", { name: "Loading clipboard palette" })
+    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "Load Palette" })).toHaveCount(
+        0
+    )
+    await expectClipboardPromptVisible(page)
+    await expect(
+        page.getByRole("status", { name: "Loading clipboard palette" })
+    ).toHaveCount(0)
+
+    expect(errors.flush()).toEqual([])
+})
+
 test("fresh-read failure on Yes is silent and does not show import error", async ({
     page,
 }) => {
@@ -76,6 +102,36 @@ test("fresh-read failure on Yes is silent and does not show import error", async
         0
     )
     await expect(page.getByRole("button", { name: "Load Palette" })).toBeVisible()
+
+    expect(errors.flush()).toEqual([])
+})
+
+test("clipboard activity spinner covers the Presets area while Yes is reading", async ({
+    page,
+}) => {
+    const errors = collectBrowserErrors(page)
+
+    await openBearProject(page)
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+
+    await expectClipboardPromptVisible(page)
+    await page.evaluate(() => {
+        window.__pixtudioClipboardReadDelayMs = 800
+    })
+    await page.getByRole("button", { name: "Yes" }).click()
+
+    await expect(
+        page.getByRole("status", { name: "Loading clipboard palette" })
+    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "Load Palette" })).toHaveCount(
+        0
+    )
+    await expect(
+        page.locator('button[title^="Clipboard image_"]')
+    ).toBeVisible()
+    await expect(
+        page.getByRole("status", { name: "Loading clipboard palette" })
+    ).toHaveCount(0)
 
     expect(errors.flush()).toEqual([])
 })
@@ -102,6 +158,7 @@ test("unsupported clipboard payload stays silent without prompt or import error"
 async function installClipboardPaletteCandidateEnvironment(page: Page) {
     await page.addInitScript(() => {
         window.__pixtudioClipboardMode = "image"
+        window.__pixtudioClipboardReadDelayMs = 0
         window.__pixtudioClipboardReadCount = 0
 
         Object.defineProperty(navigator, "userAgentData", {
@@ -120,6 +177,12 @@ async function installClipboardPaletteCandidateEnvironment(page: Page) {
                 read: async () => {
                     window.__pixtudioClipboardReadCount =
                         (window.__pixtudioClipboardReadCount ?? 0) + 1
+                    const delayMs = window.__pixtudioClipboardReadDelayMs ?? 0
+                    if (delayMs > 0) {
+                        await new Promise((resolve) => {
+                            window.setTimeout(resolve, delayMs)
+                        })
+                    }
                     if (window.__pixtudioClipboardMode === "fail") {
                         throw new Error("clipboard read failed")
                     }

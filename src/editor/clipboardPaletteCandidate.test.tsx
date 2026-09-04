@@ -7,6 +7,7 @@ import {
     ClipboardPaletteDiagnostics,
     ClipboardPalettePrompt,
     ClipboardPaletteCandidateMount,
+    ClipboardPaletteActivitySpinner,
     createClipboardPaletteCandidateDetectionSession,
     createClipboardPaletteCandidateLifecycle,
     detectClipboardPaletteCandidate,
@@ -581,6 +582,14 @@ describe("clipboard palette candidate", () => {
         )
 
         expect(markup).toBe("")
+    })
+
+    it("uses the shared import spinner for clipboard palette activity", () => {
+        const markup = renderToStaticMarkup(<ClipboardPaletteActivitySpinner />)
+
+        expect(markup).toContain('role="status"')
+        expect(markup).toContain('aria-label="Loading clipboard palette"')
+        expect(markup).toContain("pxImportSpinnerFade")
     })
 
     it("marks a rejected detected candidate handled without importing", async () => {

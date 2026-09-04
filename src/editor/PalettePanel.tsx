@@ -22,7 +22,7 @@ type PalettePanelProps = {
     checkerBackground: string
     disabled: boolean
     importedPresetProfiles: FixedPaletteProfile[]
-    isClipboardPromptVisible?: boolean
+    isClipboardCandidateUiVisible?: boolean
     isMobileUI: boolean
     paletteCount: number
     paletteCountActual: number
@@ -40,7 +40,7 @@ type PalettePanelProps = {
     trackWrap: React.CSSProperties
     userSwatches: QuantizationSwatch[]
     visibleBuiltinPresetProfiles: FixedPaletteProfile[]
-    clipboardPrompt?: React.ReactNode
+    clipboardCandidateUi?: React.ReactNode
     onAddSwatch: () => void
     onApplyPreset: (profile: FixedPaletteProfile) => void
     onDeletePreset: (profileId: string) => void
@@ -69,7 +69,7 @@ export function PalettePanel({
     checkerBackground,
     disabled,
     importedPresetProfiles,
-    isClipboardPromptVisible = false,
+    isClipboardCandidateUiVisible = false,
     isMobileUI,
     paletteCount,
     paletteCountActual,
@@ -82,7 +82,7 @@ export function PalettePanel({
     trackWrap,
     userSwatches,
     visibleBuiltinPresetProfiles,
-    clipboardPrompt,
+    clipboardCandidateUi,
     onAddSwatch,
     onApplyPreset,
     onDeletePreset,
@@ -369,8 +369,8 @@ export function PalettePanel({
             </button>
         )
     }
-    const isClipboardPromptReplacingPresets =
-        activeTab === "presets" && isClipboardPromptVisible
+    const isClipboardCandidateReplacingPresets =
+        activeTab === "presets" && isClipboardCandidateUiVisible
 
     return (
         <div
@@ -460,7 +460,7 @@ export function PalettePanel({
                     minHeight: isMobileUI ? 126 : 164,
                     padding: 0,
                     boxSizing: "border-box",
-                    display: isClipboardPromptReplacingPresets
+                    display: isClipboardCandidateReplacingPresets
                         ? "flex"
                         : "block",
                     flexDirection: "column",
@@ -468,7 +468,7 @@ export function PalettePanel({
                     justifyContent: "center",
                 }}
             >
-                {clipboardPrompt}
+                {clipboardCandidateUi}
                 {activeTab === "size" ? (
                     <>
                         <div style={{ marginBottom: 14 }}>
@@ -539,7 +539,7 @@ export function PalettePanel({
                             <div style={{ marginTop: 12, width: "100%" }} />
                         </div>
                     </>
-                ) : isClipboardPromptReplacingPresets ? null : (
+                ) : isClipboardCandidateReplacingPresets ? null : (
                     <div
                         style={{
                             minHeight: isMobileUI ? 112 : 132,

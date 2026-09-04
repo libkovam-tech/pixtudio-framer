@@ -5,6 +5,7 @@ import {
     SvgClipboardPromptBacking,
     SvgOkButton,
 } from "./SvgIcons.tsx"
+import { ImportActivitySpinner } from "./ImportActivitySpinner.tsx"
 import {
     PIXTUDIO_ACTION_BUTTON_SIDE_MARGIN,
     PIXTUDIO_ACTION_BUTTON_VISIBLE_GAP,
@@ -103,8 +104,10 @@ export type ClipboardPaletteCandidateLifecycleOptions = {
 export type ClipboardPaletteCandidateProps = {
     isEligible: boolean
     isMobileUI?: boolean
-    onImportPalette: (request: ClipboardPaletteImportRequest) => void
-    onPromptVisibilityChange?: (isVisible: boolean) => void
+    onImportPalette: (
+        request: ClipboardPaletteImportRequest
+    ) => Promise<void> | void
+    onCandidateUiVisibilityChange?: (isVisible: boolean) => void
     clipboardRead?: ClipboardPaletteRead
     isSecureContext?: boolean
     documentTarget?: ClipboardPaletteCandidateDocumentTarget
@@ -459,6 +462,17 @@ const promptIconStyle: React.CSSProperties = {
     display: "block",
 }
 
+const clipboardActivitySpinnerStyle: React.CSSProperties = {
+    width: "100%",
+    position: "relative",
+    zIndex: 20,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 92,
+    pointerEvents: "none",
+}
+
 export function dismissClipboardPaletteDetectedCandidate(input: {
     candidate: ClipboardPaletteCandidateDetection | null
     session: ClipboardPaletteCandidateDetectionSession
@@ -611,6 +625,18 @@ export function ClipboardPaletteDiagnostics(props: {
     return null
 }
 
+export function ClipboardPaletteActivitySpinner() {
+    return (
+        <div
+            aria-label="Loading clipboard palette"
+            role="status"
+            style={clipboardActivitySpinnerStyle}
+        >
+            <ImportActivitySpinner />
+        </div>
+    )
+}
+
 export function createClipboardPaletteCandidateLifecycle(
     options: ClipboardPaletteCandidateLifecycleOptions
 ) {
@@ -679,7 +705,7 @@ export function ClipboardPaletteCandidate({
     isEligible,
     isMobileUI,
     onImportPalette,
-    onPromptVisibilityChange,
+    onCandidateUiVisibilityChange,
     clipboardRead,
     isSecureContext,
     documentTarget,
@@ -695,6 +721,9 @@ export function ClipboardPaletteCandidate({
     > | null>(null)
     const [detectedCandidate, setDetectedCandidate] =
         React.useState<ClipboardPaletteCandidateDetection | null>(null)
+    const [isCheckingClipboard, setIsCheckingClipboard] = React.useState(false)
+    const [isAcceptingClipboard, setIsAcceptingClipboard] =
+        React.useState(false)
     const [diagnostics, setDiagnostics] = React.useState<
         ClipboardPaletteCandidateDiagnostic[]
     >([])
@@ -710,20 +739,31 @@ export function ClipboardPaletteCandidate({
         eligibilityRef.current = isEligible
         if (!isEligible) {
             setDetectedCandidate(null)
+            setIsCheckingClipboard(false)
         }
         lifecycleRef.current?.updateEligibility(isEligible)
     }, [isEligible])
 
     React.useEffect(() => {
-        const isPromptVisible = isEligible && detectedCandidate !== null
-        onPromptVisibilityChange?.(isPromptVisible)
-    }, [detectedCandidate, isEligible, onPromptVisibilityChange])
+        const isCandidateUiVisible =
+            isEligible &&
+            (isCheckingClipboard ||
+                isAcceptingClipboard ||
+                detectedCandidate !== null)
+        onCandidateUiVisibilityChange?.(isCandidateUiVisible)
+    }, [
+        detectedCandidate,
+        isAcceptingClipboard,
+        isCheckingClipboard,
+        isEligible,
+        onCandidateUiVisibilityChange,
+    ])
 
     React.useEffect(() => {
         return () => {
-            onPromptVisibilityChange?.(false)
+            onCandidateUiVisibilityChange?.(false)
         }
-    }, [onPromptVisibilityChange])
+    }, [onCandidateUiVisibilityChange])
 
     React.useEffect(() => {
         const resolvedWindowTarget =
@@ -735,6 +775,7 @@ export function ClipboardPaletteCandidate({
         const lifecycle = createClipboardPaletteCandidateLifecycle({
             isEligible: () => eligibilityRef.current,
             inspectClipboard: async () => {
+                setIsCheckingClipboard(true)
                 const browserEnvironment = getBrowserClipboardPaletteEnvironment()
                 const environment: ClipboardPaletteCandidateEnvironment = {
                     ...browserEnvironment,
@@ -761,21 +802,25 @@ export function ClipboardPaletteCandidate({
                 })
                 const readClipboard =
                     getClipboardPaletteReadCapability(environment)
-                if (!readClipboard) {
-                    pushDiagnostic({ label: "capability:none" })
-                    return
-                }
+                try {
+                    if (!readClipboard) {
+                        pushDiagnostic({ label: "capability:none" })
+                        return
+                    }
 
-                const isAndroidChromium =
-                    isAndroidChromiumClipboardPaletteBrowser(environment)
-                const nextCandidate = await detectClipboardPaletteCandidate({
-                    readClipboard,
-                    session: detectionSessionRef.current,
-                    onDiagnostic: pushDiagnostic,
-                    inspectNonImagePayload: isAndroidChromium,
-                })
-                if (eligibilityRef.current) {
-                    setDetectedCandidate(nextCandidate)
+                    const isAndroidChromium =
+                        isAndroidChromiumClipboardPaletteBrowser(environment)
+                    const nextCandidate = await detectClipboardPaletteCandidate({
+                        readClipboard,
+                        session: detectionSessionRef.current,
+                        onDiagnostic: pushDiagnostic,
+                        inspectNonImagePayload: isAndroidChromium,
+                    })
+                    if (eligibilityRef.current) {
+                        setDetectedCandidate(nextCandidate)
+                    }
+                } finally {
+                    setIsCheckingClipboard(false)
                 }
             },
             onHidden: () => {
@@ -846,24 +891,37 @@ export function ClipboardPaletteCandidate({
     const acceptCandidate = () => {
         const candidate = detectedCandidate
         setDetectedCandidate(null)
+        setIsAcceptingClipboard(true)
 
-        void acceptClipboardPaletteDetectedCandidate({
-            candidate,
-            session: detectionSessionRef.current,
-            readClipboard: getReadClipboardCapability(),
-            onDiagnostic: pushDiagnostic,
-        }).then((request) => {
+        void (async () => {
+            const request = await acceptClipboardPaletteDetectedCandidate({
+                candidate,
+                session: detectionSessionRef.current,
+                readClipboard: getReadClipboardCapability(),
+                onDiagnostic: pushDiagnostic,
+            })
             if (!request) return
             pushDiagnostic({
                 label: "import:request",
                 details: `${request.file.type} ${request.file.size}b`,
             })
-            onImportPalette(request)
+            await onImportPalette(request)
+        })().finally(() => {
+            setIsAcceptingClipboard(false)
         })
     }
 
     if (!isEligible) {
         return <ClipboardPaletteDiagnostics diagnostics={diagnostics} />
+    }
+
+    if (isCheckingClipboard || isAcceptingClipboard) {
+        return (
+            <>
+                <ClipboardPaletteActivitySpinner />
+                <ClipboardPaletteDiagnostics diagnostics={diagnostics} />
+            </>
+        )
     }
 
     if (!detectedCandidate) {

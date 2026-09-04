@@ -13,6 +13,7 @@ import {
     getAspectRatioTemplate,
     type AspectRatioId,
 } from "./canvasGeometry.ts"
+import { ImportActivitySpinner } from "./ImportActivitySpinner.tsx"
 
 export type CropViewportGeometry = {
     canvasWidth: number
@@ -613,44 +614,7 @@ function CropApplyingOverlay() {
                 cursor: "wait",
             }}
         >
-            <style>{`
-@keyframes pxCropSpinnerFade {
-  0% { opacity: 0.95; }
-  100% { opacity: 0.22; }
-}
-`}</style>
-            <div
-                aria-hidden="true"
-                style={{
-                    position: "relative",
-                    width: 48,
-                    height: 48,
-                }}
-            >
-                {Array.from({ length: 8 }, (_, index) => {
-                    const angle = index * 45
-                    return (
-                        <span
-                            key={index}
-                            style={{
-                                position: "absolute",
-                                left: "50%",
-                                top: "50%",
-                                width: 8,
-                                height: 8,
-                                marginLeft: -4,
-                                marginTop: -4,
-                                borderRadius: "50%",
-                                background: "#666666",
-                                transform: `rotate(${angle}deg) translate(0, -18px)`,
-                                animation:
-                                    "pxCropSpinnerFade 850ms linear infinite",
-                                animationDelay: `${-0.85 + index * 0.10625}s`,
-                            }}
-                        />
-                    )
-                })}
-            </div>
+            <ImportActivitySpinner />
         </div>
     )
 }

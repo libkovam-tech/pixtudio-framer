@@ -3397,8 +3397,8 @@ function PixelEditorFramer({
     const fitScaleRef = React.useRef<number>(1)
     const [fitScaleForControls, setFitScaleForControls] = React.useState(1)
     const [
-        isClipboardPalettePromptVisible,
-        setIsClipboardPalettePromptVisible,
+        isClipboardPaletteCandidateUiVisible,
+        setIsClipboardPaletteCandidateUiVisible,
     ] = React.useState(false)
 
     const handleEditorFitScaleChange = React.useCallback((s: number) => {
@@ -6556,33 +6556,34 @@ function PixelEditorFramer({
         el.click()
     }
 
-    function importPalettePresetInput(input: ClipboardPaletteImportRequest) {
-        void importPalettePresetFromFile({
+    async function importPalettePresetInput(input: ClipboardPaletteImportRequest) {
+        await importPalettePresetFromFile({
             file: input.file,
             displayName: input.displayName,
             makeImportedId: makeImportedPalettePresetId,
         }).then((result) => {
-            if (!result.ok) {
-                showImportError(result.message)
-                return
-            }
+                if (!result.ok) {
+                    showImportError(result.message)
+                    return
+                }
 
-            const profile: FixedQuantizationProfile =
-                result.preparedPreset.profile
-            const preset: ImportedPalettePreset = result.preparedPreset.preset
+                const profile: FixedQuantizationProfile =
+                    result.preparedPreset.profile
+                const preset: ImportedPalettePreset =
+                    result.preparedPreset.preset
 
-            setImportedPalettePresets((prev) => [...prev, preset])
-            applyFixedPalettePreset(profile)
+                setImportedPalettePresets((prev) => [...prev, preset])
+                applyFixedPalettePreset(profile)
 
-            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                editorConsole.info("[PaletteTabs][CHECK] palette imported", {
-                    fileName: result.fileName,
-                    route: result.route,
-                    profileId: profile.id,
-                    colors: profile.colors.length,
-                })
-            }
-        })
+                if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
+                    editorConsole.info("[PaletteTabs][CHECK] palette imported", {
+                        fileName: result.fileName,
+                        route: result.route,
+                        profileId: profile.id,
+                        colors: profile.colors.length,
+                    })
+                }
+            })
     }
 
     function handlePalettePresetFilePicked(
@@ -13213,13 +13214,13 @@ function PixelEditorFramer({
                             }
                             bg={bg}
                             checkerBackground={checkerBackground}
-                            clipboardPrompt={
+                            clipboardCandidateUi={
                                 <ClipboardPaletteCandidateMount
                                     isEligible={canImportPalettePreset}
                                     isMobileUI={isMobileUI}
                                     onImportPalette={importPalettePresetInput}
-                                    onPromptVisibilityChange={
-                                        setIsClipboardPalettePromptVisible
+                                    onCandidateUiVisibilityChange={
+                                        setIsClipboardPaletteCandidateUiVisible
                                     }
                                     viewportScale={fitScaleForControls}
                                 />
@@ -13228,8 +13229,8 @@ function PixelEditorFramer({
                             importedPresetProfiles={
                                 palettePresentation.importedPresetProfiles
                             }
-                            isClipboardPromptVisible={
-                                isClipboardPalettePromptVisible
+                            isClipboardCandidateUiVisible={
+                                isClipboardPaletteCandidateUiVisible
                             }
                             isMobileUI={isMobileUI}
                             paletteCount={paletteCount}
