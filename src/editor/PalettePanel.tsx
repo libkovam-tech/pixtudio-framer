@@ -22,6 +22,7 @@ type PalettePanelProps = {
     checkerBackground: string
     disabled: boolean
     importedPresetProfiles: FixedPaletteProfile[]
+    isClipboardPromptVisible?: boolean
     isMobileUI: boolean
     paletteCount: number
     paletteCountActual: number
@@ -39,6 +40,7 @@ type PalettePanelProps = {
     trackWrap: React.CSSProperties
     userSwatches: QuantizationSwatch[]
     visibleBuiltinPresetProfiles: FixedPaletteProfile[]
+    clipboardPrompt?: React.ReactNode
     onAddSwatch: () => void
     onApplyPreset: (profile: FixedPaletteProfile) => void
     onDeletePreset: (profileId: string) => void
@@ -67,6 +69,7 @@ export function PalettePanel({
     checkerBackground,
     disabled,
     importedPresetProfiles,
+    isClipboardPromptVisible = false,
     isMobileUI,
     paletteCount,
     paletteCountActual,
@@ -79,6 +82,7 @@ export function PalettePanel({
     trackWrap,
     userSwatches,
     visibleBuiltinPresetProfiles,
+    clipboardPrompt,
     onAddSwatch,
     onApplyPreset,
     onDeletePreset,
@@ -365,6 +369,8 @@ export function PalettePanel({
             </button>
         )
     }
+    const isClipboardPromptReplacingPresets =
+        activeTab === "presets" && isClipboardPromptVisible
 
     return (
         <div
@@ -454,8 +460,15 @@ export function PalettePanel({
                     minHeight: isMobileUI ? 126 : 164,
                     padding: 0,
                     boxSizing: "border-box",
+                    display: isClipboardPromptReplacingPresets
+                        ? "flex"
+                        : "block",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
                 }}
             >
+                {clipboardPrompt}
                 {activeTab === "size" ? (
                     <>
                         <div style={{ marginBottom: 14 }}>
@@ -526,7 +539,7 @@ export function PalettePanel({
                             <div style={{ marginTop: 12, width: "100%" }} />
                         </div>
                     </>
-                ) : (
+                ) : isClipboardPromptReplacingPresets ? null : (
                     <div
                         style={{
                             minHeight: isMobileUI ? 112 : 132,
@@ -550,7 +563,9 @@ export function PalettePanel({
                                 width: "100%",
                             }}
                         >
-                            {visibleBuiltinPresetProfiles.map(renderPresetButton)}
+                            {visibleBuiltinPresetProfiles.map(
+                                renderPresetButton
+                            )}
                             {importedPresetProfiles.map(renderPresetButton)}
                             {renderLoadPaletteButton()}
                         </div>

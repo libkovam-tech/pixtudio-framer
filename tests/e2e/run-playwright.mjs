@@ -7,6 +7,7 @@ const port = 4173
 const baseUrl = `http://${host}:${port}`
 const args = process.argv.slice(2)
 const localSpecFiles = [
+  "tests/e2e/clipboard-palette-candidate.spec.ts",
   "tests/e2e/method-smoke.spec.ts",
   "tests/e2e/method-stress.spec.ts",
   "tests/e2e/method-visual-regression.spec.ts",

@@ -1635,7 +1635,8 @@ function replaceFixedProfileTransparentSwatchId<
         return profile
     }
 
-    const { transparentSwatchIds: _transparentSwatchIds, ...rest } = profile
+    const rest = { ...profile }
+    delete rest.transparentSwatchIds
     return (next.length > 0
         ? { ...profile, transparentSwatchIds: next }
         : rest) as T
@@ -1687,14 +1688,16 @@ export function makeImportedPalettePreset<
 
 export function prepareImportedPalettePresetFromColors(input: {
     fileName: string
+    displayName?: string
     colors: ReadonlyArray<string>
     makeImportedId: () => string
 }): ImportedPalettePresetFromColorsResult {
+    const displayName = input.displayName?.trim()
     const profile: EditableFixedPaletteProfile & { source: "imported" } = {
         kind: "fixed",
         source: "imported",
         id: input.makeImportedId(),
-        name: makeImportedPalettePresetName(input.fileName),
+        name: displayName || makeImportedPalettePresetName(input.fileName),
         colors: input.colors.slice(),
     }
 

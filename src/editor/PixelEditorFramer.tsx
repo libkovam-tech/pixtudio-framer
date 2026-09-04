@@ -21,12 +21,16 @@ import {
     composePixelArtXlsxExportColors,
 } from "./PixelArtXlsxExport.tsx"
 import { zipStore, type ZipStoreFile } from "./zipStore.ts"
+import {
+    ClipboardPaletteCandidateMount,
+    type ClipboardPaletteImportRequest,
+} from "./clipboardPaletteCandidate.tsx"
+import { canUsePalettePresetImport } from "./palettePresetImportAvailability.ts"
 
 import {
     applyProjectSnapshotV2AutoOverrides as applyAutoOverrides,
     buildProjectSnapshotV2ForSave,
     canonicalizeSnapshotV2,
-    parseProjectSnapshotV2Json,
     pruneProjectSnapshotV2AutoOverrides as pruneAutoOverridesForCurrentAuto,
     type AutoSwatchOverridesMapV2,
     type ProjectSnapshotV2,
@@ -46,7 +50,6 @@ import {
 } from "./openFileRouter.ts"
 import {
     FILE_INTAKE_MESSAGES,
-    assertProjectSaveFileSize,
     decodeAndValidateRasterImageFile,
     getFileIntakeUserMessage,
 } from "./fileIntakeSecurity.ts"
@@ -59,13 +62,12 @@ import {
     type SaveLoadError,
     type SaveLoadResult,
 } from "./saveLoadResult.ts"
-import { extractPaletteFromImageFile } from "./paletteFromImage.ts"
+import { importPalettePresetFromFile } from "./palettePresetImportIngress.ts"
 import {
     USE_LEGACY_FIXED_PRESET_SWATCH_EDIT_ROLLBACK,
     ensureActiveImportedPalettePresetRegistered,
     makeAutoSwatchesFromFixedProfile,
     makeEditableFixedPresetProfile,
-    prepareImportedPalettePresetFromColors,
     prepareImportedPresetSwatchCreateDecision,
     prepareActivePresetFallbackToAuto,
     applyFixedPaletteDisplayOverrideSwatches,
@@ -2044,9 +2046,8 @@ function getViewportWidthPx() {
 }
 
 /**
- * FitToViewport (NO-OP на шаге A0)
- * Считает scale = min(1, viewportHeight / contentHeight) и применяет transform: scale(scale).
- * Пока НЕ используется ни в одном экране — просто инфраструктура.
+ * FitToViewport
+ * Computes scale = min(1, viewportHeight / contentHeight) and applies transform: scale(scale).
  */
 function FitToViewport({
     children,
@@ -2062,7 +2063,7 @@ function FitToViewport({
     const contentRef = React.useRef<HTMLDivElement | null>(null)
     const [scale, setScale] = React.useState(1)
 
-    // ✅ “воздух” внутри viewport
+    // Breathing room inside the viewport.
     const VIEWPORT_PAD = 0
     const VIEWPORT_PAD_TOP = topPadding
 
@@ -2090,7 +2091,7 @@ function FitToViewport({
                                 : 0)
                     ) || 0
 
-                // scrollWidth/scrollHeight НЕ зависят от transform: scale()
+                // scrollWidth/scrollHeight do not depend on transform: scale().
                 const h = Math.max(1, el.scrollHeight)
                 const w = Math.max(1, el.scrollWidth)
                 const availH = Math.max(
@@ -2130,24 +2131,24 @@ function FitToViewport({
     return (
         <div
             style={{
-                // ✅ жёстко привязываемся к реальному viewport, а не к ширине родителя
+                // Lock to the real viewport instead of the parent width.
                 width: "100vw",
                 maxWidth: "100vw",
                 height: "100dvh",
 
                 background,
 
-                // ✅ прибиваем горизонтальный оверфлоу (чтобы ничего не “расширяло” центр)
+                // Clamp horizontal overflow so nothing expands the centered content.
                 position: "fixed",
                 inset: 0,
                 overflow: "hidden",
 
-                // ✅ воздух по краям
+                // Edge breathing room.
                 padding: VIEWPORT_PAD,
                 paddingTop: VIEWPORT_PAD_TOP,
                 boxSizing: "border-box",
 
-                // ✅ центрируем контент
+                // Center the content.
                 display: "grid",
                 placeItems: "start center",
 
@@ -2160,7 +2161,7 @@ function FitToViewport({
                     transform: `scale(${scale})`,
                     transformOrigin: "top center",
 
-                    // ✅ важно: не растягиваем на 100%, иначе scrollWidth будет “плыть”
+                    // Keep natural width; stretching to 100% would make scrollWidth drift.
                     display: "inline-block",
                 }}
             >
@@ -3395,6 +3396,10 @@ function PixelEditorFramer({
     // External FitToViewport scale (viewport -> content)
     const fitScaleRef = React.useRef<number>(1)
     const [fitScaleForControls, setFitScaleForControls] = React.useState(1)
+    const [
+        isClipboardPalettePromptVisible,
+        setIsClipboardPalettePromptVisible,
+    ] = React.useState(false)
 
     const handleEditorFitScaleChange = React.useCallback((s: number) => {
         const safeScale = Math.max(0.0001, s || 1)
@@ -6551,90 +6556,33 @@ function PixelEditorFramer({
         el.click()
     }
 
-    async function importPalettePresetFromPixtudioFile(file: File) {
-        try {
-            assertProjectSaveFileSize(file)
-            const text = await file.text()
-            const parsed = parseProjectSnapshotV2Json(text)
-            if (!parsed.ok) {
-                showImportError(FILE_INTAKE_MESSAGES.damagedProject)
+    function importPalettePresetInput(input: ClipboardPaletteImportRequest) {
+        void importPalettePresetFromFile({
+            file: input.file,
+            displayName: input.displayName,
+            makeImportedId: makeImportedPalettePresetId,
+        }).then((result) => {
+            if (!result.ok) {
+                showImportError(result.message)
                 return
             }
 
-            const colors = [...parsed.canonical.palette.swatches]
-                .sort((a, b) => a.index - b.index)
-                .map((swatch) => swatch.hex.toUpperCase())
-
-            if (colors.length <= 0) {
-                showImportError("Import failed. Please try again.")
-                return
-            }
-
-            const preparedPreset = prepareImportedPalettePresetFromColors({
-                fileName: file.name,
-                colors,
-                makeImportedId: makeImportedPalettePresetId,
-            })
-            const profile: FixedQuantizationProfile = preparedPreset.profile
-            const preset: ImportedPalettePreset = preparedPreset.preset
+            const profile: FixedQuantizationProfile =
+                result.preparedPreset.profile
+            const preset: ImportedPalettePreset = result.preparedPreset.preset
 
             setImportedPalettePresets((prev) => [...prev, preset])
             applyFixedPalettePreset(profile)
 
             if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
                 editorConsole.info("[PaletteTabs][CHECK] palette imported", {
-                    fileName: file.name,
+                    fileName: result.fileName,
+                    route: result.route,
                     profileId: profile.id,
                     colors: profile.colors.length,
                 })
             }
-        } catch (error) {
-            showImportError(
-                getFileIntakeUserMessage(
-                    error,
-                    FILE_INTAKE_MESSAGES.damagedProject
-                )
-            )
-        }
-    }
-
-    async function importPalettePresetFromImageFile(file: File) {
-        try {
-            const colors = await extractPaletteFromImageFile(file, {
-                targetColors: 32,
-            })
-
-            if (colors.length <= 0) {
-                showImportError("Import failed. Please try again.")
-                return
-            }
-
-            const preparedPreset = prepareImportedPalettePresetFromColors({
-                fileName: file.name,
-                colors,
-                makeImportedId: makeImportedPalettePresetId,
-            })
-            const profile: FixedQuantizationProfile = preparedPreset.profile
-            const preset: ImportedPalettePreset = preparedPreset.preset
-
-            setImportedPalettePresets((prev) => [...prev, preset])
-            applyFixedPalettePreset(profile)
-
-            if (ENABLE_PALETTE_QUANTIZATION_ENGINE_CONSOLE_TESTS) {
-                editorConsole.info("[PaletteTabs][CHECK] palette extracted from image", {
-                    fileName: file.name,
-                    profileId: profile.id,
-                    colors: profile.colors.length,
-                })
-            }
-        } catch (error) {
-            showImportError(
-                getFileIntakeUserMessage(
-                    error,
-                    FILE_INTAKE_MESSAGES.imageDecodeFailed
-                )
-            )
-        }
+        })
     }
 
     function handlePalettePresetFilePicked(
@@ -6644,18 +6592,7 @@ function PixelEditorFramer({
         event.target.value = ""
         if (!file) return
 
-        const route = routeOpenFile(file)
-        if (route === "image") {
-            void importPalettePresetFromImageFile(file)
-            return
-        }
-
-        if (route === "project") {
-            void importPalettePresetFromPixtudioFile(file)
-            return
-        }
-
-        showImportError(FILE_INTAKE_MESSAGES.unsupportedFile)
+        importPalettePresetInput({ file })
     }
 
     function deletePalettePreset(profileId: string) {
@@ -9265,6 +9202,10 @@ function PixelEditorFramer({
     const cols = gridColumns
     const isMethodModeActive = methodSession !== null
     const editorControlsDisabled = !!overlayMode || isMethodModeActive
+    const canImportPalettePreset = canUsePalettePresetImport({
+        activeTab: paletteTabsState.activeTab,
+        controlsDisabled: editorControlsDisabled,
+    })
     const moduleTabsScale = isMobileUI ? MOBILE_MODULE_TABS_SCALE : 1
     const moduleTabsBaseWidth =
         MODULE_TAB_BUTTON_SIZE * MODULE_TAB_BUTTON_COUNT
@@ -13272,9 +13213,23 @@ function PixelEditorFramer({
                             }
                             bg={bg}
                             checkerBackground={checkerBackground}
+                            clipboardPrompt={
+                                <ClipboardPaletteCandidateMount
+                                    isEligible={canImportPalettePreset}
+                                    isMobileUI={isMobileUI}
+                                    onImportPalette={importPalettePresetInput}
+                                    onPromptVisibilityChange={
+                                        setIsClipboardPalettePromptVisible
+                                    }
+                                    viewportScale={fitScaleForControls}
+                                />
+                            }
                             disabled={editorControlsDisabled}
                             importedPresetProfiles={
                                 palettePresentation.importedPresetProfiles
+                            }
+                            isClipboardPromptVisible={
+                                isClipboardPalettePromptVisible
                             }
                             isMobileUI={isMobileUI}
                             paletteCount={paletteCount}

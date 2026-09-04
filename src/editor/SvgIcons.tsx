@@ -544,6 +544,33 @@ export function SvgAlertBacking({
     )
 }
 
+export function SvgClipboardPromptBacking({
+    style,
+    ariaLabel,
+}: {
+    style?: React.CSSProperties
+    ariaLabel?: string
+}) {
+    return (
+        <InlineSvgWrap style={style} ariaLabel={ariaLabel}>
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 710.6 88.3"
+                width="100%"
+                height="100%"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label={ariaLabel || ""}
+            >
+                <polygon
+                    fill="#FFFFFF"
+                    points="35,88.3 35,79.5 17.5,79.5 17.5,70.8 8.7,70.8 8.8,62 0,62 0,26.3 8.8,26.3 8.7,17.5 17.5,17.5 17.5,8.8 35,8.8 35,0 675.6,0 675.6,8.8 693.1,8.8 693.1,17.5 701.9,17.5 701.8,26.3 710.6,26.3 710.6,62 701.8,62 701.9,70.8 693.1,70.8 693.1,79.5 675.6,79.5 675.6,88.3"
+                />
+            </svg>
+        </InlineSvgWrap>
+    )
+}
+
 export function SvgCancelButton({ style }: { style?: React.CSSProperties }) {
     return (
         <svg

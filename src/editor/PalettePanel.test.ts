@@ -65,4 +65,36 @@ describe("PalettePanel", () => {
         expect(markup).toContain("pointer-events:none")
         expect(markup).toContain("opacity:0.5")
     })
+
+    it("replaces Palette Presets content while the clipboard prompt is visible", () => {
+        const markup = renderPalettePanel({
+            activeTab: "presets",
+            clipboardPrompt: React.createElement("div", null, "CLIPBOARD PROMPT"),
+            importedPresetProfiles: [
+                {
+                    kind: "fixed",
+                    id: "imported",
+                    name: "Imported",
+                    source: "imported",
+                    colors: ["#000000"],
+                },
+            ],
+            isClipboardPromptVisible: true,
+            visibleBuiltinPresetProfiles: [
+                {
+                    kind: "fixed",
+                    id: "sunset",
+                    name: "Sunset",
+                    source: "builtin",
+                    colors: ["#ffffff"],
+                },
+            ],
+        })
+
+        expect(markup).toContain("PALETTE PRESETS")
+        expect(markup).toContain("CLIPBOARD PROMPT")
+        expect(markup).not.toContain("Load Palette")
+        expect(markup).not.toContain("SUNSET")
+        expect(markup).not.toContain("IMPORTED")
+    })
 })
