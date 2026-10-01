@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import {
+    bearProjectPath,
     collectBrowserErrors,
     installStableVisualEnvironment,
     openBearProject,
@@ -11,6 +12,7 @@ declare global {
         __pixtudioClipboardMode?: "image" | "unsupported" | "fail"
         __pixtudioClipboardReadDelayMs?: number
         __pixtudioClipboardReadCount?: number
+        __pixtudioClipboardImageVariant?: number
     }
 }
 
@@ -56,6 +58,92 @@ test("clipboard image prompt imports a palette on Yes", async ({
     expect(testInfo.project.name).toMatch(/desktop|mobile/)
     expect(errors.flush()).toEqual([])
 })
+
+for (const decision of ["Yes", "No"] as const) {
+    test(`clipboard ${decision} suppresses the same image across Presets and Method visits`, async ({ page }) => {
+        const errors = collectBrowserErrors(page)
+        await openBearProject(page)
+        await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+        await expectClipboardPromptVisible(page)
+        await page.getByRole("button", { name: decision, exact: true }).click()
+        await expect(
+            page.getByRole("button", { name: "Load Palette" })
+        ).toBeVisible()
+
+        await page.evaluate(() => {
+            window.__pixtudioClipboardReadDelayMs = 800
+        })
+        for (let visit = 0; visit < 3; visit += 1) {
+            await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+            await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+            await expectClipboardInspectionSuppressed(page)
+        }
+
+        if (decision === "No") {
+            await page.getByRole("button", { name: /^SUNSET/ }).click()
+        }
+        await page.getByRole("button", { name: "METHOD", exact: true }).click()
+        await page.getByRole("button", { name: "Cancel METHOD" }).click()
+        await page.evaluate(() => window.dispatchEvent(new Event("focus")))
+        await expectClipboardInspectionSuppressed(page)
+
+        await page.evaluate(() => {
+            window.__pixtudioClipboardImageVariant = 1
+        })
+        await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+        await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+        await expectClipboardPromptVisible(page)
+        await page.getByRole("button", { name: "No", exact: true }).click()
+        await page.evaluate(() => {
+            window.__pixtudioClipboardImageVariant = 0
+            window.dispatchEvent(new Event("focus"))
+        })
+        await expectClipboardInspectionSuppressed(page)
+
+        await page.getByRole("button", { name: "Home", exact: true }).click()
+        const chooserPromise = page.waitForEvent("filechooser")
+        await page.getByRole("button", { name: "Open File", exact: true }).click()
+        await (await chooserPromise).setFiles(bearProjectPath)
+        await expect(
+            page.getByRole("button", { name: "Export", exact: true })
+        ).toBeVisible()
+        await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+        await expectClipboardInspectionSuppressed(page)
+        expect(errors.flush()).toEqual([])
+    })
+
+    test(`clipboard ${decision} survives an Android tab hidden-visible cycle`, async ({ page }) => {
+        const errors = collectBrowserErrors(page)
+        await page.addInitScript(() => {
+            Object.defineProperty(navigator, "userAgent", {
+                configurable: true,
+                value: "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/155.0 Mobile Safari/537.36",
+            })
+        })
+        await openBearProject(page)
+        await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+        await expectClipboardPromptVisible(page)
+        await page.getByRole("button", { name: decision, exact: true }).click()
+        await expect(
+            page.getByRole("button", { name: "Load Palette" })
+        ).toBeVisible()
+        await page.evaluate(() => {
+            window.__pixtudioClipboardReadDelayMs = 800
+            Object.defineProperty(document, "visibilityState", {
+                configurable: true,
+                value: "hidden",
+            })
+            document.dispatchEvent(new Event("visibilitychange"))
+            Object.defineProperty(document, "visibilityState", {
+                configurable: true,
+                value: "visible",
+            })
+            document.dispatchEvent(new Event("visibilitychange"))
+        })
+        await expectClipboardInspectionSuppressed(page)
+        expect(errors.flush()).toEqual([])
+    })
+}
 
 test("clipboard activity spinner covers the Presets area while checking", async ({
     page,
@@ -160,6 +248,7 @@ async function installClipboardPaletteCandidateEnvironment(page: Page) {
         window.__pixtudioClipboardMode = "image"
         window.__pixtudioClipboardReadDelayMs = 0
         window.__pixtudioClipboardReadCount = 0
+        window.__pixtudioClipboardImageVariant = 0
 
         Object.defineProperty(navigator, "userAgentData", {
             configurable: true,
@@ -215,10 +304,11 @@ async function installClipboardPaletteCandidateEnvironment(page: Page) {
                                     "#94D2BD",
                                     "#E9D8A6",
                                 ]
+                                const variant = window.__pixtudioClipboardImageVariant ?? 0
                                 for (let y = 0; y < 4; y += 1) {
                                     for (let x = 0; x < 4; x += 1) {
                                         context.fillStyle =
-                                            colors[(x + y) % colors.length] ??
+                                            colors[(x + y + variant) % colors.length] ??
                                             "#001219"
                                         context.fillRect(x, y, 1, 1)
                                     }
@@ -255,4 +345,12 @@ async function expectClipboardPromptVisible(page: Page) {
     ).toBeVisible()
     await expect(page.getByRole("button", { name: "No" })).toBeVisible()
     await expect(page.getByRole("button", { name: "Yes" })).toBeVisible()
+}
+
+async function expectClipboardInspectionSuppressed(page: Page) {
+    const spinner = page.getByRole("status", { name: "Loading clipboard palette" })
+    await expect(spinner).toBeVisible()
+    await expect(spinner).toHaveCount(0)
+    await expect(page.getByText("LOAD PALETTE FROM CLIPBOARD?")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Load Palette" })).toBeVisible()
 }

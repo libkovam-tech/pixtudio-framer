@@ -18,7 +18,6 @@ import {
     makeClipboardPaletteDisplayName,
     makeClipboardPaletteFingerprint,
     shouldMountClipboardPaletteCandidate,
-    shouldResetAndroidClipboardPaletteSuppressionOnTabHidden,
 } from "./clipboardPaletteCandidate.tsx"
 
 class FakeEventTarget {
@@ -95,6 +94,7 @@ describe("clipboard palette candidate", () => {
 
         const markup = renderToStaticMarkup(
             <ClipboardPaletteCandidateMount
+                session={createClipboardPaletteCandidateDetectionSession()}
                 featureFlag={false}
                 isEligible={true}
                 onImportPalette={onImportPalette}
@@ -174,22 +174,19 @@ describe("clipboard palette candidate", () => {
         lifecycle.dispose()
     })
 
-    it("notifies visibility hidden without reading the clipboard", () => {
+    it("ignores visibility hidden without reading the clipboard", () => {
         const documentTarget = new FakeDocumentEventTarget()
         const inspectClipboard = vi.fn()
-        const onHidden = vi.fn()
 
         const lifecycle = createClipboardPaletteCandidateLifecycle({
             isEligible: () => true,
             inspectClipboard,
-            onHidden,
             documentTarget,
         })
 
         documentTarget.visibilityState = "hidden"
         documentTarget.dispatch("visibilitychange")
 
-        expect(onHidden).toHaveBeenCalledTimes(1)
         expect(inspectClipboard).not.toHaveBeenCalled()
 
         documentTarget.visibilityState = "visible"
@@ -347,38 +344,6 @@ describe("clipboard palette candidate", () => {
         ).toBe(false)
     })
 
-    it("gates Android tab-hidden suppression reset behind a reversible flag", () => {
-        const androidChromiumEnvironment = {
-            browserBrands: [{ brand: "Chromium" }],
-            userAgent:
-                "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/155.0 Mobile Safari/537.36",
-        }
-        const desktopChromiumEnvironment = {
-            browserBrands: [{ brand: "Chromium" }],
-            userAgent:
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/155.0 Safari/537.36",
-        }
-
-        expect(
-            shouldResetAndroidClipboardPaletteSuppressionOnTabHidden(
-                androidChromiumEnvironment,
-                true
-            )
-        ).toBe(true)
-        expect(
-            shouldResetAndroidClipboardPaletteSuppressionOnTabHidden(
-                androidChromiumEnvironment,
-                false
-            )
-        ).toBe(false)
-        expect(
-            shouldResetAndroidClipboardPaletteSuppressionOnTabHidden(
-                desktopChromiumEnvironment,
-                true
-            )
-        ).toBe(false)
-    })
-
     it("detects image-like clipboard items without retaining the Blob", async () => {
         const imageBlob = makeBlob([1, 2, 3, 4])
         const imageItem = makeClipboardItem({
@@ -396,7 +361,10 @@ describe("clipboard palette candidate", () => {
         expect(detection).toEqual({
             mimeType: "image/png",
             size: 4,
-            fingerprint: "image/png;size=4;samples=01020304",
+            fingerprint: await makeClipboardPaletteFingerprint({
+                blob: imageBlob,
+                mimeType: "image/png",
+            }),
         })
         expect(detection).not.toHaveProperty("blob")
     })
@@ -457,20 +425,31 @@ describe("clipboard palette candidate", () => {
         )
     })
 
-    it("uses sampled bytes so same MIME and size can still detect different content", async () => {
-        const first = await makeClipboardPaletteFingerprint({
-            blob: makeBlob([1, 2, 3, 4, 5, 6]),
+    it("fingerprints the complete payload using SHA-256", async () => {
+        const fingerprint = await makeClipboardPaletteFingerprint({
+            blob: new Blob(["abc"], { type: "image/png" }),
             mimeType: "image/png",
-            sampleSize: 2,
+        })
+        expect(fingerprint).toBe(
+            "image/png;size=3;sha256=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        )
+    })
+
+    it("distinguishes images that differ outside the old byte samples", async () => {
+        const firstBytes = new Array<number>(200).fill(1)
+        const secondBytes = [...firstBytes]
+        secondBytes[40] = 2
+        const first = await makeClipboardPaletteFingerprint({
+            blob: makeBlob(firstBytes),
+            mimeType: "image/png",
         })
         const second = await makeClipboardPaletteFingerprint({
-            blob: makeBlob([1, 2, 9, 9, 5, 6]),
+            blob: makeBlob(secondBytes),
             mimeType: "image/png",
-            sampleSize: 2,
         })
 
-        expect(first).toBe("image/png;size=6;samples=0102.0304.0506")
-        expect(second).toBe("image/png;size=6;samples=0102.0909.0506")
+        expect(first).toMatch(/^image\/png;size=200;sha256=[a-f0-9]{64}$/)
+        expect(second).toMatch(/^image\/png;size=200;sha256=[a-f0-9]{64}$/)
         expect(first).not.toBe(second)
     })
 
@@ -498,7 +477,7 @@ describe("clipboard palette candidate", () => {
         expect(second).toBeNull()
     })
 
-    it("can reset handled clipboard fingerprints for a new Android tab visit", async () => {
+    it("offers different content without forgetting any previously handled image", async () => {
         const blob = makeBlob([1, 2, 3, 4])
         const session = createClipboardPaletteCandidateDetectionSession()
         const first = await detectClipboardPaletteCandidate({
@@ -520,16 +499,27 @@ describe("clipboard palette candidate", () => {
         })
 
         expect(suppressed).toBeNull()
-        session.reset()
+        const different = await detectClipboardPaletteCandidate({
+            readClipboard: vi.fn(async () => [
+                makeClipboardItem({ "image/png": makeBlob([1, 2, 3, 5]) }),
+            ]),
+            session,
+        })
+        expect(different).not.toBeNull()
+        expect(different?.fingerprint).not.toBe(first.fingerprint)
+        dismissClipboardPaletteDetectedCandidate({
+            candidate: different,
+            session,
+        })
 
-        const afterReset = await detectClipboardPaletteCandidate({
+        const returnedToFirst = await detectClipboardPaletteCandidate({
             readClipboard: vi.fn(async () => [
                 makeClipboardItem({ "image/png": blob }),
             ]),
             session,
         })
 
-        expect(afterReset).toEqual(first)
+        expect(returnedToFirst).toBeNull()
     })
 
     it("renders the clipboard palette prompt with Yes and No icon buttons", () => {

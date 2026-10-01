@@ -16,7 +16,6 @@ import {
 
 export const CLIPBOARD_PALETTE_CANDIDATE =
     import.meta.env.VITE_CLIPBOARD_PALETTE_CANDIDATE !== "false"
-export const RESET_ANDROID_CLIPBOARD_PALETTE_SUPPRESSION_ON_TAB_HIDDEN = true
 
 export type ClipboardPaletteImportRequest = {
     file: File
@@ -79,7 +78,6 @@ type ClipboardPaletteCandidatePayload = ClipboardPaletteCandidateDetection & {
 export type ClipboardPaletteCandidateDetectionSession = {
     isHandled: (fingerprint: string) => boolean
     markHandled: (fingerprint: string) => void
-    reset: () => void
 }
 
 type ClipboardPaletteCandidateDiagnostic = {
@@ -96,12 +94,12 @@ export type ClipboardPaletteCandidateLifecycleOptions = {
     inspectClipboard?: (
         reason: ClipboardPaletteCandidateTriggerReason
     ) => Promise<void> | void
-    onHidden?: () => void
     windowTarget?: ClipboardPaletteCandidateEventTarget
     documentTarget?: ClipboardPaletteCandidateDocumentTarget
 }
 
 export type ClipboardPaletteCandidateProps = {
+    session: ClipboardPaletteCandidateDetectionSession
     isEligible: boolean
     isMobileUI?: boolean
     onImportPalette: (
@@ -136,9 +134,6 @@ export function createClipboardPaletteCandidateDetectionSession():
         markHandled(fingerprint: string) {
             handledFingerprints.add(fingerprint)
         },
-        reset() {
-            handledFingerprints.clear()
-        },
     }
 }
 
@@ -152,35 +147,15 @@ function bytesToHex(bytes: Uint8Array) {
         .join("")
 }
 
-async function readBlobSample(blob: Blob, start: number, length: number) {
-    const buffer = await blob.slice(start, start + length).arrayBuffer()
-    return bytesToHex(new Uint8Array(buffer))
-}
-
 export async function makeClipboardPaletteFingerprint(input: {
     blob: Blob
     mimeType: string
-    sampleSize?: number
 }) {
-    const sampleSize = input.sampleSize ?? 32
-    const size = input.blob.size
-    const starts =
-        size <= sampleSize
-            ? [0]
-            : [
-                  0,
-                  Math.max(0, Math.floor((size - sampleSize) / 2)),
-                  Math.max(0, size - sampleSize),
-              ]
-
-    const uniqueStarts = [...new Set(starts)]
-    const samples = await Promise.all(
-        uniqueStarts.map((start) =>
-            readBlobSample(input.blob, start, Math.min(sampleSize, size - start))
-        )
+    const digest = await crypto.subtle.digest(
+        "SHA-256",
+        await input.blob.arrayBuffer()
     )
-
-    return `${input.mimeType};size=${size};samples=${samples.join(".")}`
+    return `${input.mimeType};size=${input.blob.size};sha256=${bytesToHex(new Uint8Array(digest))}`
 }
 
 async function readClipboardPaletteCandidatePayload(input: {
@@ -298,16 +273,6 @@ export function isAndroidChromiumClipboardPaletteBrowser(input: {
     return (
         isChromiumClipboardPaletteBrowser(input.browserBrands) &&
         /\bAndroid\b/i.test(input.userAgent ?? "")
-    )
-}
-
-export function shouldResetAndroidClipboardPaletteSuppressionOnTabHidden(
-    environment: ClipboardPaletteCandidateEnvironment,
-    featureFlag = RESET_ANDROID_CLIPBOARD_PALETTE_SUPPRESSION_ON_TAB_HIDDEN
-) {
-    return (
-        featureFlag &&
-        isAndroidChromiumClipboardPaletteBrowser(environment)
     )
 }
 
@@ -670,7 +635,6 @@ export function createClipboardPaletteCandidateLifecycle(
     }
     const onVisibilityChange = () => {
         if (options.documentTarget?.visibilityState === "hidden") {
-            options.onHidden?.()
             return
         }
         requestInspection("visibility")
@@ -702,6 +666,7 @@ export function createClipboardPaletteCandidateLifecycle(
 }
 
 export function ClipboardPaletteCandidate({
+    session,
     isEligible,
     isMobileUI,
     onImportPalette,
@@ -713,9 +678,6 @@ export function ClipboardPaletteCandidate({
     viewportScale,
 }: ClipboardPaletteCandidateProps) {
     const eligibilityRef = React.useRef(isEligible)
-    const detectionSessionRef = React.useRef(
-        createClipboardPaletteCandidateDetectionSession()
-    )
     const lifecycleRef = React.useRef<ReturnType<
         typeof createClipboardPaletteCandidateLifecycle
     > | null>(null)
@@ -812,7 +774,7 @@ export function ClipboardPaletteCandidate({
                         isAndroidChromiumClipboardPaletteBrowser(environment)
                     const nextCandidate = await detectClipboardPaletteCandidate({
                         readClipboard,
-                        session: detectionSessionRef.current,
+                        session,
                         onDiagnostic: pushDiagnostic,
                         inspectNonImagePayload: isAndroidChromium,
                     })
@@ -821,30 +783,6 @@ export function ClipboardPaletteCandidate({
                     }
                 } finally {
                     setIsCheckingClipboard(false)
-                }
-            },
-            onHidden: () => {
-                const browserEnvironment =
-                    getBrowserClipboardPaletteEnvironment()
-                const environment: ClipboardPaletteCandidateEnvironment = {
-                    ...browserEnvironment,
-                    clipboardRead:
-                        clipboardRead ?? browserEnvironment.clipboardRead,
-                    isSecureContext:
-                        isSecureContext ?? browserEnvironment.isSecureContext,
-                    documentTarget:
-                        resolvedDocumentTarget ??
-                        browserEnvironment.documentTarget,
-                }
-
-                if (
-                    shouldResetAndroidClipboardPaletteSuppressionOnTabHidden(
-                        environment
-                    )
-                ) {
-                    detectionSessionRef.current.reset()
-                    setDetectedCandidate(null)
-                    pushDiagnostic({ label: "android:hidden-reset" })
                 }
             },
             windowTarget: resolvedWindowTarget,
@@ -862,6 +800,7 @@ export function ClipboardPaletteCandidate({
         documentTarget,
         isSecureContext,
         pushDiagnostic,
+        session,
         windowTarget,
     ])
 
@@ -869,7 +808,7 @@ export function ClipboardPaletteCandidate({
         setDetectedCandidate(
             dismissClipboardPaletteDetectedCandidate({
                 candidate: detectedCandidate,
-                session: detectionSessionRef.current,
+                session,
             })
         )
     }
@@ -896,7 +835,7 @@ export function ClipboardPaletteCandidate({
         void (async () => {
             const request = await acceptClipboardPaletteDetectedCandidate({
                 candidate,
-                session: detectionSessionRef.current,
+                session,
                 readClipboard: getReadClipboardCapability(),
                 onDiagnostic: pushDiagnostic,
             })

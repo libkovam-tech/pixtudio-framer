@@ -23,6 +23,8 @@ import {
 import { zipStore, type ZipStoreFile } from "./zipStore.ts"
 import {
     ClipboardPaletteCandidateMount,
+    createClipboardPaletteCandidateDetectionSession,
+    type ClipboardPaletteCandidateDetectionSession,
     type ClipboardPaletteImportRequest,
 } from "./clipboardPaletteCandidate.tsx"
 import { canUsePalettePresetImport } from "./palettePresetImportAvailability.ts"
@@ -3237,6 +3239,7 @@ type EditorCanvasCssSize = {
 }
 
 function PixelEditorFramer({
+    clipboardPaletteDetectionSession,
     initialImageData,
     initialImageRouteKind,
     initialImportAspectRatioId,
@@ -3266,6 +3269,7 @@ function PixelEditorFramer({
     coordinatedCanRedo,
     onEditorCanvasCssSizeChange,
 }: {
+    clipboardPaletteDetectionSession: ClipboardPaletteCandidateDetectionSession
     // committed reference snapshot from ROOT gateway
     initialImageData: ImageData | null
     initialImageRouteKind:
@@ -13216,6 +13220,7 @@ function PixelEditorFramer({
                             checkerBackground={checkerBackground}
                             clipboardCandidateUi={
                                 <ClipboardPaletteCandidateMount
+                                    session={clipboardPaletteDetectionSession}
                                     isEligible={canImportPalettePreset}
                                     isMobileUI={isMobileUI}
                                     onImportPalette={importPalettePresetInput}
@@ -14460,6 +14465,11 @@ function commitImportTxn(
 
 export default function PIXTUDIO_Mobile_MVP() {
     const navigate = useNavigate()
+    // Clipboard decisions outlive temporary panels and new project imports;
+    // they are session interaction state, not saved project settings.
+    const [clipboardPaletteDetectionSession] = React.useState(
+        createClipboardPaletteCandidateDetectionSession
+    )
     const [screen, setScreen] = React.useState<
         "start" | "editor" | "smart-reference"
     >("start")
@@ -17004,6 +17014,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                 Иначе теряется editor-owned state:
                 overlay, undo/redo, refs и локальная история редактора. */}
                 <PixelEditorFramer
+                    clipboardPaletteDetectionSession={
+                        clipboardPaletteDetectionSession
+                    }
                     initialImageData={gatewayCommittedReference}
                     initialImageRouteKind={gatewayCommittedReferenceKind}
                     initialImportAspectRatioId={gatewayImportAspectRatioId}
