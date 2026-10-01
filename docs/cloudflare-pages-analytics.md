@@ -113,6 +113,16 @@ The browser never receives the report data. The email contains only:
 - date
 - country
 
+Reports with more than 200 events are sent as sequential, numbered emails
+(`1/N`, `2/N`, etc.). Every part repeats the full-month import/export totals
+and top 10 countries; its event table contains only that part's rows. The
+plain-text version follows the same structure. Confirm all numbered parts
+arrived before treating a monthly report as complete. If sending fails after
+some parts, the provider cannot roll back emails already accepted; inspect
+Worker email logs and rerun deliberately after the manual rate limit expires.
+The reporter does not generate a PDF: printing from a clipped mail-client view
+may omit later rows even when the original email was delivered in full.
+
 Sensitive fields such as IP, user agent, URL, Ray ID, and colo are not included.
 
 ### Generate the report code hash
@@ -168,5 +178,14 @@ For the Pages project:
 - Service: `pixtudio-analytics-reporter`
 
 The monthly report is handled by the Worker cron in `wrangler.analytics-reporter.toml`.
+Deploying the Pages site does not deploy this separate Worker. To resend the
+previous completed month immediately after a Worker deployment, an authorized
+operator can POST `{ "code": "...", "period": "previous" }` to
+`/api/admin/send-analytics-report`. Omitting `period` preserves the existing
+current-month behavior. The previous-month request has its own five-minute
+manual rate limit. The endpoint deliberately returns the same empty response
+for success, rejection, or send failure, so receipt must be checked by counting
+the numbered messages; do not infer success from HTTP 204 alone. Do not put the
+private code in a URL, source file, or committed command.
 Cloudflare cron schedules use UTC. The example runs on the first day of each
 month at 06:00 UTC and sends the previous calendar month.

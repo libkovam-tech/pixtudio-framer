@@ -32,8 +32,18 @@ type ReportPeriod = {
 
 const TIME_ZONE = "Asia/Jerusalem"
 const MANUAL_RATE_LIMIT_KEY = "manual_report"
+const PREVIOUS_MONTH_RATE_LIMIT_KEY = "manual_report_previous"
 const MANUAL_RATE_LIMIT_MS = 5 * 60 * 1000
 const REPORT_EVENT_NAMES: AnalyticsEventName[] = ["import_image", "export_image"]
+// Keep each HTML part comfortably below mail-client clipping thresholds.
+const EVENTS_PER_EMAIL = 200
+const MAX_HTML_BYTES = 80_000
+
+type ReportSummary = {
+    importCount: number
+    exportCount: number
+    topCountries: { country: string | null; count: number }[]
+}
 
 const htmlEscapes: Record<string, string> = {
     "&": "&amp;",
@@ -182,13 +192,39 @@ async function loadReportEvents(env: Env, period: ReportPeriod) {
     return results.filter((event) => isInsideLocalMonth(event, period))
 }
 
-function buildReportHtml(period: ReportPeriod, events: ReportEvent[]) {
-    const importCount = events.filter(
-        (event) => event.event_name === "import_image"
-    ).length
-    const exportCount = events.filter(
-        (event) => event.event_name === "export_image"
-    ).length
+function summarizeReport(events: ReportEvent[]): ReportSummary {
+    const countryCounts = new Map<string, number>()
+    let importCount = 0
+    let exportCount = 0
+
+    for (const event of events) {
+        if (event.event_name === "import_image") importCount++
+        else exportCount++
+        const country = event.country || ""
+        countryCounts.set(country, (countryCounts.get(country) || 0) + 1)
+    }
+
+    return {
+        importCount,
+        exportCount,
+        topCountries: [...countryCounts.entries()]
+            .sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))
+            .slice(0, 10)
+            .map(([country, count]) => ({ country: country || null, count })),
+    }
+}
+
+function buildReportHtml(
+    period: ReportPeriod,
+    events: ReportEvent[],
+    summary: ReportSummary,
+    page: number,
+    pageCount: number
+) {
+    const countryRows = summary.topCountries.length
+        ? summary.topCountries.map(({ country, count }) => `
+                    <tr><td style="border:1px solid #111827;padding:6px;">${escapeHtml(countryLabel(country))}</td><td style="border:1px solid #111827;padding:6px;text-align:right;">${count}</td></tr>`).join("")
+        : `<tr><td colspan="2" style="padding:8px;">Нет событий</td></tr>`
 
     const rows = events.length
         ? events
@@ -221,16 +257,24 @@ function buildReportHtml(period: ReportPeriod, events: ReportEvent[]) {
             <h1 style="margin:0 0 8px;font-size:24px;line-height:1.2;">PIXTUDIO Analytics</h1>
             <p style="margin:0 0 18px;color:#4b5563;font-size:14px;">${escapeHtml(
                 period.title
-            )}</p>
+            )} · Часть ${page} из ${pageCount}</p>
 
             <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px;">
                 <tr>
                     <td style="background:#e9d8a6;border:2px solid #111827;padding:12px;font-weight:700;">Импорт</td>
-                    <td style="background:#e9d8a6;border:2px solid #111827;padding:12px;font-size:20px;font-weight:700;text-align:right;">${importCount}</td>
+                    <td style="background:#e9d8a6;border:2px solid #111827;padding:12px;font-size:20px;font-weight:700;text-align:right;">${summary.importCount}</td>
                     <td style="background:#d7ebe5;border:2px solid #111827;padding:12px;font-weight:700;">Экспорт</td>
-                    <td style="background:#d7ebe5;border:2px solid #111827;padding:12px;font-size:20px;font-weight:700;text-align:right;">${exportCount}</td>
+                    <td style="background:#d7ebe5;border:2px solid #111827;padding:12px;font-size:20px;font-weight:700;text-align:right;">${summary.exportCount}</td>
                 </tr>
             </table>
+
+            <h2 style="font-size:18px;margin:0 0 8px;">Топ-10 стран за месяц</h2>
+            <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 18px;">
+                <thead><tr><th align="left" style="background:#111827;color:#fff;padding:8px;">Страна</th><th align="right" style="background:#111827;color:#fff;padding:8px;">События</th></tr></thead>
+                <tbody>${countryRows}</tbody>
+            </table>
+
+            <h2 style="font-size:18px;margin:0 0 8px;">События · часть ${page} из ${pageCount}</h2>
 
             <table style="width:100%;border-collapse:collapse;font-size:14px;">
                 <thead>
@@ -250,8 +294,20 @@ function buildReportHtml(period: ReportPeriod, events: ReportEvent[]) {
 </html>`
 }
 
-function buildReportText(period: ReportPeriod, events: ReportEvent[]) {
-    const lines = [`PIXTUDIO Analytics`, period.title, ""]
+function buildReportText(
+    period: ReportPeriod,
+    events: ReportEvent[],
+    summary: ReportSummary,
+    page: number,
+    pageCount: number
+) {
+    const lines = [
+        "PIXTUDIO Analytics", period.title, `Часть ${page} из ${pageCount}`,
+        `Импорт ${summary.importCount} | Экспорт ${summary.exportCount}`,
+        "Топ-10 стран за месяц",
+        ...summary.topCountries.map(({ country, count }) => `${countryLabel(country)} | ${count}`),
+        "", "События",
+    ]
 
     if (!events.length) {
         lines.push("Нет событий")
@@ -271,16 +327,27 @@ function buildReportText(period: ReportPeriod, events: ReportEvent[]) {
 
 async function sendReportEmail(env: Env, period: ReportPeriod) {
     const events = await loadReportEvents(env, period)
-    const html = buildReportHtml(period, events)
-    const text = buildReportText(period, events)
-
-    await env.REPORT_EMAIL.send({
-        from: env.ANALYTICS_REPORT_SENDER,
-        to: env.ANALYTICS_REPORT_RECIPIENT,
-        subject: "PIXTUDIO analytics report",
-        html,
-        text,
+    const summary = summarizeReport(events)
+    const pageCount = Math.max(1, Math.ceil(events.length / EVENTS_PER_EMAIL))
+    const messages = Array.from({ length: pageCount }, (_, index) => {
+        const page = index + 1
+        const pageEvents = events.slice(index * EVENTS_PER_EMAIL, page * EVENTS_PER_EMAIL)
+        const html = buildReportHtml(period, pageEvents, summary, page, pageCount)
+        if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) {
+            throw new Error(`Analytics report page ${page} exceeds email size budget`)
+        }
+        return {
+            from: env.ANALYTICS_REPORT_SENDER,
+            to: env.ANALYTICS_REPORT_RECIPIENT,
+            subject: `PIXTUDIO analytics report | ${period.localYear}-${String(period.localMonth).padStart(2, "0")} | ${page}/${pageCount}`,
+            html,
+            text: buildReportText(period, pageEvents, summary, page, pageCount),
+        }
     })
+
+    for (const message of messages) {
+        await env.REPORT_EMAIL.send(message)
+    }
 }
 
 async function sha256Hex(value: string) {
@@ -331,7 +398,7 @@ async function ensureRateLimitTable(env: Env) {
     ).run()
 }
 
-async function canSendManualReport(env: Env, now: Date) {
+async function canSendManualReport(env: Env, now: Date, rateKey: string) {
     await ensureRateLimitTable(env)
 
     const row = await env.ANALYTICS_DB.prepare(
@@ -341,7 +408,7 @@ async function canSendManualReport(env: Env, now: Date) {
         WHERE rate_key = ?
         `
     )
-        .bind(MANUAL_RATE_LIMIT_KEY)
+        .bind(rateKey)
         .first<{ sent_at: string }>()
 
     if (!row?.sent_at) return true
@@ -350,7 +417,7 @@ async function canSendManualReport(env: Env, now: Date) {
     return now.getTime() - lastSentAt.getTime() >= MANUAL_RATE_LIMIT_MS
 }
 
-async function markManualReportSent(env: Env, now: Date) {
+async function markManualReportSent(env: Env, now: Date, rateKey: string) {
     await env.ANALYTICS_DB.prepare(
         `
         INSERT INTO analytics_report_rate_limits (rate_key, sent_at)
@@ -358,7 +425,7 @@ async function markManualReportSent(env: Env, now: Date) {
         ON CONFLICT(rate_key) DO UPDATE SET sent_at = excluded.sent_at
         `
     )
-        .bind(MANUAL_RATE_LIMIT_KEY, toSqlUtc(now))
+        .bind(rateKey, toSqlUtc(now))
         .run()
 }
 
@@ -367,17 +434,27 @@ async function handleManualReport(request: Request, env: Env) {
     if (request.method !== "POST") return emptyResponse()
 
     try {
-        const body = (await request.json()) as { code?: unknown }
+        const body = (await request.json()) as { code?: unknown; period?: unknown }
         const valid = await isValidCode(env, body.code)
 
         if (!valid) return emptyResponse()
+        if (body.period !== undefined && body.period !== "previous") {
+            return emptyResponse()
+        }
 
         const now = new Date()
-        const allowed = await canSendManualReport(env, now)
+        const previousMonth = body.period === "previous"
+        const rateKey = previousMonth
+            ? PREVIOUS_MONTH_RATE_LIMIT_KEY
+            : MANUAL_RATE_LIMIT_KEY
+        const allowed = await canSendManualReport(env, now, rateKey)
         if (!allowed) return emptyResponse()
 
-        await markManualReportSent(env, now)
-        await sendReportEmail(env, getCurrentMonthPeriod(now))
+        await markManualReportSent(env, now, rateKey)
+        await sendReportEmail(
+            env,
+            previousMonth ? getPreviousMonthPeriod(now) : getCurrentMonthPeriod(now)
+        )
     } catch {
         // Intentionally silent.
     }
