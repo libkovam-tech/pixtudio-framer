@@ -28,6 +28,10 @@ function makeEnv(events: Event[], send: (message: SentMessage) => Promise<void>)
 afterEach(() => vi.useRealTimers())
 
 describe("analytics email report", () => {
+    it("exposes only the monthly scheduled handler", () => {
+        expect(Object.keys(reporter)).toEqual(["scheduled"])
+    })
+
     it("sends all 2224 September events in ordered, numbered messages with full-month totals", async () => {
         vi.useFakeTimers()
         vi.setSystemTime(new Date("2026-10-01T09:00:00Z"))
@@ -77,52 +81,5 @@ describe("analytics email report", () => {
         await expect(reporter.scheduled({} as ScheduledEvent, makeEnv(makeEvents(401), send)))
             .rejects.toThrow("mail unavailable")
         expect(send).toHaveBeenCalledTimes(2)
-    })
-
-    it("allows the authenticated post-deploy call to request the previous month", async () => {
-        vi.useFakeTimers()
-        vi.setSystemTime(new Date("2026-10-01T09:00:00Z"))
-        const sent: SentMessage[] = []
-        const rateKeys: string[] = []
-        const secretHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("test-code"))
-        const env = {
-            ANALYTICS_DB: {
-                prepare: (sql: string) => ({
-                    bind: (...values: string[]) => {
-                        if (sql.includes("rate_key")) rateKeys.push(values[0])
-                        return {
-                            all: async () => ({ results: makeEvents(2224) }),
-                            first: async () => null,
-                            run: async () => ({}),
-                        }
-                    },
-                    run: async () => ({}),
-                }),
-            },
-            REPORT_EMAIL: { send: async (message: SentMessage) => { sent.push(message) } },
-            ANALYTICS_REPORT_SECRET_HASH: [...new Uint8Array(secretHash)]
-                .map((byte) => byte.toString(16).padStart(2, "0")).join(""),
-            ANALYTICS_REPORT_SENDER: "sender@example.test",
-            ANALYTICS_REPORT_RECIPIENT: "recipient@example.test",
-        } as unknown as Parameters<typeof reporter.fetch>[1]
-
-        const response = await reporter.fetch(new Request("https://example.test", {
-            method: "POST",
-            body: JSON.stringify({ code: "test-code", period: "previous" }),
-        }), env)
-
-        expect(response.status).toBe(204)
-        expect(sent).toHaveLength(12)
-        expect(sent[0].subject).toContain("2026-09 | 1/12")
-        expect(rateKeys).toEqual(["manual_report_previous", "manual_report_previous"])
-
-        sent.length = 0
-        await reporter.fetch(new Request("https://example.test", {
-            method: "POST",
-            body: JSON.stringify({ code: "test-code" }),
-        }), env)
-        expect(sent).toHaveLength(1)
-        expect(sent[0].subject).toContain("2026-10 | 1/1")
-        expect(rateKeys.slice(2)).toEqual(["manual_report", "manual_report"])
     })
 })

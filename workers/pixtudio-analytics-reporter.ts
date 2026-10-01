@@ -11,7 +11,6 @@ type Env = {
             text: string
         }): Promise<void>
     }
-    ANALYTICS_REPORT_SECRET_HASH?: string
     ANALYTICS_REPORT_SENDER: string
     ANALYTICS_REPORT_RECIPIENT: string
 }
@@ -31,9 +30,6 @@ type ReportPeriod = {
 }
 
 const TIME_ZONE = "Asia/Jerusalem"
-const MANUAL_RATE_LIMIT_KEY = "manual_report"
-const PREVIOUS_MONTH_RATE_LIMIT_KEY = "manual_report_previous"
-const MANUAL_RATE_LIMIT_MS = 5 * 60 * 1000
 const REPORT_EVENT_NAMES: AnalyticsEventName[] = ["import_image", "export_image"]
 // Keep each HTML part comfortably below mail-client clipping thresholds.
 const EVENTS_PER_EMAIL = 200
@@ -51,17 +47,6 @@ const htmlEscapes: Record<string, string> = {
     ">": "&gt;",
     '"': "&quot;",
     "'": "&#39;",
-}
-
-function emptyResponse() {
-    return new Response(null, {
-        status: 204,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-    })
 }
 
 function escapeHtml(value: string) {
@@ -111,11 +96,6 @@ function monthNameRu(year: number, month: number) {
         year: "numeric",
         timeZone: "UTC",
     }).format(date)
-}
-
-function getCurrentMonthPeriod(now: Date): ReportPeriod {
-    const local = getLocalParts(now)
-    return buildMonthPeriod(local.year, local.month, "Текущий месяц")
 }
 
 function getPreviousMonthPeriod(now: Date): ReportPeriod {
@@ -350,123 +330,7 @@ async function sendReportEmail(env: Env, period: ReportPeriod) {
     }
 }
 
-async function sha256Hex(value: string) {
-    const digest = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(value)
-    )
-    return [...new Uint8Array(digest)]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("")
-}
-
-function timingSafeEqual(a: string, b: string) {
-    if (a.length !== b.length) return false
-
-    let diff = 0
-    for (let i = 0; i < a.length; i++) {
-        diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-    }
-
-    return diff === 0
-}
-
-async function isValidCode(env: Env, code: unknown) {
-    if (
-        typeof code !== "string" ||
-        !code ||
-        !env.ANALYTICS_REPORT_SECRET_HASH
-    ) {
-        return false
-    }
-
-    const incomingHash = await sha256Hex(code)
-    return timingSafeEqual(
-        incomingHash,
-        env.ANALYTICS_REPORT_SECRET_HASH.trim().toLowerCase()
-    )
-}
-
-async function ensureRateLimitTable(env: Env) {
-    await env.ANALYTICS_DB.prepare(
-        `
-        CREATE TABLE IF NOT EXISTS analytics_report_rate_limits (
-            rate_key TEXT PRIMARY KEY,
-            sent_at TEXT NOT NULL
-        )
-        `
-    ).run()
-}
-
-async function canSendManualReport(env: Env, now: Date, rateKey: string) {
-    await ensureRateLimitTable(env)
-
-    const row = await env.ANALYTICS_DB.prepare(
-        `
-        SELECT sent_at
-        FROM analytics_report_rate_limits
-        WHERE rate_key = ?
-        `
-    )
-        .bind(rateKey)
-        .first<{ sent_at: string }>()
-
-    if (!row?.sent_at) return true
-
-    const lastSentAt = parseUtcSqlDate(row.sent_at)
-    return now.getTime() - lastSentAt.getTime() >= MANUAL_RATE_LIMIT_MS
-}
-
-async function markManualReportSent(env: Env, now: Date, rateKey: string) {
-    await env.ANALYTICS_DB.prepare(
-        `
-        INSERT INTO analytics_report_rate_limits (rate_key, sent_at)
-        VALUES (?, ?)
-        ON CONFLICT(rate_key) DO UPDATE SET sent_at = excluded.sent_at
-        `
-    )
-        .bind(rateKey, toSqlUtc(now))
-        .run()
-}
-
-async function handleManualReport(request: Request, env: Env) {
-    if (request.method === "OPTIONS") return emptyResponse()
-    if (request.method !== "POST") return emptyResponse()
-
-    try {
-        const body = (await request.json()) as { code?: unknown; period?: unknown }
-        const valid = await isValidCode(env, body.code)
-
-        if (!valid) return emptyResponse()
-        if (body.period !== undefined && body.period !== "previous") {
-            return emptyResponse()
-        }
-
-        const now = new Date()
-        const previousMonth = body.period === "previous"
-        const rateKey = previousMonth
-            ? PREVIOUS_MONTH_RATE_LIMIT_KEY
-            : MANUAL_RATE_LIMIT_KEY
-        const allowed = await canSendManualReport(env, now, rateKey)
-        if (!allowed) return emptyResponse()
-
-        await markManualReportSent(env, now, rateKey)
-        await sendReportEmail(
-            env,
-            previousMonth ? getPreviousMonthPeriod(now) : getCurrentMonthPeriod(now)
-        )
-    } catch {
-        // Intentionally silent.
-    }
-
-    return emptyResponse()
-}
-
 export default {
-    fetch(request: Request, env: Env) {
-        return handleManualReport(request, env)
-    },
-
     async scheduled(_event: ScheduledEvent, env: Env) {
         await sendReportEmail(env, getPreviousMonthPeriod(new Date()))
     },

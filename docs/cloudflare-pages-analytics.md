@@ -99,13 +99,9 @@ After deployment:
 
 ## Email analytics reports
 
-The app supports an email report flow:
-
-1. Tap the logo on the editor start screen.
-2. Enter the private code.
-3. The browser calls `/api/admin/send-analytics-report`.
-4. The Pages Function forwards the request to the `ANALYTICS_REPORTER` service binding.
-5. The `pixtudio-analytics-reporter` Worker validates the code, enforces a 5-minute successful-send rate limit, reads D1, and sends the email report.
+The separate `pixtudio-analytics-reporter` Worker reads D1 and sends the
+previous completed month by email from its monthly Cron Trigger. There is no
+browser action, report code, or HTTP endpoint for requesting a report.
 
 The browser never receives the report data. The email contains only:
 
@@ -119,26 +115,12 @@ and top 10 countries; its event table contains only that part's rows. The
 plain-text version follows the same structure. Confirm all numbered parts
 arrived before treating a monthly report as complete. If sending fails after
 some parts, the provider cannot roll back emails already accepted; inspect
-Worker email logs and rerun deliberately after the manual rate limit expires.
+Worker email logs before deciding whether to rerun; a rerun can duplicate
+parts already delivered.
 The reporter does not generate a PDF: printing from a clipped mail-client view
 may omit later rows even when the original email was delivered in full.
 
 Sensitive fields such as IP, user agent, URL, Ray ID, and colo are not included.
-
-### Generate the report code hash
-
-Generate a strong permanent password with Google Password Manager, then run:
-
-```bash
-node scripts/hash-report-secret.mjs
-```
-
-Paste the generated password when prompted. The script prints a SHA-256 hash.
-Store only that hash in Cloudflare as the Worker secret:
-
-```bash
-npx wrangler secret put ANALYTICS_REPORT_SECRET_HASH -c wrangler.analytics-reporter.toml
-```
 
 ### Deploy the reporter Worker
 
@@ -168,24 +150,40 @@ For the reporter Worker:
 - D1 binding: `ANALYTICS_DB`
 - Send Email binding: `REPORT_EMAIL`
 - allowed sender address: `analytics@pixtudio.app`
-- secret: `ANALYTICS_REPORT_SECRET_HASH`
 - var: `ANALYTICS_REPORT_SENDER=analytics@pixtudio.app`
 - var: `ANALYTICS_REPORT_RECIPIENT=your email`
 
-For the Pages project:
-
-- Service binding name: `ANALYTICS_REPORTER`
-- Service: `pixtudio-analytics-reporter`
-
 The monthly report is handled by the Worker cron in `wrangler.analytics-reporter.toml`.
-Deploying the Pages site does not deploy this separate Worker. To resend the
-previous completed month immediately after a Worker deployment, an authorized
-operator can POST `{ "code": "...", "period": "previous" }` to
-`/api/admin/send-analytics-report`. Omitting `period` preserves the existing
-current-month behavior. The previous-month request has its own five-minute
-manual rate limit. The endpoint deliberately returns the same empty response
-for success, rejection, or send failure, so receipt must be checked by counting
-the numbered messages; do not infer success from HTTP 204 alone. Do not put the
-private code in a URL, source file, or committed command.
+Deploying the Pages site does not deploy this separate Worker. Remove the old
+`ANALYTICS_REPORTER` service binding from the Pages project and the old
+`ANALYTICS_REPORT_SECRET_HASH` Worker secret after deploying this removal.
+The obsolete `analytics_report_rate_limits` D1 table is not used; existing
+data is left intact rather than dropped by this change.
+
+### One-time catch-up report
+
+Only for the requested catch-up after this release, an authorized operator may
+invoke the same scheduled handler once with Wrangler's remote development mode.
+This is an explicit production-data operation, not part of deployment:
+
+```powershell
+npx wrangler dev -c .\wrangler.analytics-reporter.toml --remote --test-scheduled --ip 127.0.0.1 --port 8787
+```
+
+After Wrangler reports readiness, run this in a second PowerShell window **once**:
+
+```powershell
+Invoke-WebRequest 'http://127.0.0.1:8787/cdn-cgi/local/scheduled?format=json'
+```
+
+Stop Wrangler with Ctrl+C afterward. Remote development connects to the real
+D1 and Send Email bindings: this sends real messages, even though it does not
+deploy the development Worker to production. Before invoking, check whether
+the monthly Cron already sent a complete report for the same month; do not
+run it if all parts have already arrived. Check the scheduled-handler outcome
+and count all numbered emails. If the send fails mid-series, inspect Worker
+logs and received parts
+before any retry because previously accepted emails cannot be rolled back.
+
 Cloudflare cron schedules use UTC. The example runs on the first day of each
 month at 06:00 UTC and sends the previous calendar month.
