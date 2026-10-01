@@ -163,11 +163,17 @@ data is left intact rather than dropped by this change.
 ### One-time catch-up report
 
 Only for the requested catch-up after this release, an authorized operator may
-invoke the same scheduled handler once with Wrangler's remote development mode.
-This is an explicit production-data operation, not part of deployment:
+invoke the same scheduled handler once. Do not use `wrangler dev --remote`:
+its preview route can dispatch to `fetch` instead of `scheduled` when this
+Worker exports only the scheduled handler.
+
+In the ignored local `wrangler.analytics-reporter.toml`, temporarily add
+`remote = true` to both the `[[d1_databases]]` and `[[send_email]]` binding
+blocks. Keep the checked-in example config unchanged. This connects local
+Worker execution to the real D1 and Send Email resources. Then start Wrangler:
 
 ```powershell
-npx wrangler dev -c .\wrangler.analytics-reporter.toml --remote --test-scheduled --ip 127.0.0.1 --port 8787
+npx wrangler dev -c .\wrangler.analytics-reporter.toml --test-scheduled --ip 127.0.0.1 --port 8787
 ```
 
 After Wrangler reports readiness, run this in a second PowerShell window **once**:
@@ -176,8 +182,8 @@ After Wrangler reports readiness, run this in a second PowerShell window **once*
 Invoke-WebRequest 'http://127.0.0.1:8787/cdn-cgi/local/scheduled?format=json'
 ```
 
-Stop Wrangler with Ctrl+C afterward. Remote development connects to the real
-D1 and Send Email bindings: this sends real messages, even though it does not
+Stop Wrangler with Ctrl+C afterward and remove the temporary `remote = true`
+lines from the ignored local config. This sends real messages but does not
 deploy the development Worker to production. Before invoking, check whether
 the monthly Cron already sent a complete report for the same month; do not
 run it if all parts have already arrived. Check the scheduled-handler outcome
