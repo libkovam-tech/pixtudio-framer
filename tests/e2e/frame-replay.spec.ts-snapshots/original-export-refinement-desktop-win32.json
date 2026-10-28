@@ -1,0 +1,10 @@
+{
+  "width": 512,
+  "height": 912,
+  "expectedWidth": 512,
+  "expectedHeight": 912,
+  "bytes": 1867776,
+  "expectedBytes": 1867776,
+  "differentBytes": 0,
+  "sha256": "ff8fa3c760caafa76f35edc0ff772f3c9b0002c70fd1a43eaf4730efc258b31c"
+}

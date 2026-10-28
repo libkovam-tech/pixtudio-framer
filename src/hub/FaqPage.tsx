@@ -27,7 +27,7 @@ export const FAQ_ITEMS = [
     question: "Who is PIXTUDIO made for?",
     tocLabel: "Who is PIXTUDIO for?",
     answer:
-      "PIXTUDIO is made for anyone who wants to turn photos or ideas into stylish pixel art — from complete beginners to indie game developers and content creators.",
+      "PIXTUDIO is for anyone who wants to turn photos into expressive pixel art, from curious beginners to designers and visual content creators.",
   },
   {
     question: "Do I need to know how to draw to use PIXTUDIO?",
@@ -36,10 +36,10 @@ export const FAQ_ITEMS = [
       "No. You don't need any drawing skills. Most people start by uploading a photo, which PIXTUDIO automatically turns into pixel art. You can then make adjustments if you want, but drawing from scratch is not required.",
   },
   {
-    question: "Can I use PIXTUDIO to create game assets and keep a consistent style?",
-    tocLabel: "Can I create consistent game assets?",
+    question: "Can I keep a consistent style across multiple images?",
+    tocLabel: "Can I keep a consistent style?",
     answer:
-      "Yes. PIXTUDIO is especially useful for creating game assets because you can use the same canvas format, grid size, and color palette across all your images. You can import a palette from any photo or previous project and apply it instantly — this makes it easy to create consistent tiles, items, characters, and environments in the same visual style.",
+      "Yes. Use the same canvas aspect ratio, grid size, and color palette for each image to give them a consistent look. You can also import a palette from another image or a saved PIXTUDIO project and apply it to the image you're working on.",
   },
   {
     question: "Does the editor support importing custom color palettes?",

@@ -21,6 +21,9 @@ type PalettePanelProps = {
     bg: string
     checkerBackground: string
     disabled: boolean
+    allowSwatchMutation?: boolean
+    allowAutoSwatchMutation?: boolean
+    allowFixedSwatchMutation?: boolean
     importedPresetProfiles: FixedPaletteProfile[]
     isClipboardCandidateUiVisible?: boolean
     isMobileUI: boolean
@@ -68,6 +71,9 @@ export function PalettePanel({
     bg,
     checkerBackground,
     disabled,
+    allowSwatchMutation = true,
+    allowAutoSwatchMutation = true,
+    allowFixedSwatchMutation = true,
     importedPresetProfiles,
     isClipboardCandidateUiVisible = false,
     isMobileUI,
@@ -102,6 +108,10 @@ export function PalettePanel({
     onSelectSwatch,
     onSwitchPaletteTab,
 }: PalettePanelProps) {
+    const allowActiveSwatchMutation = allowSwatchMutation &&
+        (activeTab === "presets"
+            ? allowFixedSwatchMutation && shouldShowPresetSwatches
+            : allowAutoSwatchMutation)
     const swatchGridStyle: React.CSSProperties = {
         width: "100%",
         display: "grid",
@@ -133,10 +143,10 @@ export function PalettePanel({
                 onClick={() => onSelectSwatch(swatch.id)}
                 onContextMenu={(event) => {
                     event.preventDefault()
-                    onOpenColorEditor(swatch.id)
+                    if (allowActiveSwatchMutation) onOpenColorEditor(swatch.id)
                 }}
                 onPointerDown={(event) => {
-                    if (event.pointerType === "touch") {
+                    if (allowActiveSwatchMutation && event.pointerType === "touch") {
                         longPressTimeout = window.setTimeout(() => {
                             onOpenColorEditor(swatch.id)
                         }, 600)
@@ -330,7 +340,7 @@ export function PalettePanel({
                 style={presetButtonStyle(label, false, active)}
             >
                 <span style={presetButtonTextStyle(true)}>{label}</span>
-                <span
+                {allowSwatchMutation && <span
                     role="button"
                     tabIndex={-1}
                     aria-label={`Delete ${profile.name} preset`}
@@ -343,7 +353,7 @@ export function PalettePanel({
                     style={presetDeleteButtonStyle}
                 >
                     {"\u00d7"}
-                </span>
+                </span>}
             </button>
         )
     }
@@ -531,8 +541,8 @@ export function PalettePanel({
                         <div style={{ marginTop: 6, width: "100%" }}>
                             <div style={swatchGridStyle}>
                                 {autoSwatches.map(renderSwatchButton)}
-                                {renderTransparentSwatchButton()}
-                                {renderAddSwatchButton()}
+                                {allowActiveSwatchMutation && allowAutoSwatchMutation && renderTransparentSwatchButton()}
+                                {allowActiveSwatchMutation && renderAddSwatchButton()}
                                 {userSwatches.map(renderSwatchButton)}
                             </div>
 
@@ -573,8 +583,8 @@ export function PalettePanel({
                         <div style={swatchGridStyle}>
                             {shouldShowPresetSwatches &&
                                 autoSwatches.map(renderSwatchButton)}
-                            {renderTransparentSwatchButton()}
-                            {renderAddSwatchButton()}
+                            {allowActiveSwatchMutation && allowAutoSwatchMutation && renderTransparentSwatchButton()}
+                            {allowActiveSwatchMutation && renderAddSwatchButton()}
                             {userSwatches.map(renderSwatchButton)}
                         </div>
                     </div>

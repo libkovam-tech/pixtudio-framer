@@ -237,7 +237,7 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "p",
         content:
-          "**Medium pixels (18-32 px)** offer the classic sweet spot. There is enough detail for instant recognition, while the retro feel remains clear and strong. This is the best choice for game assets, sprites, blog illustrations, and social media content.",
+          "**Medium pixels (18-32 px)** offer the classic sweet spot. There is enough detail for instant recognition, while the retro feel remains clear and strong. This is a good choice for blog illustrations and social media content.",
       },
       {
         type: "p",
@@ -362,7 +362,6 @@ const ARTICLE_SECTIONS: ArticleSection[] = [
       {
         type: "ul",
         items: [
-          "**Game Development**: Creating sprites, items, UI elements, and tilesets for indie games.",
           "**Personal Branding**: Unique avatars and profile pictures for social networks, Telegram, and Discord.",
           "**Content Creation**: Eye-catching visuals for TikTok, Instagram Reels, and YouTube Shorts (especially process videos).",
           "**Merch and Print**: Designs for t-shirts, hoodies, stickers, posters, and postcards.",

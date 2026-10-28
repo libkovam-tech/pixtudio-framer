@@ -30,8 +30,11 @@ export async function openBearProject(page: Page) {
     await settle(page)
 }
 
-export async function openBearImageCropScreen(page: Page) {
+export async function openBearImageCropScreen(page: Page, options?: { stabilizeStartButton?: boolean }) {
     await page.goto("/editor/")
+    if (options?.stabilizeStartButton) {
+        await page.addStyleTag({ content: ".pxStartActionButton { animation: none !important; transform: none !important; }" })
+    }
     const fileChooserPromise = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "Open File" }).click()
     const fileChooser = await fileChooserPromise

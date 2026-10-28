@@ -1,6 +1,11 @@
 import * as React from "react"
+import { STANDARD_EDITOR_CAPABILITIES, type EditorCapabilities, type EditorHost } from "./editorHost.ts"
+import { pixelizeFromImageDominant, computeExportSize, computeRectangularExportGeometry, renderPixelGridCanvas } from "./pixelRaster.ts"
+import { PREP_CONFIG, clamp255, sanitizeImageDataDelicate, stylizeBoostImageData, rgbToHsv, hsvToRgb } from "./referencePreparation.ts"
 import * as ReactDOM from "react-dom"
 import { useNavigate } from "react-router-dom"
+import { EditorImportErrorModal } from "./EditorImportErrorModal.tsx"
+import { openSupportEmail } from "./openSupportEmail.ts"
 
 import { ManualScreen } from "./ManualScreen.tsx"
 
@@ -52,6 +57,7 @@ import {
 } from "./openFileRouter.ts"
 import {
     FILE_INTAKE_MESSAGES,
+    FileIntakeError,
     decodeAndValidateRasterImageFile,
     getFileIntakeUserMessage,
 } from "./fileIntakeSecurity.ts"
@@ -146,6 +152,12 @@ import {
     selectDefaultCropAspectRatio,
 } from "./CropDomain.tsx"
 import {
+    getCropSourceDimensions,
+    resolveCropDrawGeometry,
+    renderResolvedCrop,
+    type PreparedCrop,
+} from "./cropRender.ts"
+import {
     AUTO_PALETTE_CONTEXT_KIND,
     DEFAULT_DE_CONFETTI_BY_PALETTE_CONTEXT,
     DEFAULT_METHOD_PROFILES_BY_PALETTE_CONTEXT,
@@ -214,7 +226,6 @@ import {
     SvgTopButton4,
     SvgManualButton,
     SvgModalBacking,
-    SvgAlertBacking,
     SvgCancelButton,
     SvgOkButton,
     SvgPickerThumb,
@@ -444,140 +455,15 @@ function drawCoverIntoSquare(
 }
 void drawCoverIntoSquare
 
-// ===== COLOR SANITIZATION (MVP, Step 0: infra only, no behavior change) =====
-
-const PREP_CONFIG = {
-    // sanitize
-    SANITIZE_DIAGNOSTICS: true,
-    ENABLE_COLOR_SANITIZATION: true,
-
-    // “Сила” деликатной пред-обработки (0..1). Сейчас только константа — нигде не применяется.
-    SANITIZE_STRENGTH: 0.3,
-
-    SANITIZE_DEBUG_X10: false,
-    SANITIZE_DEBUG_X10_CAMERA: false,
-
-    // Строгий gray: только когда каналы почти равны (|r-g|, |g-b|, |r-b| <= GRAY_EPS)
-    GRAY_EPS: 10,
-
-    // Почти белое / почти чёрное — НЕ трогаем (табy на “подкрашивание” светлых)
-    WHITE_CUTOFF: 0.93,
-    BLACK_CUTOFF: 0.08,
-
-    // Порог “грязных” тонов: если sat ниже SAT_TRIGGER — можно мягко “очищать”
-    SAT_TRIGGER: 0.32,
-
-    // “Безопасная” насыщенность, до которой можно подталкивать (деликатно)
-    SAT_SAFE: 0.4,
-
-    // Защита от “грязных тёмных midtones”: диапазон, где особенно заметна “пыль”
-    V_MIN: 0.22,
-    V_MAX: 0.65,
-
-    // ====== Stylization Boost (2-й слой пред-обработки) =====
-    // ВАЖНО: выполняется ПОСЛЕ sanitize, но ДО квантования
-    ENABLE_STYLIZATION_BOOST: true,
-    ENABLE_PREP_LOGS: true,
-
-    // Диагностика (как у sanitize)
-    BOOST_DIAGNOSTICS: true,
-
-    // Доп. “табý на белое” по RGB (если вдруг HSV-v даёт пограничные кейсы)
-    BOOST_WHITE_RGB_CUTOFF: 250, // если r,g,b >= 250 — не трогаем
-
-    // “Уже достаточно насыщенное” — не бустим
-    BOOST_S_SAFE: 0.55, // выше — считаем “уже ок”, не трогаем
-
-    // --- Диапазон midtones ---
-    BOOST_V_MIN: 0.25, // нижняя граница midtones (чуть выше, чем было)
-    BOOST_V_MID_MAX: 0.75, // верхняя граница midtones (расширяем для “плакатности”)
-
-    // --- Работа с насыщенностью ---
-    BOOST_S_TRIGGER: 0.5, // бьём именно “пыль”, но чуть мягче для кожи
-
-    // --- Сила и ограничители ---
-    BOOST_STRENGTH: 0.85, // усиливаем Boost, т.к. маска стала уже и безопаснее
-    BOOST_S_MAX: 0.9, // потолок насыщенности (чуть ниже, чтобы не «кислотить»)
-    BOOST_V_CAP: 0.95, // потолок яркости — защита белого и кожи
-    BOOST_V_LIFT_MAX: 0.12, // чуть сильнее осветление midtones для poster-эффекта
-
-    // --- Skin-safe V fade (B5) ---
-    BOOST_V_SKIN_FADE_START: 0.5,
-    BOOST_V_SKIN_FADE_END: 0.68,
-
-    // --- Skin low-midtones rescue (B5) ---
-    // В нижних midtones коже нельзя становиться "трупно-серой":
-    // чуть больше SAT-boost только для skin, пока V низкий.
-    BOOST_V_SKIN_LOW_END: 0.42,
-    BOOST_SKIN_S_GAIN_LOW_K: 0.92, // ближе к 1 = меньше "серости", но still safe
-
-    // В верхних midtones (где морковит) гасим не только SAT, но и lift
-    BOOST_SKIN_LIFT_K: 0.55,
-
-    // --- Skin detect (очень мягкий, без "магии") ---
-    // h,s,v в rgbToHsv: 0..1
-    BOOST_SKIN_H_MIN: 0.02,
-    BOOST_SKIN_H_MAX: 0.14,
-    BOOST_SKIN_S_MIN: 0.08,
-    BOOST_SKIN_S_MAX: 0.75,
-
-    // насколько слабее SAT-boost для skin в нижних midtones (чтобы не "морковило")
-    BOOST_SKIN_S_GAIN_K: 0.35,
-} as const
-
-// Деструктуризация — чтобы остальной код НЕ менять (сохраняем старые имена)
+// Preparation diagnostics remain in the UI; numerical kernels live in referencePreparation.
 const {
     SANITIZE_DIAGNOSTICS,
     ENABLE_COLOR_SANITIZATION,
-    SANITIZE_STRENGTH,
     SANITIZE_DEBUG_X10,
     SANITIZE_DEBUG_X10_CAMERA,
-    GRAY_EPS,
-    WHITE_CUTOFF,
-    BLACK_CUTOFF,
-    SAT_TRIGGER,
-    SAT_SAFE,
-    V_MIN,
-    V_MAX,
-
     ENABLE_STYLIZATION_BOOST,
-    //ENABLE_PREP_LOGS,
     BOOST_DIAGNOSTICS,
-    BOOST_WHITE_RGB_CUTOFF,
-    BOOST_S_SAFE,
-    BOOST_V_MIN,
-    BOOST_V_MID_MAX,
-    BOOST_S_TRIGGER,
-    BOOST_STRENGTH,
-    BOOST_S_MAX,
-    BOOST_V_CAP,
-    BOOST_V_LIFT_MAX,
-    BOOST_V_SKIN_FADE_START,
-    BOOST_V_SKIN_FADE_END,
-    BOOST_V_SKIN_LOW_END,
-    BOOST_SKIN_S_GAIN_LOW_K,
-    BOOST_SKIN_LIFT_K,
-    BOOST_SKIN_H_MIN,
-    BOOST_SKIN_H_MAX,
-    BOOST_SKIN_S_MIN,
-    BOOST_SKIN_S_MAX,
-    BOOST_SKIN_S_GAIN_K,
 } = PREP_CONFIG
-
-// --- Инварианты/стоп-зоны именно для Boost (B3) ---
-const BOOST_GRAY_EPS = GRAY_EPS // используем тот же eps, что и в sanitize
-const BOOST_WHITE_CUTOFF = WHITE_CUTOFF // v>=cutoff — не трогаем
-const BOOST_BLACK_CUTOFF = BLACK_CUTOFF // v<=cutoff — не трогаем
-
-// ------------------------------
-// Color sanitization — helpers (Step 1)
-// Чистые функции, без сайд-эффектов.
-// ------------------------------
-
-function clamp01(x: number) {
-    return Math.max(0, Math.min(1, x))
-}
-
 function smoothFade01(x: number, start: number, end: number): number {
     if (x <= start) return 1
     if (x >= end) return 0
@@ -586,125 +472,16 @@ function smoothFade01(x: number, start: number, end: number): number {
 }
 void smoothFade01
 
-function clamp255(x: number) {
-    return Math.max(0, Math.min(255, Math.round(x)))
-}
-
-// gray = строго r≈g≈b (eps в 0..255)
-function isStrictGray(r: number, g: number, b: number, eps: number) {
-    return (
-        Math.abs(r - g) <= eps &&
-        Math.abs(r - b) <= eps &&
-        Math.abs(g - b) <= eps
-    )
-}
-
-function isMostlyGrayscaleImageData(imageData: ImageData) {
-    const data = imageData.data
-
-    // Сэмплируем до ~1024 пикселей, чтобы не делать второй полный проход
-    const totalPixels = Math.floor(data.length / 4)
-    const sampleCount = Math.min(1024, totalPixels)
-    if (sampleCount <= 0) return false
-
-    const stepPx = Math.max(1, Math.floor(totalPixels / sampleCount))
-    const step = stepPx * 4
-
-    let checked = 0
-    let gray = 0
-
-    // Для ч/б кадров используем более мягкий допуск, чем GRAY_EPS
-    const eps = GRAY_EPS * 2
-
-    for (let i = 0; i < data.length; i += step) {
-        const a = data[i + 3]
-        if (a === 0) continue // прозрачные не учитываем
-
-        const r = data[i]
-        const g = data[i + 1]
-        const b = data[i + 2]
-
-        checked++
-        if (isStrictGray(r, g, b, eps)) gray++
-    }
-
-    if (checked === 0) return false
-
-    // Если почти всё серое — считаем кадр монохромным
-    return gray / checked >= 0.985
-}
-
-/**
- * Деликатная "санитизация" пикселя перед квантованием:
- * - стоп-зоны: строгие серые, почти белые, почти чёрные НЕ трогаем
- * - воздействуем только на "грязные midtones" (низкая сатурация + средняя яркость)
- * - корректируем S (в духе vibrance), не выкручивая "вырвиглазно"
- *
- * ВАЖНО: функция чистая — не мутирует вход, не трогает state/массивы.
- */
-function sanitizeRgbPixel(px: { r: number; g: number; b: number; a?: number }) {
-    const r = clamp255(px.r)
-    const g = clamp255(px.g)
-    const b = clamp255(px.b)
-
-    // стоп-зона 1: строгие серые (и весь "gray" тракт)
-    if (isStrictGray(r, g, b, GRAY_EPS)) {
-        return { r, g, b }
-    }
-
-    // RGB -> HSV (используем уже имеющуюся утилиту)
-    const { h, s, v } = rgbToHsv(r, g, b)
-
-    // стоп-зона 2: почти белые (табü — не окрашиваем)
-    if (v >= WHITE_CUTOFF) {
-        return { r, g, b }
-    }
-
-    // стоп-зона 3: почти чёрные (не трогаем)
-    if (v <= BLACK_CUTOFF) {
-        return { r, g, b }
-    }
-
-    // работаем только в диапазоне "тёмных мидтонов"
-    if (v < V_MIN || v > V_MAX) {
-        return { r, g, b }
-    }
-
-    // уже достаточно насыщенно — не трогаем
-    if (s >= SAT_SAFE) {
-        return { r, g, b }
-    }
-
-    // ---------
-    // Vibrance-like: чем ниже sat, тем больше относительный буст,
-    // но строго мягко и с потолком SAT_SAFE.
-    // ---------
-    const satGap = SAT_SAFE - s
-    if (satGap <= 0) {
-        return { r, g, b }
-    }
-
-    const lowSatFactor = clamp01((SAT_TRIGGER - s) / SAT_TRIGGER) // 0..1
-    const sBoost = satGap * SANITIZE_STRENGTH * lowSatFactor
-    const s2 = clamp01(s + sBoost)
-
-    const rgb2 = hsvToRgb(h, s2, v)
-    return {
-        r: clamp255(rgb2.r),
-        g: clamp255(rgb2.g),
-        b: clamp255(rgb2.b),
-    }
-}
 
 function sanitizeImageDataDebugX10(imageData: ImageData): ImageData {
     const w = imageData.width
     const h = imageData.height
 
-    // работаем на копии, исходник не мутируем
+    // Work on a copy; preserve the input.
     const out = new ImageData(new Uint8ClampedArray(imageData.data), w, h)
     const d = out.data
 
-    // 1) ЖЕЛЕЗНЫЙ маркер: квадрат 16×16 magenta (должен пережить квантование)
+    // A 16x16 magenta marker should survive quantization.
     const block = Math.min(16, w, h)
     for (let y = 0; y < block; y++) {
         for (let x = 0; x < block; x++) {
@@ -712,12 +489,11 @@ function sanitizeImageDataDebugX10(imageData: ImageData): ImageData {
             d[i + 0] = 255
             d[i + 1] = 0
             d[i + 2] = 255
-            // alpha не трогаем
+            // Preserve alpha.
         }
     }
 
-    // 2) Доп. маркер: каждая 7-я точка по индексу пикселя -> magenta
-    // (чтобы было видно по всему изображению)
+    // Mark every seventh pixel with magenta across the image.
     const total = w * h
     for (let p = 0; p < total; p++) {
         if (p % 7 !== 0) continue
@@ -730,33 +506,6 @@ function sanitizeImageDataDebugX10(imageData: ImageData): ImageData {
     return out
 }
 
-function sanitizeImageDataDelicate(imageData: ImageData): ImageData {
-    const w = imageData.width
-    const h = imageData.height
-
-    // работаем на копии, исходник не мутируем
-    const out = new ImageData(new Uint8ClampedArray(imageData.data), w, h)
-    const d = out.data
-
-    for (let i = 0; i < d.length; i += 4) {
-        const a = d[i + 3]
-
-        // полностью прозрачные можно пропускать (alpha сохраняем как есть)
-        if (a === 0) continue
-
-        const r = d[i + 0]
-        const g = d[i + 1]
-        const b = d[i + 2]
-
-        const rgb2 = sanitizeRgbPixel({ r, g, b })
-        d[i + 0] = rgb2.r
-        d[i + 1] = rgb2.g
-        d[i + 2] = rgb2.b
-        // d[i + 3] НЕ трогаем => A_out = A_in
-    }
-
-    return out
-}
 
 function computeSanitizeDiffMetrics(before: ImageData, after: ImageData) {
     const a = before.data
@@ -812,10 +561,10 @@ function maybeSanitizeImageData(
     imageData: ImageData,
     source: "gallery" | "camera" | "other" = "other"
 ): ImageData {
-    // Ветка включения/выключения есть, при false — строго идентично
+    // Disabled sanitization preserves the input exactly.
     if (!ENABLE_COLOR_SANITIZATION) return imageData
 
-    // Шаг 3.3: debug ×10 только для галереи
+    // The gallery debug marker has a separate enablement flag.
     if (source === "gallery" && SANITIZE_DEBUG_X10) {
         return sanitizeImageDataDebugX10(imageData)
     }
@@ -866,149 +615,6 @@ function maybeStylizeBoostImageData(
     return boosted
 }
 
-function stylizeBoostImageData(imageData: ImageData): ImageData {
-    // ВАЖНО: работаем на копии, исходник не мутируем
-    const out = new ImageData(
-        new Uint8ClampedArray(imageData.data),
-        imageData.width,
-        imageData.height
-    )
-
-    // Если изображение в целом почти ч/б — Boost не должен ничего делать
-    // (оставляем 1:1 копию, changed=0 будет честным)
-    if (isMostlyGrayscaleImageData(imageData)) {
-        return out
-    }
-
-    const data = out.data
-    // reuse (no allocations per-pixel)
-    const hsvTmpDeg = { h: 0, s: 0, v: 0 }
-    const rgbTmp = { r: 0, g: 0, b: 0 }
-
-    for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]
-        const g = data[i + 1]
-        const b = data[i + 2]
-        const a = data[i + 3]
-
-        // Альфа: НЕ ТРОГАЕМ (инвариант)
-        // При желании можно рано пропускать полностью прозрачные:
-        // if (a === 0) continue
-
-        // --- Стоп-зона 0: “почти белый” по RGB (табý на окрашивание белого) ---
-        if (
-            r >= BOOST_WHITE_RGB_CUTOFF &&
-            g >= BOOST_WHITE_RGB_CUTOFF &&
-            b >= BOOST_WHITE_RGB_CUTOFF
-        ) {
-            continue
-        }
-
-        // --- Стоп-зона 1: строгие серые ---
-        if (isStrictGray(r, g, b, BOOST_GRAY_EPS)) {
-            continue
-        }
-
-        // RGB -> HSV (утилита уже есть в проекте)
-        rgbToHsvIntoDeg(r, g, b, hsvTmpDeg)
-        const h = hsvTmpDeg.h
-        const s = hsvTmpDeg.s
-        const v = hsvTmpDeg.v
-
-        // --- Стоп-зона 2: почти белые по V ---
-        if (v >= BOOST_WHITE_CUTOFF) {
-            continue
-        }
-
-        // --- Стоп-зона 3: почти чёрные по V ---
-        if (v <= BOOST_BLACK_CUTOFF) {
-            continue
-        }
-
-        // --- Стоп-зона 4: уже насыщенные ---
-        if (s >= BOOST_S_SAFE) {
-            continue
-        }
-
-        // --- Область действия: midtones по яркости ---
-        if (v < BOOST_V_MIN || v > BOOST_V_MID_MAX) {
-            continue
-        }
-
-        // --- Триггер “пыльности” ---
-        if (s >= BOOST_S_TRIGGER) {
-            continue
-        }
-
-        // Насколько “пыльно”
-        const dustK = clamp01(1 - s / Math.max(1e-6, BOOST_S_TRIGGER))
-
-        // Насколько “нижние midtones”
-        const midK = clamp01(
-            1 -
-                (v - BOOST_V_MIN) /
-                    Math.max(1e-6, BOOST_V_MID_MAX - BOOST_V_MIN)
-        )
-
-        // --- Skin-safe V fade (B5) ---
-        let skinFadeK = 1
-        if (v >= BOOST_V_SKIN_FADE_START) {
-            skinFadeK = clamp01(
-                1 -
-                    (v - BOOST_V_SKIN_FADE_START) /
-                        Math.max(
-                            1e-6,
-                            BOOST_V_SKIN_FADE_END - BOOST_V_SKIN_FADE_START
-                        )
-            )
-        }
-
-        // Skin low-midtones rescue: 1 в самых нижних midtones, 0 к BOOST_V_SKIN_LOW_END
-        const skinLowK = clamp01(
-            (BOOST_V_SKIN_LOW_END - v) /
-                Math.max(1e-6, BOOST_V_SKIN_LOW_END - BOOST_V_MIN)
-        )
-
-        // --- Skin detect ---
-        const isSkin =
-            h >= BOOST_SKIN_H_MIN &&
-            h <= BOOST_SKIN_H_MAX &&
-            s >= BOOST_SKIN_S_MIN &&
-            s <= BOOST_SKIN_S_MAX &&
-            v >= BOOST_V_MIN &&
-            v <= BOOST_V_CAP
-
-        // Базовая сила буста
-        const baseBoost = BOOST_STRENGTH * midK * dustK
-
-        // --- Skin behavior (B5) ---
-        // 1) Верхние midtones: гасим boost (anti-carrot) через skinFadeK
-        // 2) Нижние midtones: слегка возвращаем SAT-boost для skin (anti-dead-gray) через skinLowK
-        const skinSatK =
-            (BOOST_SKIN_S_GAIN_K * (1 - skinLowK) +
-                BOOST_SKIN_S_GAIN_LOW_K * skinLowK) *
-            skinFadeK
-
-        const boostAmountSat = baseBoost * (isSkin ? skinSatK : 1)
-
-        // Lift для skin всегда осторожнее + дополнительно затухает в верхних midtones
-        const boostAmountLift =
-            baseBoost * (isSkin ? BOOST_SKIN_LIFT_K * skinFadeK : 1)
-        const sGain = boostAmountSat * 0.55
-        const s2 = clamp01(Math.min(BOOST_S_MAX, s + sGain))
-
-        const vLift = Math.min(BOOST_V_LIFT_MAX, boostAmountLift * midK * 0.12)
-        const v2 = clamp01(Math.min(BOOST_V_CAP, v + vLift))
-
-        hsvToRgbIntoDeg(h, s2, v2, rgbTmp)
-        data[i] = rgbTmp.r
-        data[i + 1] = rgbTmp.g
-        data[i + 2] = rgbTmp.b
-        data[i + 3] = a // альфа неизменна
-    }
-
-    return out
-}
 
 function preprocessImportedImageData(
     imageData: ImageData,
@@ -1228,21 +834,6 @@ void ALERT_PAD_X
 const ALERT_PAD_Y = 18
 void ALERT_PAD_Y
 
-const ALERT_OVERLAY_STYLE: React.CSSProperties = {
-    position: "fixed",
-    inset: 0,
-    zIndex: 99999,
-    background: "rgba(69,64,49,0.5)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    boxSizing: "border-box",
-}
-
 const PALETTE_MIN = 2
 const PALETTE_MAX = 32
 
@@ -1389,77 +980,7 @@ function cssColorToHex(color: string | null) {
 }
 
 // ---- HSV helpers for the custom picker ----
-function rgbToHsv(r: number, g: number, b: number) {
-    r /= 255
-    g /= 255
-    b /= 255
-    const max = Math.max(r, g, b)
-    const min = Math.min(r, g, b)
-    const d = max - min
 
-    let h = 0
-    if (d !== 0) {
-        switch (max) {
-            case r:
-                h = ((g - b) / d) % 6
-                break
-            case g:
-                h = (b - r) / d + 2
-                break
-            case b:
-                h = (r - g) / d + 4
-                break
-        }
-        h *= 60
-        if (h < 0) h += 360
-    }
-    const s = max === 0 ? 0 : d / max
-    const v = max
-    return { h, s, v }
-}
-
-function hsvToRgb(h: number, s: number, v: number) {
-    h = ((h % 360) + 360) % 360
-    const c = v * s
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
-    const m = v - c
-
-    let r1 = 0,
-        g1 = 0,
-        b1 = 0
-
-    if (h < 60) {
-        r1 = c
-        g1 = x
-        b1 = 0
-    } else if (h < 120) {
-        r1 = x
-        g1 = c
-        b1 = 0
-    } else if (h < 180) {
-        r1 = 0
-        g1 = c
-        b1 = x
-    } else if (h < 240) {
-        r1 = 0
-        g1 = x
-        b1 = c
-    } else if (h < 300) {
-        r1 = x
-        g1 = 0
-        b1 = c
-    } else {
-        r1 = c
-        g1 = 0
-        b1 = x
-    }
-
-    return {
-        r: Math.round((r1 + m) * 255),
-        g: Math.round((g1 + m) * 255),
-        b: Math.round((b1 + m) * 255),
-    }
-}
 
 function rgbToHex(r: number, g: number, b: number) {
     return (
@@ -1758,179 +1279,10 @@ void hsvToRgbInto01
 
 // --- Perf helpers: HSV(deg) into/out (no allocations) ---
 // h: degrees [0..360), s/v: [0..1]
-function rgbToHsvIntoDeg(
-    r: number,
-    g: number,
-    b: number,
-    out: { h: number; s: number; v: number }
-) {
-    const rf = r / 255
-    const gf = g / 255
-    const bf = b / 255
-
-    const max = Math.max(rf, gf, bf)
-    const min = Math.min(rf, gf, bf)
-    const d = max - min
-
-    let h = 0
-    const s = max === 0 ? 0 : d / max
-    const v = max
-
-    if (d !== 0) {
-        if (max === rf) h = ((gf - bf) / d) % 6
-        else if (max === gf) h = (bf - rf) / d + 2
-        else h = (rf - gf) / d + 4
-
-        h *= 60 // -> degrees
-        if (h < 0) h += 360
-    }
-
-    out.h = h
-    out.s = s
-    out.v = v
-}
 
 // h: degrees [0..360), s/v: [0..1]
-function hsvToRgbIntoDeg(
-    h: number,
-    s: number,
-    v: number,
-    out: { r: number; g: number; b: number }
-) {
-    // normalize
-    h = ((h % 360) + 360) % 360
-
-    const c = v * s
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
-    const m = v - c
-
-    let r1 = 0,
-        g1 = 0,
-        b1 = 0
-
-    if (h < 60) {
-        r1 = c
-        g1 = x
-        b1 = 0
-    } else if (h < 120) {
-        r1 = x
-        g1 = c
-        b1 = 0
-    } else if (h < 180) {
-        r1 = 0
-        g1 = c
-        b1 = x
-    } else if (h < 240) {
-        r1 = 0
-        g1 = x
-        b1 = c
-    } else if (h < 300) {
-        r1 = x
-        g1 = 0
-        b1 = c
-    } else {
-        r1 = c
-        g1 = 0
-        b1 = x
-    }
-
-    out.r = Math.round((r1 + m) * 255)
-    out.g = Math.round((g1 + m) * 255)
-    out.b = Math.round((b1 + m) * 255)
-}
 
 // ---- Pixelize: dominant color plus rounding ----
-function pixelizeFromImageDominant(
-    imageData: ImageDataSampleSource,
-    gridGeometry: number | { rows: number; columns: number },
-    roundStep = 16
-) {
-    const { width, height, data } = imageData
-
-    const rows =
-        typeof gridGeometry === "number" ? gridGeometry : gridGeometry.rows
-    const columns =
-        typeof gridGeometry === "number" ? gridGeometry : gridGeometry.columns
-    const safeRows = Math.max(1, Math.round(rows || 0))
-    const safeColumns = Math.max(1, Math.round(columns || 0))
-    const result = Array.from({ length: safeRows }, () =>
-        Array.from({ length: safeColumns }, () => null as string | null)
-    )
-
-    const cellWidth = width / safeColumns
-    const cellHeight = height / safeRows
-    const roundComponent = (v: number) =>
-        clamp(Math.round(v / roundStep) * roundStep, 0, 255)
-
-    const rgbKey = (r: number, g: number, b: number) =>
-        ((r & 255) << 16) | ((g & 255) << 8) | (b & 255)
-
-    const keyToRgb = (key: number) => {
-        const r = (key >> 16) & 255
-        const g = (key >> 8) & 255
-        const b = key & 255
-        return { r, g, b }
-    }
-
-    const pickSmartTie = (keys: number[]) => {
-        if (keys.length === 1) return keys[0]
-        let bestKey = keys[0]
-        let bestLum = Infinity
-        for (const k of keys) {
-            const { r, g, b } = keyToRgb(k)
-            const lum = r * 0.299 + g * 0.587 + b * 0.114
-            if (lum < bestLum) {
-                bestLum = lum
-                bestKey = k
-            }
-        }
-        return bestKey
-    }
-
-    for (let gy = 0; gy < safeRows; gy++) {
-        const startY = Math.floor(gy * cellHeight)
-        const endY = Math.floor((gy + 1) * cellHeight) || startY + 1
-
-        for (let gx = 0; gx < safeColumns; gx++) {
-            const startX = Math.floor(gx * cellWidth)
-            const endX = Math.floor((gx + 1) * cellWidth) || startX + 1
-
-            const counts = new Map<number, number>()
-            for (let y = startY; y < endY; y++) {
-                if (y < 0 || y >= height) continue
-                for (let x = startX; x < endX; x++) {
-                    if (x < 0 || x >= width) continue
-                    const idx = (y * width + x) * 4
-                    const a = data[idx + 3]
-                    if (a === 0) continue
-                    const rr = roundComponent(data[idx])
-                    const gg = roundComponent(data[idx + 1])
-                    const bb = roundComponent(data[idx + 2])
-
-                    const key = rgbKey(rr, gg, bb)
-                    counts.set(key, (counts.get(key) || 0) + 1)
-                }
-            }
-
-            if (counts.size === 0) {
-                result[gy][gx] = null
-                continue
-            }
-
-            let maxCount = -1
-            for (const v of counts.values()) if (v > maxCount) maxCount = v
-            const topKeys: number[] = []
-            for (const [k, v] of counts.entries())
-                if (v === maxCount) topKeys.push(k)
-
-            const bestKey = pickSmartTie(topKeys)
-            const { r, g, b } = keyToRgb(bestKey)
-            result[gy][gx] = "rgb(" + r + ", " + g + ", " + b + ")"
-        }
-    }
-
-    return result
-}
 
 function quantizeToFixedPalette(
     pixels: (string | null)[][],
@@ -1998,27 +1350,7 @@ function generatePalette(count: number) {
     return colors
 }
 
-function computeExportSize(gridSize: number) {
-    const target = CANVAS_SIZE
-    const down = Math.floor(target / gridSize) * gridSize
-    const up = Math.ceil(target / gridSize) * gridSize
-    const best = Math.abs(down - target) <= Math.abs(up - target) ? down : up
-    return best > 0 ? best : gridSize
-}
 
-function computeRectangularExportGeometry(params: {
-    gridSize: number
-    columns: number
-    rows: number
-}) {
-    const exportShortSide = computeExportSize(params.gridSize)
-    const cellSize = exportShortSide / params.gridSize
-    return {
-        cellSize,
-        width: Math.max(1, Math.round(params.columns * cellSize)),
-        height: Math.max(1, Math.round(params.rows * cellSize)),
-    }
-}
 
 function cloneImageDataSnapshot(src: ImageData | null): ImageData | null {
     if (!src) return null
@@ -2056,11 +1388,13 @@ function FitToViewport({
     background,
     onScale,
     topPadding = 0,
+    suspendScale = false,
 }: {
     children: React.ReactNode
     background: string
     onScale?: (s: number) => void
     topPadding?: number
+    suspendScale?: boolean
 }) {
     const contentRef = React.useRef<HTMLDivElement | null>(null)
     const [scale, setScale] = React.useState(1)
@@ -2110,7 +1444,7 @@ function FitToViewport({
                 setScale((prev) =>
                     Math.abs(prev - next) < 0.001 ? prev : next
                 )
-                onScale?.(next)
+                onScale?.(suspendScale ? 1 : next)
             })
         }
 
@@ -2128,7 +1462,7 @@ function FitToViewport({
             window.visualViewport?.removeEventListener("resize", recompute)
             if (raf) cancelAnimationFrame(raf)
         }
-    }, [onScale, VIEWPORT_PAD_TOP])
+    }, [onScale, VIEWPORT_PAD_TOP, suspendScale])
 
     return (
         <div
@@ -2152,6 +1486,7 @@ function FitToViewport({
 
                 // Center the content.
                 display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr)",
                 placeItems: "start center",
 
                 fontFamily:
@@ -2160,7 +1495,7 @@ function FitToViewport({
         >
             <div
                 style={{
-                    transform: `scale(${scale})`,
+                    transform: suspendScale ? "none" : `scale(${scale})`,
                     transformOrigin: "top center",
 
                     // Keep natural width; stretching to 100% would make scrollWidth drift.
@@ -2511,18 +1846,13 @@ function StartScreen({
     const START_LOGO_VISUAL_H = 38
     const START_BUTTONS_W = 260
     const START_ACTION_GAP = 26
-    const START_ACTION_BUTTON_SIZE = Math.round(
+    const START_DESKTOP_LOGO_MAX_W = 205
+    const START_ACTION_BUTTON_MAX_SIZE = 155
+    const START_PORTRAIT_ACTION_BUTTON_SIZE = Math.round(
         (START_BUTTONS_W - START_ACTION_GAP) / 2
     )
     const START_FOOTER_RESERVED_H = 72
-    const START_LOGO_MOBILE_VISUAL_H = Math.round(
-        (START_BUTTONS_W * START_LOGO_VISUAL_H) / START_LOGO_VISUAL_W
-    )
-
-    const taglineRef = React.useRef<HTMLSpanElement | null>(null)
     const dragDepthRef = React.useRef(0)
-    const [taglineFontPx, setTaglineFontPx] = React.useState(12)
-    const [taglineScaleX, setTaglineScaleX] = React.useState(1)
     const [isFileDragActive, setIsFileDragActive] = React.useState(false)
 
     const hasDraggedFiles = React.useCallback((event: DragEvent) => {
@@ -2574,89 +1904,19 @@ function StartScreen({
         }
     }, [hasDraggedFiles, onDropFile])
 
-    useIsomorphicLayoutEffect(() => {
-        const el = taglineRef.current
-        if (!el) return
-
-        let raf = 0
-
-        const measureAndFit = () => {
-            const node = taglineRef.current
-            const box = node?.parentElement
-            if (!node || !box) return
-
-            const cw = box.clientWidth || 0
-            if (cw <= 0) return
-
-            const isWideLogo = cw >= START_BUTTONS_W - 1
-            const MAX = isWideLogo ? 18 : 12
-            const MIN = isWideLogo ? 12 : 9
-
-            node.style.fontSize = MAX + "px"
-
-            if (node.scrollWidth <= cw) {
-                setTaglineFontPx((prev) => (prev === MAX ? prev : MAX))
-                const naturalWidth = node.scrollWidth || cw
-                const nextScale = cw / naturalWidth
-                setTaglineScaleX((prev) =>
-                    Math.abs(prev - nextScale) < 0.001 ? prev : nextScale
-                )
-                return
-            }
-
-            let lo = MIN
-            let hi = MAX
-            let best = MIN
-
-            while (lo <= hi) {
-                const mid = Math.floor((lo + hi) / 2)
-                node.style.fontSize = mid + "px"
-                if (node.scrollWidth <= cw) {
-                    best = mid
-                    lo = mid + 1
-                } else {
-                    hi = mid - 1
-                }
-            }
-
-            node.style.fontSize = best + "px"
-            const naturalWidth = node.scrollWidth || cw
-            const nextScale = cw / naturalWidth
-
-            setTaglineFontPx((prev) => (prev === best ? prev : best))
-            setTaglineScaleX((prev) =>
-                Math.abs(prev - nextScale) < 0.001 ? prev : nextScale
-            )
-        }
-
-        raf = window.requestAnimationFrame(measureAndFit)
-
-        const onResize = () => {
-            if (raf) window.cancelAnimationFrame(raf)
-            raf = window.requestAnimationFrame(measureAndFit)
-        }
-
-        window.addEventListener("resize", onResize)
-
-        return () => {
-            window.removeEventListener("resize", onResize)
-            if (raf) window.cancelAnimationFrame(raf)
-        }
-    }, [TAGLINE_TEXT, START_BUTTONS_W])
-
     const handleLogoClick = React.useCallback(() => {
         onOpenHome()
     }, [onOpenHome])
 
     const wrapStyle: React.CSSProperties = {
-        height: "100vh",
-        minHeight: "100vh",
+        height: "100dvh",
+        minHeight: 0,
         background: bg,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "flex-start",
-        padding: `28px 16px ${START_FOOTER_RESERVED_H}px`,
+        padding: `min(var(--px-start-top-padding, 38px), 4dvh) 16px max(52px, min(${START_FOOTER_RESERVED_H}px, 12dvh))`,
         boxSizing: "border-box",
         fontFamily:
             "Roboto, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
@@ -2664,15 +1924,24 @@ function StartScreen({
 
     const startScreenCss = `${PIX_UI_BUTTON_ANIM_CSS}
 .pxStartLogoBox {
-    width: ${START_LOGO_VISUAL_W}px;
+    width: min(${START_DESKTOP_LOGO_MAX_W}px, 25cqh);
+    container-type: inline-size;
 }
 
 .pxStartLogoButton {
-    height: ${START_LOGO_VISUAL_H}px;
+    height: calc(100cqi * ${START_LOGO_VISUAL_H / START_LOGO_VISUAL_W});
+}
+
+.pxStartActions {
+    --px-start-action-size: min(${START_ACTION_BUTTON_MAX_SIZE}px, 19dvh);
 }
 
 .pxStartTagline {
-    margin-top: 8px;
+    margin-top: min(8px, 4cqi);
+}
+
+.pxStartTagline span {
+    font-size: 7.6cqi;
 }
 
 .pxStartDropOverlay {
@@ -2712,7 +1981,7 @@ function StartScreen({
     letter-spacing: 0;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 640px) and (orientation: portrait) {
     .pxStartDropFrame {
         left: 8vw;
         top: 16dvh;
@@ -2745,14 +2014,19 @@ function StartScreen({
     initial-value: 0;
 }
 
-@media (max-width: 640px) {
-    .pxStartLogoBox {
-        width: ${START_BUTTONS_W}px;
+@media (max-width: 640px) and (orientation: portrait) {
+    .pxStartWrap {
+        --px-start-top-padding: 28px;
     }
 
-    .pxStartLogoButton {
-        height: ${START_LOGO_MOBILE_VISUAL_H}px;
+    .pxStartActions {
+        --px-start-action-size: min(${START_PORTRAIT_ACTION_BUTTON_SIZE}px, 14dvh);
     }
+
+    .pxStartLogoBox {
+        width: min(${START_BUTTONS_W}px, 32cqh);
+    }
+
 }
 
 .pxStartActions > .pxStartActionButton,
@@ -2806,7 +2080,7 @@ function StartScreen({
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 640px) and (orientation: portrait) {
     @keyframes pxStartButtonWavePulse {
         0%,
         66.667%,
@@ -2847,7 +2121,7 @@ function StartScreen({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        marginTop: 10,
+        marginTop: "min(10px, 1dvh)",
     }
 
     const logoButtonStyle: React.CSSProperties = {
@@ -2864,29 +2138,25 @@ function StartScreen({
     const taglineStyle: React.CSSProperties = {
         width: "100%",
         boxSizing: "border-box",
-        height: `${Math.ceil(taglineFontPx * 1.1)}px`,
-        overflow: "visible",
         lineHeight: 1.1,
+        textAlign: "center",
     }
 
     const taglineTextStyle: React.CSSProperties = {
         display: "inline-block",
-        fontSize: taglineFontPx,
         lineHeight: 1.1,
         whiteSpace: "nowrap",
         color: "#1b1b1b",
         fontWeight: 400,
         letterSpacing: 0,
-        transform: `scaleX(${taglineScaleX})`,
-        transformOrigin: "left center",
     }
 
     const buttonsWrap: React.CSSProperties = {
-        width: START_ACTION_BUTTON_SIZE,
+        width: "var(--px-start-action-size)",
 
         display: "flex",
         flexDirection: "column",
-        gap: START_ACTION_GAP,
+        gap: `min(${START_ACTION_GAP}px, 4dvh)`,
 
         alignItems: "stretch",
 
@@ -2900,14 +2170,14 @@ function StartScreen({
         alignItems: "center",
         justifyContent: "center",
         width: "100%",
-        padding: "24px 0",
+        padding: "min(24px, 3dvh) 0",
         boxSizing: "border-box",
     }
 
     const circleButton: React.CSSProperties = {
         // The button fills its vertical action slot and keeps the circle square.
         width: "100%",
-        height: START_ACTION_BUTTON_SIZE,
+        height: "var(--px-start-action-size)",
         flex: "0 0 auto",
 
         border: "none",
@@ -2972,14 +2242,15 @@ function StartScreen({
             {dropOverlay}
 
             <div
+                className="pxStartWrap"
                 style={{
                     ...wrapStyle,
 
-                    width: "fit-content",
-                    maxWidth: "100%",
+                    width: "100vw",
                     display: "inline-flex",
                     flexDirection: "column",
                     boxSizing: "border-box",
+                    containerType: "size",
                 }}
             >
                 <div className="pxStartLogoBox" style={logoBox}>
@@ -2993,7 +2264,7 @@ function StartScreen({
                         <SvgLogo style={{ imageRendering: "pixelated" }} />
                     </button>
                     <div className="pxStartTagline" style={taglineStyle}>
-                        <span ref={taglineRef} style={taglineTextStyle}>
+                        <span style={taglineTextStyle}>
                             {TAGLINE_TEXT}
                         </span>
                     </div>
@@ -3014,10 +2285,11 @@ function StartScreen({
                                 <div style={iconStyle}>
                                     <SvgFolder
                                         style={{
-                                            width: 51,
+                                            width: "100%",
                                             imageRendering: "pixelated",
-                                            paddingTop: 5,
-                                            paddingLeft: 2,
+                                            paddingTop: "min(5px, 1dvh)",
+                                            paddingLeft: "min(2px, .5dvh)",
+                                            boxSizing: "border-box",
                                         }}
                                     />
                                 </div>
@@ -3127,6 +2399,7 @@ type EditorCommittedStateSettledPayload = {
         | "load"
         | "smart-object-apply"
         | "smart-object-history-restore"
+        | "history-restore"
 }
 
 type UserActionBeginInput = {
@@ -3253,6 +2526,9 @@ function PixelEditorFramer({
     onRequestBlankImport,
     onRequestOpenProject,
     onRequestStartScreen,
+    controlsSlot,
+    manualGuide,
+    autoPaletteSnapshotPreset,
     pendingProjectFile,
     onPendingProjectFileConsumed,
     onShowImportError,
@@ -3268,6 +2544,12 @@ function PixelEditorFramer({
     coordinatedCanUndo,
     coordinatedCanRedo,
     onEditorCanvasCssSizeChange,
+    capabilities = STANDARD_EDITOR_CAPABILITIES,
+    onPendingStateChange,
+    fullscreenPreviewEnabled = false,
+    fullscreenPreviewOpen = false,
+    fullscreenPreviewAvailable = false,
+    onFullscreenPreviewChange,
 }: {
     clipboardPaletteDetectionSession: ClipboardPaletteCandidateDetectionSession
     // committed reference snapshot from ROOT gateway
@@ -3299,6 +2581,9 @@ function PixelEditorFramer({
     onRequestBlankImport?: () => void
     onRequestOpenProject?: () => void
     onRequestStartScreen?: () => void
+    controlsSlot?: React.ReactNode
+    manualGuide?: EditorHost["manualGuide"]
+    autoPaletteSnapshotPreset?: EditorHost["autoPaletteSnapshotPreset"]
 
     // NEW: project-open bridge from ROOT
     pendingProjectFile?: File | null
@@ -3335,6 +2620,12 @@ function PixelEditorFramer({
     coordinatedCanUndo?: boolean
     coordinatedCanRedo?: boolean
     onEditorCanvasCssSizeChange?: (size: EditorCanvasCssSize | null) => void
+    capabilities?: EditorCapabilities
+    onPendingStateChange?: (pending: boolean) => void
+    fullscreenPreviewEnabled?: boolean
+    fullscreenPreviewOpen?: boolean
+    fullscreenPreviewAvailable?: boolean
+    onFullscreenPreviewChange?: (open: boolean) => void
 
     // NEW: unified import-error bridge (optional)
     onShowImportError?: (message: string) => void
@@ -3347,6 +2638,106 @@ function PixelEditorFramer({
         w: getViewportWidthPx(),
         h: getViewportHeightPx(),
     }))
+    const fullscreenPreviewCloseRef = React.useRef<HTMLButtonElement | null>(null)
+    const fullscreenPreviewContainerRef = React.useRef<HTMLDivElement | null>(null)
+    const fullscreenPreviewAttemptRef = React.useRef(0)
+    const fullscreenPreviewOwnedRef = React.useRef(false)
+    const fullscreenPreviewOrientationLockedRef = React.useRef(false)
+    const unlockPreviewOrientation = () => {
+        try {
+            screen.orientation.unlock()
+        } catch {
+            // The browser may have already released the lock on fullscreen exit.
+        }
+    }
+
+    const openFullscreenPreview = () => {
+        onFullscreenPreviewChange?.(true)
+        if (!window.matchMedia("(pointer: coarse)").matches) return
+        const container = fullscreenPreviewContainerRef.current
+        if (!container?.requestFullscreen || document.fullscreenElement) return
+        const attempt = ++fullscreenPreviewAttemptRef.current
+        let request: Promise<void>
+        try {
+            request = container.requestFullscreen()
+        } catch {
+            return
+        }
+        void request.then(async () => {
+            if (attempt !== fullscreenPreviewAttemptRef.current || document.fullscreenElement !== container) {
+                if (document.fullscreenElement === container) void document.exitFullscreen().catch(() => {})
+                return
+            }
+            fullscreenPreviewOwnedRef.current = true
+            try {
+                const orientation = screen.orientation as ScreenOrientation & {
+                    lock?: (value: "portrait") => Promise<void>
+                }
+                if (!orientation.lock) throw new Error("Orientation lock is unavailable")
+                await orientation.lock("portrait")
+                if (attempt === fullscreenPreviewAttemptRef.current && document.fullscreenElement === container) {
+                    fullscreenPreviewOrientationLockedRef.current = true
+                } else {
+                    unlockPreviewOrientation()
+                }
+            } catch {
+                // Orientation lock is optional; return to the existing viewport preview.
+                if (attempt === fullscreenPreviewAttemptRef.current && document.fullscreenElement === container) {
+                    fullscreenPreviewOwnedRef.current = false
+                    await document.exitFullscreen().catch(() => {})
+                }
+            }
+        }).catch(() => {})
+    }
+
+    React.useEffect(() => {
+        if (!fullscreenPreviewOpen) return
+        const container = fullscreenPreviewContainerRef.current
+        const handleFullscreenChange = () => {
+            if (document.fullscreenElement === container) {
+                fullscreenPreviewOwnedRef.current = true
+            } else if (fullscreenPreviewOwnedRef.current) {
+                fullscreenPreviewOwnedRef.current = false
+                if (fullscreenPreviewOrientationLockedRef.current) {
+                    fullscreenPreviewOrientationLockedRef.current = false
+                    unlockPreviewOrientation()
+                }
+            }
+        }
+        document.addEventListener("fullscreenchange", handleFullscreenChange)
+        return () => {
+            document.removeEventListener("fullscreenchange", handleFullscreenChange)
+            ++fullscreenPreviewAttemptRef.current
+            fullscreenPreviewOwnedRef.current = false
+            if (fullscreenPreviewOrientationLockedRef.current) {
+                fullscreenPreviewOrientationLockedRef.current = false
+                unlockPreviewOrientation()
+            }
+            if (document.fullscreenElement === container) void document.exitFullscreen().catch(() => {})
+        }
+    }, [fullscreenPreviewOpen, onFullscreenPreviewChange])
+
+    React.useEffect(() => {
+        if (!fullscreenPreviewOpen) return
+        const previousFocus = document.activeElement instanceof HTMLElement
+            ? document.activeElement : null
+        fullscreenPreviewCloseRef.current?.focus()
+        const handlePreviewKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                event.preventDefault()
+                onFullscreenPreviewChange?.(false)
+            } else if (event.key === "Tab") {
+                event.preventDefault()
+                fullscreenPreviewCloseRef.current?.focus()
+            }
+            event.stopImmediatePropagation()
+        }
+        window.addEventListener("keydown", handlePreviewKeyDown, true)
+        return () => {
+            window.removeEventListener("keydown", handlePreviewKeyDown, true)
+            previousFocus?.focus()
+        }
+    }, [fullscreenPreviewOpen, onFullscreenPreviewChange])
 
     useIsomorphicLayoutEffect(() => {
         let raf = 0
@@ -3671,6 +3062,7 @@ function PixelEditorFramer({
     const [importedPalettePresets, setImportedPalettePresets] = React.useState<
         ImportedPalettePreset[]
     >([])
+    const [autoPaletteSnapshotProfile, setAutoPaletteSnapshotProfile] = React.useState<FixedQuantizationProfile | null>(null)
     const palettePresetFileInputRef = React.useRef<HTMLInputElement | null>(null)
     const [imagePixels, setImagePixels] = React.useState<PixelValue[][]>(() =>
         createEmptyPixels(DEFAULT_EDITOR_GRID_SIZE, DEFAULT_EDITOR_GRID_SIZE)
@@ -3701,6 +3093,7 @@ function PixelEditorFramer({
         setActivePresetButton(reset.activePresetButton)
         setHiddenPresetIds(reset.hiddenPresetIds)
         setImportedPalettePresets(reset.importedPalettePresets)
+        setAutoPaletteSnapshotProfile(null)
     }
 
     function resetMethodForNewImport() {
@@ -3915,6 +3308,7 @@ function PixelEditorFramer({
     }, [initialImageData, initialImageRouteKind])
 
     const onSaveProject = React.useCallback(() => {
+        if (!capabilities.projectFiles) return
         try {
             const snapshot = buildProjectSnapshotV2()
             const prepared = prepareProjectSnapshotForSave(snapshot, {
@@ -3965,9 +3359,10 @@ function PixelEditorFramer({
             })
             showSaveLoadError(toTemporarySaveLoadError("save", error))
         }
-    }, [buildProjectSnapshotV2, showSaveLoadError])
+    }, [capabilities.projectFiles, buildProjectSnapshotV2, showSaveLoadError])
 
     function onLoadProject(e: React.MouseEvent) {
+        if (!capabilities.projectFiles) return
         coreLifecycleLog("import:menu-opened")
         openOpenMenu(e)
     }
@@ -5168,12 +4563,14 @@ function PixelEditorFramer({
     type PaletteAction = () => void
     const paletteActionBusyRef = React.useRef(false)
     const paletteActionQueueRef = React.useRef<PaletteAction[]>([])
+    const [paletteActionPending, setPaletteActionPending] = React.useState(false)
 
     function releasePaletteActionLockAfterPaint() {
         const release = () => {
             paletteActionBusyRef.current = false
             const next = paletteActionQueueRef.current.shift()
             if (next) runPaletteActionExclusive(next)
+            else if (onPendingStateChange) setPaletteActionPending(false)
         }
 
         if (typeof window !== "undefined" && window.requestAnimationFrame) {
@@ -5188,6 +4585,7 @@ function PixelEditorFramer({
 
     function runPaletteActionExclusive(action: PaletteAction) {
         paletteActionBusyRef.current = true
+        if (onPendingStateChange) setPaletteActionPending(true)
         try {
             action()
         } finally {
@@ -6042,6 +5440,19 @@ function PixelEditorFramer({
         const preferredSwatchForNextTab =
             paletteTabSelectedSwatchRef.current[nextTab]
         const currentWorld = makeCurrentDerivedWorldSnapshot()
+        if (autoPaletteSnapshotPreset && currentTab === "size" && nextTab === "presets" &&
+            currentWorld.profile.kind === "extract") {
+            const colors = currentWorld.autoSwatches
+                .filter(swatch => !swatch.isTransparent && !swatch.isUser)
+                .map(swatch => swatch.color)
+            setAutoPaletteSnapshotProfile(colors.length ? {
+                kind: "fixed",
+                source: "imported",
+                id: autoPaletteSnapshotPreset.id,
+                name: autoPaletteSnapshotPreset.name,
+                colors,
+            } : null)
+        }
 
         const switchState = preparePaletteTabSwitch<
             DerivedWorld<PixelValue>
@@ -6053,8 +5464,12 @@ function PixelEditorFramer({
         })
         const { targetWorld, targetWorldIsCompatible } = switchState
 
+        // A compatible preset world owns its swatch identities and edited cell assignments.
+        // Rebuild only when Auto has overlay cells that must be carried into Presets.
         const shouldRebuildPresetFromCurrentWorld =
-            currentTab !== "presets" && nextTab === "presets"
+            currentTab !== "presets" && nextTab === "presets" &&
+            (presetCarryUserSwatchesRef.current.size > 0 ||
+                currentWorld.overlayPixels.some(row => row.some(value => value !== null)))
         const shouldRestoreTargetWorld =
             !shouldRebuildPresetFromCurrentWorld &&
             targetWorld &&
@@ -6561,7 +5976,9 @@ function PixelEditorFramer({
     }
 
     async function importPalettePresetInput(input: ClipboardPaletteImportRequest) {
-        await importPalettePresetFromFile({
+        if (onPendingStateChange) setPaletteImportPending(true)
+        try {
+            await importPalettePresetFromFile({
             file: input.file,
             displayName: input.displayName,
             makeImportedId: makeImportedPalettePresetId,
@@ -6588,6 +6005,9 @@ function PixelEditorFramer({
                     })
                 }
             })
+        } finally {
+            if (onPendingStateChange) setPaletteImportPending(false)
+        }
     }
 
     function handlePalettePresetFilePicked(
@@ -6601,6 +6021,7 @@ function PixelEditorFramer({
     }
 
     function deletePalettePreset(profileId: string) {
+        if (!capabilities.swatchMutation) return
         const before = latestProjectStateRef.current ?? makeProjectState()
         const activePresetForDelete =
             activePresetButton ??
@@ -7145,12 +6566,13 @@ function PixelEditorFramer({
         ])
 
     const openQuantizationRecorder = React.useCallback(() => {
+        if (!capabilities.recorder) return
         enqueuePaletteAction(() => {
             const nextSeed = buildQuantizationRecorderSeed()
             if (!nextSeed) return
             setQuantizationRecorderSeed(nextSeed)
         })
-    }, [buildQuantizationRecorderSeed])
+    }, [capabilities.recorder, buildQuantizationRecorderSeed])
 
     const closeQuantizationRecorder = React.useCallback(() => {
         setQuantizationRecorderSeed(null)
@@ -7436,6 +6858,12 @@ function PixelEditorFramer({
         setOriginalImageData(null)
         setShowImage(false)
         setHasImportContext(false)
+        // Load restores its own palette worlds, never those of the previous project.
+        setPaletteTabsState({
+            activeTab: "size",
+            sizeWorld: null,
+            presetsWorld: null,
+        })
         clearPaintRefs()
 
         overlayDirtyRef.current = false
@@ -7566,6 +6994,7 @@ function PixelEditorFramer({
     const committedStateApplyRef = React.useRef<
         (state: EditorCommittedState) => void
     >((state) => applyProjectState(state))
+    const pendingHistoryRestoreSettledRef = React.useRef(false)
 
     committedStateCaptureRef.current = () => makeProjectState()
     committedStateApplyRef.current = (state) => applyProjectState(state)
@@ -7574,8 +7003,10 @@ function PixelEditorFramer({
         if (!onEditorCommittedStateBridgeReady) return
         onEditorCommittedStateBridgeReady({
             captureCommittedState: () => committedStateCaptureRef.current(),
-            applyCommittedState: (state) =>
-                committedStateApplyRef.current(state),
+            applyCommittedState: (state) => {
+                pendingHistoryRestoreSettledRef.current = true
+                committedStateApplyRef.current(state)
+            },
         })
         return () => {
             onEditorCommittedStateBridgeReady(null)
@@ -8519,6 +7950,8 @@ function PixelEditorFramer({
             return
         }
 
+        if (!capabilities.drawing) return
+
         // Start drawing (S1 STREAM-lock).
         if (busyKindRef.current !== null) {
             // Soft refusal: the cursor is busy with another user action.
@@ -8757,7 +8190,9 @@ function PixelEditorFramer({
 
     // --- TOOL MODE (Step 7) ---
     type ToolMode = "brush" | "hand" | "pipette"
-    const [toolMode, setToolMode] = React.useState<ToolMode>("brush")
+    const [toolMode, setToolMode] = React.useState<ToolMode>(
+        capabilities.drawing ? "brush" : "hand"
+    )
     const spaceHandStateRef = React.useRef<SpaceHandState>({
         isHolding: false,
         previousTool: "brush",
@@ -8817,11 +8252,11 @@ function PixelEditorFramer({
 
     const resetEditorInteractionStateForNewImport = React.useCallback(() => {
         resetView()
-        setToolMode("brush")
+        setToolMode(capabilities.drawing ? "brush" : "hand")
         spaceHandStateRef.current = {
             isHolding: false,
-            previousTool: "brush",
-            activeTool: "brush",
+            previousTool: capabilities.drawing ? "brush" : "hand",
+            activeTool: capabilities.drawing ? "brush" : "hand",
         }
         setIsPanning(false)
         panSessionRef.current = {
@@ -8847,7 +8282,7 @@ function PixelEditorFramer({
         zoomOutDidLongPressRef.current = false
         touchPointersRef.current.clear()
         pinchZoomSessionRef.current.active = false
-    }, [clearPipetteHoverCell, resetView])
+    }, [capabilities.drawing, clearPipetteHoverCell, resetView])
 
     const applyToolbarZoom = React.useCallback(
         (direction: 1 | -1) => {
@@ -9106,6 +8541,17 @@ function PixelEditorFramer({
 
     type ColorModalMode = "edit" | "create-user" | "create-imported-preset"
     const [isColorModalOpen, setIsColorModalOpen] = React.useState(false)
+    const [paletteImportPending, setPaletteImportPending] = React.useState(false)
+
+    React.useLayoutEffect(() => {
+        onPendingStateChange?.(
+            methodSession !== null ||
+            isColorModalOpen ||
+            quantizationRecorderSeed !== null ||
+            paletteImportPending ||
+            paletteActionPending
+        )
+    }, [onPendingStateChange, methodSession, isColorModalOpen, quantizationRecorderSeed, paletteImportPending, paletteActionPending])
     const [colorModalMode, setColorModalMode] =
         React.useState<ColorModalMode>("edit")
     const [editingSwatchId, setEditingSwatchId] =
@@ -9203,6 +8649,19 @@ function PixelEditorFramer({
     const [pickerHue, setPickerHue] = React.useState(0)
     const [pickerSV, setPickerSV] = React.useState({ s: 1, v: 1 })
 
+    const resetEditorSessionTools = React.useCallback(() => {
+        // Session-only preferences are not part of project restoration or history.
+        setQuantizationRecorderSeed(null)
+        setQuantizationRecorderSettings(null)
+        setExportIncludeStroke(true)
+        setExportIncludeImage(true)
+        setOverlayMode(null)
+        setManualOpen(false)
+        setIsColorModalOpen(false)
+        methodSessionRef.current = null
+        setMethodSession(null)
+    }, [])
+
     const rows = gridRows
     const cols = gridColumns
     const isMethodModeActive = methodSession !== null
@@ -9213,7 +8672,7 @@ function PixelEditorFramer({
     })
     const moduleTabsScale = isMobileUI ? MOBILE_MODULE_TABS_SCALE : 1
     const moduleTabsBaseWidth =
-        MODULE_TAB_BUTTON_SIZE * MODULE_TAB_BUTTON_COUNT
+        MODULE_TAB_BUTTON_SIZE * (capabilities.recorder ? MODULE_TAB_BUTTON_COUNT : MODULE_TAB_BUTTON_COUNT - 1)
     const moduleTabsScaledWidth = moduleTabsBaseWidth * moduleTabsScale
     const moduleTabsScaledHeight = MODULE_TAB_BUTTON_SIZE * moduleTabsScale
     const currentMethodPaletteContext = getMethodPaletteContextForTab(
@@ -9343,6 +8802,26 @@ function PixelEditorFramer({
     const editorLayoutContentWidth = canvasLayout.contentWidth
     const actualCanvasWidth = canvasLayout.actualCanvasRect.width
     const actualCanvasHeight = canvasLayout.actualCanvasRect.height
+    const previewPadding = isMobileUI ? 12 : 24
+    const previewRatio = Math.max(1, cols) / Math.max(1, rows)
+    const rotatePreviewClockwise = fullscreenPreviewOpen && isMobileUI &&
+        appViewportSize.h > appViewportSize.w && cols > rows
+    const previewAvailableWidth = Math.max(1,
+        (rotatePreviewClockwise ? appViewportSize.h : appViewportSize.w) - previewPadding * 2)
+    const previewAvailableHeight = Math.max(1,
+        (rotatePreviewClockwise ? appViewportSize.w : appViewportSize.h) - previewPadding * 2)
+    const previewCanvasWidth = Math.min(
+        previewAvailableWidth,
+        previewAvailableHeight * previewRatio
+    )
+    const previewCanvasHeight = previewCanvasWidth / previewRatio
+    const toolbarButtonCount =
+        (onRequestStartScreen ? 1 : 0) +
+        (capabilities.projectFiles ? 2 : 0) +
+        (capabilities.export ? 1 : 0) +
+        (capabilities.history ? 2 : 0) +
+        2 + (capabilities.drawing ? 2 : 0) + 1 +
+        (fullscreenPreviewEnabled ? 1 : 0) + 1
 
     const squareButton = (clickable = false): React.CSSProperties => ({
         width: 44,
@@ -9370,7 +8849,9 @@ function PixelEditorFramer({
     void iconButton
 
     const iconOnlyButton = (clickable = false): React.CSSProperties => {
-        const s = 38
+        const s = fullscreenPreviewEnabled
+            ? Math.min(38, Math.max(20, (editorContentWidth - (toolbarButtonCount - 1) * 8) / toolbarButtonCount))
+            : 38
 
         return {
             /* All toolbar buttons share the same layout weight. */
@@ -9456,8 +8937,8 @@ function PixelEditorFramer({
         : (selectedSwatch as SwatchId)
 
     const palettePresentation = React.useMemo(
-        () =>
-            buildPalettePresentationModel({
+        () => {
+            const presentation = buildPalettePresentationModel({
                 activeTab: paletteTabsState.activeTab,
                 quantizationProfile,
                 activePresetButtonId: activePresetButton,
@@ -9465,9 +8946,22 @@ function PixelEditorFramer({
                 autoSwatches,
                 userSwatches,
                 importedPalettePresets,
-            }),
+            })
+            if (!autoPaletteSnapshotPreset || !autoPaletteSnapshotProfile) return presentation
+            return {
+                ...presentation,
+                visibleBuiltinPresetProfiles: presentation.visibleBuiltinPresetProfiles
+                    .map(profile => profile.id === autoPaletteSnapshotPreset.replacesBuiltinId
+                        ? autoPaletteSnapshotProfile : profile)
+                    .filter(profile => !hiddenPresetIds.includes(profile.id)),
+                importedPresetProfiles: presentation.importedPresetProfiles
+                    .filter(profile => profile.id !== autoPaletteSnapshotPreset.id),
+            }
+        },
         [
             activePresetButton,
+            autoPaletteSnapshotPreset,
+            autoPaletteSnapshotProfile,
             autoSwatches,
             hiddenPresetIds,
             importedPalettePresets,
@@ -9553,6 +9047,10 @@ function PixelEditorFramer({
 
     React.useEffect(() => {
         const routeKind = initialImageRouteKind ?? "import"
+
+        if (routeKind === "import" || routeKind === "load") {
+            resetEditorSessionTools()
+        }
 
         // Blank import is also a real import entry.
         // A load with a null snapshot must still reach its cleanup branch.
@@ -9723,12 +9221,14 @@ function PixelEditorFramer({
         initialImportAspectRatioId,
         blankImportNonce,
         resetEditorInteractionStateForNewImport,
+        resetEditorSessionTools,
     ])
 
     React.useEffect(() => {
         if (!onEditorCommittedStateSettled) return
 
-        const routeKind = pendingCommittedStateSettledKindRef.current
+        const routeKind = pendingCommittedStateSettledKindRef.current ??
+            (pendingHistoryRestoreSettledRef.current ? "history-restore" : null)
         if (!routeKind) return
 
         // While import/smart-object rebuild has not finished yet,
@@ -9736,6 +9236,7 @@ function PixelEditorFramer({
         if (pendingImportBeforeRef.current) return
 
         pendingCommittedStateSettledKindRef.current = null
+        pendingHistoryRestoreSettledRef.current = false
 
         onEditorCommittedStateSettled({
             state: makeProjectState(),
@@ -9779,6 +9280,20 @@ function PixelEditorFramer({
         // G1: block repixelize while restore is active.
         if (isRestoringFromSaveRef.current) {
             traceLoad("repixelizeEffect SKIP (restoring=true)")
+            return
+        }
+
+        // Import resets are queued by an earlier effect. Rebuilding with that
+        // effect's old render would publish old layers under the new geometry.
+        if (
+            pendingCommittedStateSettledKindRef.current === "import" &&
+            initialImageData &&
+            (originalImageData !== initialImageData ||
+                gridSize !== DEFAULT_EDITOR_GRID_SIZE ||
+                aspectRatioId !==
+                    (initialImportAspectRatioId ?? DEFAULT_ASPECT_RATIO_ID) ||
+                paletteCount !== DEFAULT_EDITOR_PALETTE_COUNT)
+        ) {
             return
         }
 
@@ -10853,6 +10368,7 @@ function PixelEditorFramer({
     void handleClear
 
     function handleImageChange(event: any) {
+        if (!capabilities.projectFiles) return
         const input = event?.target as HTMLInputElement | null
         const file =
             input?.files && input.files.length > 0 ? input.files[0] : null
@@ -10879,7 +10395,17 @@ function PixelEditorFramer({
 
     // ------------------- SWATCH EDIT -------------------
 
+    function canMutateActiveSwatches() {
+        if (!capabilities.swatchMutation) return false
+        if (paletteTabsState.activeTab === "presets" && quantizationProfile.kind === "fixed") {
+            return quantizationProfile.source === "imported" ||
+                (quantizationProfile.source === "builtin" && capabilities.builtinPresetSwatchMutation)
+        }
+        return capabilities.autoSwatchMutation
+    }
+
     function openColorEditor(swatchId: SwatchId) {
+        if (!canMutateActiveSwatches()) return
         const sw = swatchById.get(swatchId)
         if (!sw) return
 
@@ -10931,6 +10457,7 @@ function PixelEditorFramer({
     }
 
     function openCreateSwatchModal(mode: Exclude<ColorModalMode, "edit">) {
+        if (!canMutateActiveSwatches()) return
         const hex = getDefaultNewSwatchColor(mode)
         const rgb = hexToRgb(hex) ?? { r: 255, g: 255, b: 255 }
         const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
@@ -10975,10 +10502,12 @@ function PixelEditorFramer({
     }
 
     function handleDeleteSwatchFromModal() {
+        if (!canMutateActiveSwatches()) return
         enqueuePaletteAction(handleDeleteSwatchFromModalNow)
     }
 
     function handleDeleteSwatchFromModalNow() {
+        if (!canMutateActiveSwatches()) return
         if (!editingSwatchId) {
             handleModalCancel()
             return
@@ -11205,6 +10734,8 @@ function PixelEditorFramer({
     }
 
     function handleModalApply() {
+        if (!canMutateActiveSwatches()) return
+        if (!capabilities.autoSwatchMutation && pendingTransparent) return
         if (!editingSwatchId && colorModalMode === "edit") {
             setIsColorModalOpen(false)
             return
@@ -11473,6 +11004,7 @@ function PixelEditorFramer({
     }
 
     function handleAddSwatchClick() {
+        if (!canMutateActiveSwatches()) return
         if (
             paletteTabsState.activeTab === "presets" &&
             quantizationProfile.kind === "fixed"
@@ -11757,61 +11289,25 @@ function PixelEditorFramer({
     }): Promise<Blob | null> {
         const includeStroke = p?.includeStroke ?? true
         const includeImage = p?.includeImage ?? true
-
-        const rows = gridRows
-        const cols = gridColumns
-        const exportGeometry = computeRectangularExportGeometry({
-            gridSize,
-            columns: cols,
-            rows,
-        })
-        const px = exportGeometry.cellSize
-
-        const out = document.createElement("canvas")
-        out.width = exportGeometry.width
-        out.height = exportGeometry.height
-
-        const ctx = out.getContext("2d")
-        if (!ctx) return null
-
-        ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, exportGeometry.width, exportGeometry.height)
-
-        for (let r = 0; r < rows; r++) {
-            const iRow = imagePixels[r]
-            const oRow = overlayPixels[r]
-
-            for (let c = 0; c < cols; c++) {
-                let v: any = null
-
-                // includeStroke=false: ignore overlay completely, including eraser cells.
+        const out = renderPixelGridCanvas({
+            gridSize, columns: gridColumns, rows: gridRows,
+            colorAt: (row, column) => {
+                let value: PixelValue | null = null
                 if (includeStroke) {
-                    const o = oRow?.[c] ?? null
-                    if (o != null) {
-                        // Overlay always has priority, including transparent eraser cells.
-                        v = o
-                    }
+                    const overlay = overlayPixels[row]?.[column] ?? null
+                    if (overlay != null) value = overlay
                 }
-
-                // includeImage=false: ignore image; keep only strokes, or empty cells.
-                if (v == null && includeImage) {
-                    // Export does not depend on showImage.
-                    v = iRow?.[c] ?? null
+                if (value == null && includeImage) {
+                    value = imagePixels[row]?.[column] ?? null
                 }
-
-                if (!v) continue
-                if (isTransparentValue(v)) continue
-
-                const finalColor = resolveToColor(v)
-                if (!finalColor) continue
-
-                ctx.fillStyle = finalColor
-                ctx.fillRect(c * px, r * px, px, px)
-            }
-        }
-
+                return value && !isTransparentValue(value)
+                    ? resolveToColor(value)
+                    : null
+            },
+        })
+        if (!out) return null
         return await new Promise<Blob | null>((resolve) => {
-            out.toBlob((b) => resolve(b), "image/png")
+            out.toBlob((blob) => resolve(blob), "image/png")
         })
     }
 
@@ -11998,6 +11494,7 @@ function PixelEditorFramer({
     }
 
     const openExport = (e?: React.MouseEvent) => {
+        if (!capabilities.export) return
         if (isExporting) return
 
         const rect = getOverlayAnchorRectFromEvent(e, exportBtnRef)
@@ -12037,12 +11534,14 @@ function PixelEditorFramer({
     }
 
     const openStartScreen = () => {
+        if (!onRequestStartScreen) return
         closeOverlay()
         setManualOpen(false)
         onRequestStartScreen?.()
     }
 
     const runExport = async (kind: "png" | "svg" | "xlsx" | "zip") => {
+        if (!capabilities.export) return
         // Enterprise: ignore re-entry (no toasts, no alerts)
         if (isExporting) return
 
@@ -12285,8 +11784,9 @@ function PixelEditorFramer({
     return (
         <FitToViewport
             background={bg}
-            topPadding={isMobileUI ? 0 : 20}
+            topPadding={fullscreenPreviewOpen || isMobileUI ? 0 : 20}
             onScale={handleEditorFitScaleChange}
+            suspendScale={fullscreenPreviewOpen}
         >
             <style>{PIX_UI_BUTTON_ANIM_CSS}</style>
             <input
@@ -12322,13 +11822,14 @@ function PixelEditorFramer({
             <div
                 style={{
                     width: editorLayoutContentWidth,
-                    display: isMethodModeActive ? "none" : "flex",
+                    display: isMethodModeActive || fullscreenPreviewOpen ? "none" : "flex",
                     justifyContent: "center",
                     marginTop: isMobileUI ? 6 : 0,
                     marginBottom: isMobileUI ? 6 : 12,
                 }}
             >
                 <div
+                    className={fullscreenPreviewEnabled ? "batch-preview-toolbar" : undefined}
                     style={{
                         width: editorContentWidth,
                         display: "flex",
@@ -12343,7 +11844,7 @@ function PixelEditorFramer({
                     }}
                 >
                     {/* Home */}
-                    <div style={{ display: "contents" }}>
+                    {onRequestStartScreen && <div style={{ display: "contents" }}>
                         <button
                             type="button"
                             onClick={openStartScreen}
@@ -12361,11 +11862,11 @@ function PixelEditorFramer({
                                 }}
                             />
                         </button>
-                    </div>
+                    </div>}
 
                     {/* Block 0: Save / Export / Import */}
                     <div style={{ display: "contents" }}>
-                        <button
+                        {capabilities.projectFiles && <button
                             type="button"
                             onClick={onSaveProject}
                             aria-label="Save Project"
@@ -12374,9 +11875,9 @@ function PixelEditorFramer({
                             style={iconOnlyButton(true)}
                         >
                             <SaveIcon />
-                        </button>
+                        </button>}
 
-                        <button
+                        {capabilities.export && <button
                             ref={exportBtnRef}
                             onClick={(e) => openExport(e)}
                             style={iconOnlyButton(true)}
@@ -12392,9 +11893,9 @@ function PixelEditorFramer({
                                     transform: "translateY(0px)",
                                 }}
                             />
-                        </button>
+                        </button>}
 
-                        <button
+                        {capabilities.projectFiles && <button
                             type="button"
                             ref={openBtnRef}
                             onClick={onLoadProject}
@@ -12404,11 +11905,11 @@ function PixelEditorFramer({
                             style={iconOnlyButton(true)}
                         >
                             <LoadIcon />
-                        </button>
+                        </button>}
                     </div>
 
                     {/* Block 1: Undo / Redo */}
-                    <div style={{ display: "contents" }}>
+                    {capabilities.history && <div style={{ display: "contents" }}>
                         <button
                             type="button"
                             onClick={() => {
@@ -12446,7 +11947,7 @@ function PixelEditorFramer({
                         >
                             <RedoIcon />
                         </button>
-                    </div>
+                    </div>}
 
                     {/* Block 3: Zoom out / Zoom in */}
                     <div style={{ display: "contents" }}>
@@ -12483,7 +11984,7 @@ function PixelEditorFramer({
 
                     {/* Block 4: Brush / Pipette / Hand */}
                     <div style={{ display: "contents" }}>
-                        <button
+                        {capabilities.drawing && <button
                             type="button"
                             aria-label="Brush tool"
                             title="Brush"
@@ -12503,9 +12004,9 @@ function PixelEditorFramer({
                             ) : (
                                 <BrushIconOff size={38} />
                             )}
-                        </button>
+                        </button>}
 
-                        <button
+                        {capabilities.drawing && <button
                             type="button"
                             aria-label="Pipette tool"
                             title="Color Picker"
@@ -12526,7 +12027,7 @@ function PixelEditorFramer({
                                 size={38}
                                 active={toolMode === "pipette"}
                             />
-                        </button>
+                        </button>}
 
                         <button
                             type="button"
@@ -12552,6 +12053,18 @@ function PixelEditorFramer({
                             )}
                         </button>
                     </div>
+
+                    {fullscreenPreviewEnabled && <button
+                        type="button"
+                        onClick={openFullscreenPreview}
+                        disabled={!fullscreenPreviewAvailable}
+                        aria-label="Fullscreen preview"
+                        title="Fullscreen preview"
+                        className="pxUiAnim"
+                        style={{ ...iconOnlyButton(true), opacity: fullscreenPreviewAvailable ? 1 : 0.35 }}
+                    >
+                        <img src="/plugins/batch-pixelation/PreviewIcon.svg" alt="" style={{ width: "100%", height: "100%" }} />
+                    </button>}
 
                     {/* Manual */}
                     <div style={{ display: "contents" }}>
@@ -12581,17 +12094,26 @@ function PixelEditorFramer({
 
             {/* Canvas */}
             <div
+                ref={fullscreenPreviewContainerRef}
+                role={fullscreenPreviewOpen ? "dialog" : undefined}
+                aria-modal={fullscreenPreviewOpen ? true : undefined}
+                aria-label={fullscreenPreviewOpen ? "Fullscreen canvas preview" : undefined}
                 style={{
-                    width: editorLayoutContentWidth,
+                    width: fullscreenPreviewOpen ? "100vw" : editorLayoutContentWidth,
+                    height: fullscreenPreviewOpen ? "100dvh" : undefined,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    position: fullscreenPreviewOpen ? "fixed" : undefined,
+                    inset: fullscreenPreviewOpen ? 0 : undefined,
+                    zIndex: fullscreenPreviewOpen ? 100 : undefined,
+                    background: fullscreenPreviewOpen ? bg : undefined,
                 }}
             >
                 <div
                     style={{
-                        width: actualCanvasWidth,
-                        height: actualCanvasHeight,
+                        width: fullscreenPreviewOpen ? previewCanvasWidth : actualCanvasWidth,
+                        height: fullscreenPreviewOpen ? previewCanvasHeight : actualCanvasHeight,
                         border: `2px solid ${canvasBorderColor}`,
                         background: checkerBackground,
                         backgroundClip: "padding-box",
@@ -12599,6 +12121,8 @@ function PixelEditorFramer({
                         alignItems: "center",
                         justifyContent: "center",
                         boxSizing: "border-box",
+                        flexShrink: rotatePreviewClockwise ? 0 : undefined,
+                        transform: rotatePreviewClockwise ? "rotate(90deg)" : undefined,
                     }}
                 >
                     {/* ✅ ZOOM STEP 1: Viewport wrapper + Content layer (no transform yet) */}
@@ -12615,7 +12139,8 @@ function PixelEditorFramer({
                             overflow: "hidden", // Clip the canvas window.
 
                             // --- Step 10: cursors ---
-                            cursor: canvasCursor,
+                            cursor: fullscreenPreviewOpen ? "default" : canvasCursor,
+                            pointerEvents: fullscreenPreviewOpen ? "none" : undefined,
 
                             userSelect: "none",
 
@@ -12631,15 +12156,17 @@ function PixelEditorFramer({
                                 width: "100%",
                                 height: "100%",
                                 transformOrigin: "0 0",
-                                transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
+                                transform: fullscreenPreviewOpen
+                                    ? "none"
+                                    : `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
                             }}
                         >
                             {/* ✅ ZOOM STEP 2: Canvas + overlay stack inside Content */}
                             <div
                                 style={{
                                     position: "relative",
-                                    width: canvasRenderLayerSize,
-                                    height: canvasRenderLayerSize,
+                                    width: fullscreenPreviewOpen ? "100%" : canvasRenderLayerSize,
+                                    height: fullscreenPreviewOpen ? "100%" : canvasRenderLayerSize,
                                 }}
                             >
                                 <canvas
@@ -12671,6 +12198,7 @@ function PixelEditorFramer({
                                         position: "absolute",
                                         inset: 0,
                                         pointerEvents: "none",
+                                        display: fullscreenPreviewOpen ? "none" : undefined,
                                     }}
                                 >
                                     {/* Brush frame, moved through brushPreviewRef */}
@@ -12693,10 +12221,33 @@ function PixelEditorFramer({
                         </div>
                     </div>
                 </div>
+                {fullscreenPreviewOpen && <button
+                    ref={fullscreenPreviewCloseRef}
+                    type="button"
+                    onClick={() => onFullscreenPreviewChange?.(false)}
+                    aria-label="Close fullscreen preview"
+                    title="Close fullscreen preview"
+                    style={{
+                        position: "absolute",
+                        top: rotatePreviewClockwise
+                            ? `calc(50% - ${previewCanvasWidth / 2}px + 8px)`
+                            : "max(12px, env(safe-area-inset-top))",
+                        right: rotatePreviewClockwise
+                            ? `calc(50% - ${previewCanvasHeight / 2}px + 8px)`
+                            : "max(12px, env(safe-area-inset-right))",
+                        width: 44,
+                        height: 44,
+                        border: 0,
+                        padding: 0,
+                        background: "transparent",
+                        cursor: "pointer",
+                    }}
+                ><img src="/plugins/batch-pixelation/closePreviewIcon.svg" alt="" style={{ width: "100%", height: "100%" }} /></button>}
             </div>
 
             {/* Controls area */}
             <div
+                inert={fullscreenPreviewOpen}
                 style={{
                     width: editorLayoutContentWidth,
                     display: "flex",
@@ -12729,7 +12280,7 @@ function PixelEditorFramer({
                             style={{
                                 display: "flex",
                                 alignItems: "flex-start",
-                                gap: 20,
+                                gap: controlsSlot ? 8 : 20,
                                 marginBottom: 18,
                             }}
                         >
@@ -12740,6 +12291,7 @@ function PixelEditorFramer({
                                     paddingTop: 18,
                                 }}
                             >
+                                {!controlsSlot &&
                                 <div
                                     style={{
                                         display: "flex",
@@ -12754,6 +12306,7 @@ function PixelEditorFramer({
                                         {brushSize} × {brushSize}
                                     </div>
                                 </div>
+                                }
                                 {/* ---------- RANGE THUMB: use RangeCircle SVG as native slider thumb ---------- */}
                                 <style>{`
   :root{
@@ -12875,7 +12428,7 @@ function PixelEditorFramer({
 
                                 {/* ---------- /RANGE THUMB ---------- */}
 
-                                <div
+                                {controlsSlot ?? <div
                                     style={{
                                         ...trackWrap,
                                         flex: "1 1 auto",
@@ -12968,7 +12521,7 @@ function PixelEditorFramer({
                                         }
                                         disabled={editorControlsDisabled}
                                     />
-                                </div>
+                                </div>}
                             </div>
 
                             <div
@@ -13029,7 +12582,7 @@ function PixelEditorFramer({
                                     />
                                 </button>
 
-                                <button
+                                {capabilities.recorder && <button
                                     type="button"
                                     onClick={openQuantizationRecorder}
                                     disabled={!originalImageData}
@@ -13062,7 +12615,7 @@ function PixelEditorFramer({
                                             display: "block",
                                         }}
                                     />
-                                </button>
+                                </button>}
 
                                 <button
                                     type="button"
@@ -13211,6 +12764,11 @@ function PixelEditorFramer({
                         </div>
 
                         <PalettePanel
+                            allowSwatchMutation={capabilities.swatchMutation}
+                            allowAutoSwatchMutation={capabilities.autoSwatchMutation}
+                            allowFixedSwatchMutation={quantizationProfile.kind === "fixed" &&
+                                (quantizationProfile.source === "imported" ||
+                                    (quantizationProfile.source === "builtin" && capabilities.builtinPresetSwatchMutation))}
                             activeTab={paletteTabsState.activeTab}
                             activePresetButtonId={activePresetButton}
                             autoSwatches={
@@ -13323,7 +12881,7 @@ function PixelEditorFramer({
                                     e.stopPropagation()
                                 }}
                             >
-                                <ManualScreen onClose={closeManual} />
+                                <ManualScreen onClose={closeManual} guide={manualGuide} />
                             </div>
                         </div>,
                         document.body
@@ -14030,6 +13588,7 @@ function PixelEditorFramer({
                                         }}
                                     >
                                         <label
+                                            aria-hidden={!capabilities.autoSwatchMutation}
                                             style={{
                                                 display: "flex",
                                                 alignItems: "center",
@@ -14043,6 +13602,9 @@ function PixelEditorFramer({
                                                 userSelect: "none",
                                                 cursor: "pointer",
                                                 minWidth: 0,
+                                                visibility: capabilities.autoSwatchMutation
+                                                    ? "visible"
+                                                    : "hidden",
                                             }}
                                         >
                                             <div
@@ -14053,12 +13615,13 @@ function PixelEditorFramer({
                                                     flex: "0 0 auto",
                                                 }}
                                             >
-                                                <input
+                                                {capabilities.autoSwatchMutation && <input
                                                     type="checkbox"
                                                     checked={pendingTransparent}
                                                     disabled={
                                                         colorModalMode ===
-                                                        "create-imported-preset"
+                                                        "create-imported-preset" ||
+                                                        !capabilities.autoSwatchMutation
                                                     }
                                                     onChange={(e) =>
                                                         setPendingTransparent(
@@ -14073,7 +13636,7 @@ function PixelEditorFramer({
                                                         margin: 0,
                                                         cursor: "pointer",
                                                     }}
-                                                />
+                                                />}
 
                                                 <div
                                                     style={{
@@ -14463,16 +14026,38 @@ function commitImportTxn(
 
 // ------------------- ROOT MVP -------------------
 
-export default function PIXTUDIO_Mobile_MVP() {
+export default function PIXTUDIO_Mobile_MVP({ host, onHostHome, controlsSlot }: {
+    host?: EditorHost
+    onHostHome?: () => void
+    controlsSlot?: React.ReactNode
+} = {}) {
     const navigate = useNavigate()
     // Clipboard decisions outlive temporary panels and new project imports;
     // they are session interaction state, not saved project settings.
     const [clipboardPaletteDetectionSession] = React.useState(
         createClipboardPaletteCandidateDetectionSession
     )
+    const capabilities = host?.capabilities ?? STANDARD_EDITOR_CAPABILITIES
     const [screen, setScreen] = React.useState<
         "start" | "editor" | "smart-reference"
     >("start")
+    const [fullscreenPreviewOpen, setFullscreenPreviewOpen] = React.useState(false)
+    const fullscreenPreviewHistorySequence = React.useRef(0)
+    React.useEffect(() => {
+        if (!fullscreenPreviewOpen) return
+        const marker = `${host?.sessionId ?? "editor"}:${++fullscreenPreviewHistorySequence.current}`
+        const current = window.history.state
+        const priorState = current && typeof current === "object"
+            ? current as Record<string, unknown> : {}
+        window.history.pushState({ ...priorState, batchFullscreenPreview: marker }, "")
+        const closeOnBack = () => setFullscreenPreviewOpen(false)
+        window.addEventListener("popstate", closeOnBack)
+        return () => {
+            window.removeEventListener("popstate", closeOnBack)
+            const active = window.history.state as Record<string, unknown> | null
+            if (active?.batchFullscreenPreview === marker) window.history.back()
+        }
+    }, [fullscreenPreviewOpen, host?.sessionId])
     const [pendingProjectFile, setPendingProjectFile] =
         React.useState<File | null>(null)
     const [blankSetupOpen, setBlankSetupOpen] = React.useState(false)
@@ -14486,8 +14071,12 @@ export default function PIXTUDIO_Mobile_MVP() {
     }, [navigate])
 
     const openEditorStartScreen = React.useCallback(() => {
+        if (onHostHome) {
+            onHostHome()
+            return
+        }
         setScreen("start")
-    }, [])
+    }, [onHostHome])
 
     const openBlankCanvasSetup = React.useCallback(() => {
         setBlankSetupAspectRatioId(DEFAULT_ASPECT_RATIO_ID)
@@ -14562,6 +14151,23 @@ export default function PIXTUDIO_Mobile_MVP() {
 
     const [rootCanUndo, setRootCanUndo] = React.useState(false)
     const [rootCanRedo, setRootCanRedo] = React.useState(false)
+    const [editorPending, setEditorPending] = React.useState(false)
+    const [statusRevision, setStatusRevision] = React.useState(0)
+    const pendingCropTapRef = React.useRef<Pick<PreparedCrop, "drawGeometry" | "referenceInputGeometry"> | null>(null)
+    const pendingSmartTapRef = React.useRef<{
+        adjustments: SmartReferenceAdjustments
+        whiteBalance: import("./smartRender.ts").SmartWhiteBalanceApplyInputs | null
+    } | null>(null)
+    const pendingHistoryObservationRef = React.useRef<{ waitForSmart: boolean } | null>(null)
+
+    const emitCommitTap = React.useCallback((commit: Parameters<NonNullable<EditorHost["onCommit"]>>[0]) => {
+        if (!host?.onCommit) return
+        try {
+            host.onCommit(commit)
+        } catch (error) {
+            editorConsole.error("Editor commit observer failed", error)
+        }
+    }, [host])
 
     // H3:
     // Root receives a direct bridge to the editor committed-state boundary.
@@ -14600,6 +14206,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             setGatewayCommittedReferenceKind(kind)
 
             if (kind === "import" || kind === "load") {
+                pendingHistoryObservationRef.current = null
                 if (kind === "import") {
                     prepareNextImportAspectRatio(
                         aspectRatioForImport ??
@@ -14719,14 +14326,16 @@ export default function PIXTUDIO_Mobile_MVP() {
             })
             rootHistoryBegin(rootHistoryRef.current, input)
             syncRootHistoryFlags()
+            if (host?.onStatus) setStatusRevision((revision) => revision + 1)
         },
-        [syncRootHistoryFlags]
+        [syncRootHistoryFlags, host]
     )
 
     const abortTransaction = React.useCallback(() => {
         rootHistoryAbort(rootHistoryRef.current)
         syncRootHistoryFlags()
-    }, [syncRootHistoryFlags])
+        if (host?.onStatus) setStatusRevision((revision) => revision + 1)
+    }, [syncRootHistoryFlags, host])
 
     const commitTransaction = React.useCallback(
         (editorAfter: EditorCommittedState | null) => {
@@ -14738,10 +14347,18 @@ export default function PIXTUDIO_Mobile_MVP() {
                 committedCount: rootHistoryRef.current.committed.length,
                 redoCount: rootHistoryRef.current.redo.length,
             })
-            rootHistoryCommit(rootHistoryRef.current, editorAfter, {
+            const committed = rootHistoryCommit(rootHistoryRef.current, editorAfter, {
                 isEditorEqual: areEditorCommittedStatesEqual,
                 isSmartEqual: areSmartObjectCommittedStatesEqual,
             })
+            if (committed?.editorAfter && host?.onCommit) {
+                emitCommitTap({
+                    kind: "editor",
+                    sessionId: host.sessionId,
+                    state: structuredClone(committed.editorAfter),
+                })
+            }
+            if (host?.onStatus) setStatusRevision((revision) => revision + 1)
             paletteUndoTrace("rootHistory:commit:after", {
                 committedCount: rootHistoryRef.current.committed.length,
                 redoCount: rootHistoryRef.current.redo.length,
@@ -14762,7 +14379,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             })
             syncRootHistoryFlags()
         },
-        [syncRootHistoryFlags]
+        [syncRootHistoryFlags, host, emitCommitTap]
     )
 
     // Step 0 canonical user-action protocol:
@@ -14816,7 +14433,21 @@ export default function PIXTUDIO_Mobile_MVP() {
         abortTransaction()
     }, [abortTransaction])
 
+    const beginHistoryObservation = React.useCallback(
+        (target: SmartObjectCommittedState | null) => {
+            if (!host?.onCommit) return
+            pendingHistoryObservationRef.current = {
+                waitForSmart: target !== null && !areSmartObjectCommittedStatesEqual(
+                    captureSmartObjectCommittedState(), target
+                ),
+            }
+            setStatusRevision((revision) => revision + 1)
+        },
+        [captureSmartObjectCommittedState, host]
+    )
+
     const undo = React.useCallback(() => {
+        if (!capabilities.history) return
         // S2:
         // Это канонический пользовательский Undo.
         // Он обязан восстанавливать ОБА домена из root history.
@@ -14831,26 +14462,33 @@ export default function PIXTUDIO_Mobile_MVP() {
             redoCount: rootHistoryRef.current.redo.length,
         })
 
+        beginHistoryObservation(entry.smartBefore)
         restoreEditorCommittedState(entry.editorBefore)
         restoreSmartObjectCommittedState(entry.smartBefore)
         syncRootHistoryFlags()
     }, [
+        capabilities.history,
+        beginHistoryObservation,
         restoreEditorCommittedState,
         restoreSmartObjectCommittedState,
         syncRootHistoryFlags,
     ])
 
     const redo = React.useCallback(() => {
+        if (!capabilities.history) return
         // S2:
         // Это канонический пользовательский Redo.
         // Он обязан восстанавливать ОБА домена из root history.
         const entry = rootHistoryRedo(rootHistoryRef.current)
         if (!entry) return
 
+        beginHistoryObservation(entry.smartAfter)
         restoreEditorCommittedState(entry.editorAfter)
         restoreSmartObjectCommittedState(entry.smartAfter)
         syncRootHistoryFlags()
     }, [
+        capabilities.history,
+        beginHistoryObservation,
         restoreEditorCommittedState,
         restoreSmartObjectCommittedState,
         syncRootHistoryFlags,
@@ -14887,13 +14525,14 @@ export default function PIXTUDIO_Mobile_MVP() {
                 canRedo: rootCanRedo,
             })
 
-            if (screen !== "editor") {
+            if (screen !== "editor" || fullscreenPreviewOpen) {
                 editorHistoryShortcutLog("rejected", {
                     reason: "screen-not-editor",
                     screen,
                 })
                 return
             }
+            if (!capabilities.history) return
 
             handleEditorHistoryShortcut(event, {
                 undo,
@@ -14909,7 +14548,7 @@ export default function PIXTUDIO_Mobile_MVP() {
             editorHistoryShortcutLog("listener-unmounted", { screen })
             window.removeEventListener("keydown", onKeyDown, true)
         }
-    }, [screen, undo, redo, rootCanUndo, rootCanRedo])
+    }, [screen, fullscreenPreviewOpen, undo, redo, rootCanUndo, rootCanRedo, capabilities.history])
 
     const debugHistoryInfo = React.useCallback(() => {
         return {
@@ -14997,9 +14636,57 @@ export default function PIXTUDIO_Mobile_MVP() {
                 payload.routeKind === "import" &&
                 pendingCropImportSettlementRef.current
             ) {
+                const crop = pendingCropTapRef.current
+                pendingCropTapRef.current = null
+                if (crop && host?.onCommit) {
+                    emitCommitTap({
+                        kind: "crop",
+                        sessionId: host.sessionId,
+                        drawGeometry: structuredClone(crop.drawGeometry),
+                        referenceInputGeometry: structuredClone(crop.referenceInputGeometry),
+                    })
+                    emitCommitTap({
+                        kind: "editor",
+                        sessionId: host.sessionId,
+                        state: structuredClone(payload.state),
+                    })
+                }
                 pendingCropImportSettlementRef.current = false
                 cropApplyInFlightRef.current = false
                 resetImportUi("import-settled")
+                return
+            }
+
+            const historyObservation = pendingHistoryObservationRef.current
+            if (historyObservation &&
+                (payload.routeKind === "history-restore" ||
+                    payload.routeKind === "smart-object-history-restore")) {
+                if (historyObservation.waitForSmart &&
+                    payload.routeKind !== "smart-object-history-restore") return
+                if (!historyObservation.waitForSmart &&
+                    payload.routeKind !== "history-restore") return
+                const smart = historyObservation.waitForSmart
+                    ? smartObjectCommittedStateBridgeRef.current?.captureCommittedEffect()
+                    : null
+                if (historyObservation.waitForSmart && !smart) return
+                if (host?.onCommit) {
+                    emitCommitTap({
+                        kind: "editor",
+                        sessionId: host.sessionId,
+                        state: structuredClone(payload.state),
+                    })
+                    if (smart) {
+                        emitCommitTap({
+                            kind: "smart",
+                            sessionId: host.sessionId,
+                            adjustments: structuredClone(smart.adjustments),
+                            whiteBalance: smart.whiteBalance
+                                ? structuredClone(smart.whiteBalance) : null,
+                        })
+                    }
+                }
+                pendingHistoryObservationRef.current = null
+                setStatusRevision((revision) => revision + 1)
                 return
             }
 
@@ -15011,6 +14698,16 @@ export default function PIXTUDIO_Mobile_MVP() {
             commitUserAction({
                 editorAfter: payload.state,
             })
+            const smart = pendingSmartTapRef.current
+            pendingSmartTapRef.current = null
+            if (smart && host?.onCommit) {
+                emitCommitTap({
+                    kind: "smart",
+                    sessionId: host.sessionId,
+                    adjustments: structuredClone(smart.adjustments),
+                    whiteBalance: smart.whiteBalance ? structuredClone(smart.whiteBalance) : null,
+                })
+            }
 
             if (ENABLE_ROOT_HISTORY_LOGS) {
                 editorConsole.log(
@@ -15021,7 +14718,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 )
             }
         },
-        [commitUserAction]
+        [commitUserAction, host, emitCommitTap]
     )
 
     const handleBeginUserAction = React.useCallback(
@@ -15229,145 +14926,17 @@ export default function PIXTUDIO_Mobile_MVP() {
     )
 
     // Single portal for all import errors and save/load operation failures.
+    const importErrorModalPortal: React.ReactNode = importErrorModal &&
+        <EditorImportErrorModal title={importErrorModal.title} message={importErrorModal.message}
+            onDismiss={dismissImportErrorModal} />
 
-    // ======================
-    // IMPORT ERROR MODAL: fixed geometry (NO autosize / NO measuring)
-    // ======================
-
-    const IMPORT_ALERT_W = 300
-    const IMPORT_ALERT_H = 100
-
-    // Keep the backing proportional so SvgAlertBacking does not drift.
-    const importAlertBoxW = `min(${IMPORT_ALERT_W}px, calc(100vw - 48px))`
-    const importAlertBoxH = `calc(${importAlertBoxW} * ${IMPORT_ALERT_H} / ${IMPORT_ALERT_W})`
-
-    // Fixed typography and padding; avoid viewport-scaled text here.
-    const importAlertTitleFontPx = 18
-    const importAlertBodyFontPx = 12
-    const importAlertPadV = 26
-    const importAlertPadH = 32
-
-    const importErrorModalPortal: React.ReactNode = importErrorModal
-        ? (ReactDOM.createPortal(
-              <div
-                  style={ALERT_OVERLAY_STYLE}
-                  onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                  }}
-              >
-                  {/* Inner column guard in case ALERT_OVERLAY_STYLE changes. */}
-                  <div
-                      style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          //gap: 14,
-                          pointerEvents: "auto",
-                      }}
-                      onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                      }}
-                  >
-                      {/* WHITE BACKING */}
-                      <div
-                          style={{
-                              position: "relative",
-                              width: importAlertBoxW,
-                              height: importAlertBoxH,
-                          }}
-                      >
-                          <div style={{ position: "absolute", inset: 0 }}>
-                              <SvgAlertBacking
-                                  style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      display: "block",
-                                  }}
-                                  ariaLabel="Import error modal backing"
-                              />
-                          </div>
-
-                          {/* CONTENT */}
-                          <div
-                              style={{
-                                  position: "relative",
-                                  width: "100%",
-                                  height: "100%",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  gap: 12,
-                                  padding: `${importAlertPadV}px ${importAlertPadH}px`,
-                                  boxSizing: "border-box",
-                                  textAlign: "center",
-                              }}
-                          >
-                              <div
-                                  style={{
-                                      display: "flex",
-                                      flexDirection: "column",
-                                      alignItems: "center",
-                                      gap: 5,
-                                  }}
-                              >
-                                  <div
-                                      style={{
-                                          fontSize: importAlertTitleFontPx,
-                                          fontWeight: 900,
-                                          letterSpacing: 1,
-                                          textAlign: "center",
-                                          color: PIXTUDIO_INK,
-                                      }}
-                                  >
-                                      {importErrorModal.title}
-                                  </div>
-
-                                  <div
-                                      style={{
-                                          fontSize: importAlertBodyFontPx,
-                                          lineHeight: 1,
-                                          wordBreak: "break-word",
-                                          fontWeight: 400,
-                                          textAlign: "center",
-                                          color: PIXTUDIO_INK,
-                                          opacity: 1,
-                                      }}
-                                  >
-                                      {importErrorModal.message}
-                                  </div>
-                              </div>
-                          </div>
-                      </div>
-
-                      {/* OK button outside the white backing. */}
-                      <button
-                          type="button"
-                          onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              dismissImportErrorModal()
-                          }}
-                          style={okCancelButtonStyle}
-                          aria-label="OK"
-                          className="pxUiAnim"
-                      >
-                          <SvgOkButton style={okCancelSvgStyle} />
-                      </button>
-                  </div>
-              </div>,
-              document.body
-          ) as unknown as React.ReactNode)
-        : null
 
     const openImagePicker = React.useCallback(() => {
         openUnifiedFilePicker()
     }, [openUnifiedFilePicker])
 
     const importImageFileThroughCurrentPipeline = React.useCallback(
-        async (file: File) => {
+        async (file: File, onInitialError?: (message: string) => void) => {
             if (!isLikelyRasterImageFile(file)) {
                 editorConsole.warn("[IMPORT][GALLERY] rejected non-image file", {
                     type: file.type,
@@ -15375,7 +14944,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                     size: file.size,
                 })
 
-                failImport(FILE_INTAKE_MESSAGES.unsupportedFile)
+                failImport(FILE_INTAKE_MESSAGES.unsupportedFile, onInitialError)
                 return
             }
 
@@ -15389,17 +14958,31 @@ export default function PIXTUDIO_Mobile_MVP() {
                 setCropFlowSource("gallery")
                 openCropFlow(sourceImage)
             } catch (e: any) {
+                if (host?.initialImageFile && import.meta.env.DEV) {
+                    console.info("[PIXTUDIO][host image intake] decode failed", {
+                        code: e instanceof FileIntakeError ? e.code : "unexpected",
+                        message: e instanceof Error ? e.message : String(e),
+                    })
+                }
                 editorConsole.warn("[IMPORT][GALLERY] decodeToSourceImage failed", e)
                 failImport(
                     getFileIntakeUserMessage(
                         e,
                         FILE_INTAKE_MESSAGES.imageDecodeFailed
-                    )
+                    ), onInitialError
                 )
             }
         },
         []
     )
+
+    const startedHostFileRef = React.useRef<File | null>(null)
+    React.useEffect(() => {
+        const file = host?.initialImageFile
+        if (!file || startedHostFileRef.current === file) return
+        startedHostFileRef.current = file
+        void importImageFileThroughCurrentPipeline(file, host?.onInitialImageError)
+    }, [host?.initialImageFile, host?.onInitialImageError, importImageFileThroughCurrentPipeline])
 
     // ROOT GATEWAY ENTRY:
     // Baked import output enters the root route here before being committed
@@ -15531,6 +15114,28 @@ export default function PIXTUDIO_Mobile_MVP() {
     const cropApplyInFlightRef = React.useRef(false)
     const pendingCropImportSettlementRef = React.useRef(false)
 
+    const editorSessionSettled =
+        screen === "editor" &&
+        !cropPending &&
+        importStatus === "idle" &&
+        !pendingCropImportSettlementRef.current &&
+        !rootHistoryRef.current.pending &&
+        !pendingHistoryObservationRef.current &&
+        !editorPending
+
+    React.useLayoutEffect(() => {
+        if (!host?.onStatus) return
+        host.onStatus({
+            sessionId: host.sessionId,
+            cropOpen: !!cropPending,
+            settled: editorSessionSettled,
+        })
+    }, [host, cropPending, editorSessionSettled, statusRevision])
+
+    React.useEffect(() => {
+        if (fullscreenPreviewOpen && !editorSessionSettled) setFullscreenPreviewOpen(false)
+    }, [fullscreenPreviewOpen, editorSessionSettled])
+
     // legacy diagnostics only (UI must NOT branch on this anymore)
     const [, setImportError] = React.useState<string | null>(null)
 
@@ -15546,11 +15151,11 @@ export default function PIXTUDIO_Mobile_MVP() {
         })
 
     const failImport = React.useCallback(
-        (message: string) => {
+        (message: string, onError: (message: string) => void = showImportError) => {
             cropApplyInFlightRef.current = false
-            showImportError(message)
             setImportStatus("idle")
             setImportError(null)
+            onError(message)
         },
         [showImportError]
     )
@@ -15569,8 +15174,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     // ImportDecision is kept temporarily for transition; Palette Presets are no
     // longer carried through CropFlow or baked into the reference snapshot.
 
-    type CropFlowResult = {
-        preparedReference: ImageData
+    type CropFlowResult = PreparedCrop & {
         aspectRatioId: AspectRatioId
         source: "gallery" | "camera"
     }
@@ -15753,10 +15357,17 @@ export default function PIXTUDIO_Mobile_MVP() {
                 "artifact.bakedReference"
             )
             if (!handleImportArtifact(artifact)) return
+            if (host?.onCommit) {
+                pendingCropTapRef.current = {
+                    drawGeometry: r.drawGeometry,
+                    referenceInputGeometry: r.referenceInputGeometry,
+                }
+            }
             pendingCropImportSettlementRef.current = true
         } catch (e: any) {
             editorConsole.error("[IMPORT][P5] cropResult->artifact failed", e)
             pendingCropImportSettlementRef.current = false
+            pendingCropTapRef.current = null
             failImportInFlow("Failed to bake import artifact.")
         } finally {
             if (!pendingCropImportSettlementRef.current) {
@@ -15940,35 +15551,15 @@ export default function PIXTUDIO_Mobile_MVP() {
         return () => ro.disconnect()
     }, [])
 
-    function applyGeometry(): ImageData | null {
+    function applyGeometry(): PreparedCrop | null {
         // P4: final render must use the original SourceImage; preview canvas is
         // only a fallback.
         const srcAny =
             cropOriginalSourceRef.current ?? cropPreviewSrcCanvasRef.current
         if (!srcAny) return null
 
-        const out = document.createElement("canvas")
-        out.width = cropReferenceDimensions.width
-        out.height = cropReferenceDimensions.height
-
-        const ctx = out.getContext("2d")
-        if (!ctx) return null
-
-        ctx.clearRect(0, 0, out.width, out.height)
-
-        // - HTMLImageElement: naturalWidth/naturalHeight
-        // - ImageBitmap / Canvas: width/height
-        const anySrc: any = srcAny as any
-        const imgW =
-            anySrc?.naturalWidth ?? anySrc?.videoWidth ?? anySrc?.width ?? 0
-        const imgH =
-            anySrc?.naturalHeight ?? anySrc?.videoHeight ?? anySrc?.height ?? 0
-        if (imgW <= 0 || imgH <= 0) return null
-
-        // Match the preview transform semantics: cropUiOffset and cropUiScale
-        // are interpreted in preview short-side coordinates, then projected to
-        // the normalized reference dimensions.
-
+        const referenceInputGeometry = getCropSourceDimensions(srcAny)
+        if (!referenceInputGeometry) return null
         const previewCanvas = cropPreviewCanvasRef.current
         const previewWidth = previewCanvas?.width ?? CANVAS_SIZE
         const previewHeight = previewCanvas?.height ?? CANVAS_SIZE
@@ -15982,36 +15573,21 @@ export default function PIXTUDIO_Mobile_MVP() {
             canvasHeight: previewHeight,
             insetFraction: insetFrac,
         })
-        const referenceToPreviewScale =
-            cropReferenceDimensions.width / viewport.viewportWidth
-
-        // Scale from preview viewport coordinates into the normalized reference.
-        const k = referenceToPreviewScale
-
-        // Cover-scale the selected reference viewport, then project it to the
-        // baked reference dimensions.
-        const baseScale = Math.max(
-            viewport.viewportWidth / imgW,
-            viewport.viewportHeight / imgH
-        )
-
-        const drawW = imgW * baseScale * cropUiScale * k
-        const drawH = imgH * baseScale * cropUiScale * k
-
-        // Offset is also in preview coordinates.
-        const ox = cropUiOffset.x * k
-        const oy = cropUiOffset.y * k
-
-        const cx = out.width / 2 + ox
-        const cy = out.height / 2 + oy
-
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(cropUiRotation)
-        ctx.drawImage(srcAny as any, -drawW / 2, -drawH / 2, drawW, drawH)
-        ctx.restore()
-
-        return ctx.getImageData(0, 0, out.width, out.height)
+        const drawGeometry = resolveCropDrawGeometry({
+            input: referenceInputGeometry,
+            output: cropReferenceDimensions,
+            viewport: {
+                width: viewport.viewportWidth,
+                height: viewport.viewportHeight,
+            },
+            scale: cropUiScale,
+            offset: cropUiOffset,
+            rotationRadians: cropUiRotation,
+        })
+        const preparedReference = renderResolvedCrop(srcAny, drawGeometry, { rasterPolicy: host?.cropRasterPolicy })
+        return preparedReference
+            ? { preparedReference, referenceInputGeometry, drawGeometry }
+            : null
     }
 
     function renderCropPreview() {
@@ -16431,6 +16007,7 @@ export default function PIXTUDIO_Mobile_MVP() {
         cropApplyInFlightRef.current = false
         setPendingCropResult(null)
         resetImportUi("cancel")
+        if (host && onHostHome) onHostHome()
     }
 
     function confirmCrop() {
@@ -16464,11 +16041,11 @@ export default function PIXTUDIO_Mobile_MVP() {
 
             if (ENABLE_PREP_LOGS) {
                 editorConsole.log("[CROP][prepared]", {
-                    w: prepared.width,
-                    h: prepared.height,
+                    w: prepared.preparedReference.width,
+                    h: prepared.preparedReference.height,
                     a0: (() => {
                         let z = 0
-                        const d = prepared.data
+                        const d = prepared.preparedReference.data
                         for (let i = 3; i < d.length; i += 4) {
                             if (d[i] === 0) z++
                         }
@@ -16477,9 +16054,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                 })
             }
 
-            // P5: Confirm publishes a neutral cropped reference.
+            // Publish the raster and its resolved recipe from the same Crop confirmation.
             setPendingCropResult({
-                preparedReference: prepared,
+                ...prepared,
                 aspectRatioId: cropAspectRatioId,
                 source: cropFlowSource,
             })
@@ -16998,7 +16575,7 @@ export default function PIXTUDIO_Mobile_MVP() {
     )
 
     const content =
-        screen === "start" ? (
+        screen === "start" ? (host ? null : (
             <StartScreen
                 onPickImage={openImagePicker}
                 onDropFile={handleStartScreenDroppedFile}
@@ -17006,7 +16583,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                 onOpenDraw={openBlankCanvasSetup}
                 onOpenHome={openPromoHome}
             />
-        ) : (
+        )) : (
             <>
                 {/* ROOT -> EDITOR:
                 Editor должен оставаться смонтированным и при screen === "editor",
@@ -17017,6 +16594,9 @@ export default function PIXTUDIO_Mobile_MVP() {
                     clipboardPaletteDetectionSession={
                         clipboardPaletteDetectionSession
                     }
+                    capabilities={capabilities}
+                    autoPaletteSnapshotPreset={host?.autoPaletteSnapshotPreset}
+                    onPendingStateChange={host?.onStatus ? setEditorPending : undefined}
                     initialImageData={gatewayCommittedReference}
                     initialImageRouteKind={gatewayCommittedReferenceKind}
                     initialImportAspectRatioId={gatewayImportAspectRatioId}
@@ -17038,7 +16618,13 @@ export default function PIXTUDIO_Mobile_MVP() {
                     }}
                     onRequestBlankImport={openBlankCanvasSetup}
                     onRequestOpenProject={openProjectPicker}
-                    onRequestStartScreen={openEditorStartScreen}
+                    onRequestStartScreen={capabilities.navigation || onHostHome ? openEditorStartScreen : undefined}
+                    controlsSlot={controlsSlot}
+                    fullscreenPreviewEnabled={!!host?.fullscreenPreviewEnabled}
+                    fullscreenPreviewOpen={fullscreenPreviewOpen}
+                    fullscreenPreviewAvailable={editorSessionSettled}
+                    onFullscreenPreviewChange={setFullscreenPreviewOpen}
+                    manualGuide={host?.manualGuide}
                     onShowImportError={failImport}
                     onShowAppError={showAppErrorModal}
                     onOpenSmartReferenceTest={
@@ -17063,8 +16649,8 @@ export default function PIXTUDIO_Mobile_MVP() {
                     onAbortUserAction={handleAbortUserAction}
                     onCoordinatedUndo={undo}
                     onCoordinatedRedo={redo}
-                    coordinatedCanUndo={rootCanUndo}
-                    coordinatedCanRedo={rootCanRedo}
+                    coordinatedCanUndo={capabilities.history && rootCanUndo}
+                    coordinatedCanRedo={capabilities.history && rootCanRedo}
                     pendingProjectFile={pendingProjectFile}
                     onPendingProjectFileConsumed={() =>
                         setPendingProjectFile(null)
@@ -17094,7 +16680,10 @@ export default function PIXTUDIO_Mobile_MVP() {
                         handleSmartObjectCommittedStateBridgeReady
                     }
                     onPublishEnvelope={handlePublishedReferenceEnvelope}
-                    onExport={handleSmartReferenceExport}
+                    onCommittedEffect={host?.onCommit ? (effect) => {
+                        pendingSmartTapRef.current = effect
+                    } : undefined}
+                    onExport={capabilities.export ? handleSmartReferenceExport : undefined}
                 />
             </div>
 
@@ -17161,31 +16750,7 @@ export default function PIXTUDIO_Mobile_MVP() {
                         >
                             <button
                                 type="button"
-                                onClick={() => {
-                                    if (typeof window === "undefined") return
-
-                                    const isMobile =
-                                        /Android|iPhone|iPad|iPod|Mobile/i.test(
-                                            navigator.userAgent
-                                        )
-
-                                    const mailtoHref =
-                                        "mailto:support@pixtudio.app?subject=PIXTUDIO%20support"
-
-                                    const gmailComposeUrl =
-                                        "https://mail.google.com/mail/?view=cm&fs=1&to=support@pixtudio.app&su=PIXTUDIO%20support"
-
-                                    if (isMobile) {
-                                        window.location.href = mailtoHref
-                                        return
-                                    }
-
-                                    window.open(
-                                        gmailComposeUrl,
-                                        "_blank",
-                                        "noopener,noreferrer"
-                                    )
-                                }}
+                                onClick={() => openSupportEmail("support@pixtudio.app", "PIXTUDIO support")}
                                 style={footerIconStyle}
                                 aria-label="Email"
                                 className="pxUiAnim"

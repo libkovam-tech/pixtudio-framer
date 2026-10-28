@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path"
 
 const SITE_BASE_URL = "https://pixtudio.app"
 const SITE_OG_IMAGE_URL = `${SITE_BASE_URL}/og-image.jpg`
+const batchShareMetadata = JSON.parse(await readFile(resolve("src/plugins/batchPixelation/shareMetadata.json"), "utf8"))
 const LANDING_VIDEO_URL = `${SITE_BASE_URL}/media/landing-preview.mp4?v=20260511-hero43`
 const LANDING_VIDEO_POSTER_URL = `${SITE_BASE_URL}/media/landing-video-poster.jpg`
 const LANDING_VIDEO_UPLOAD_DATE = "2026-05-11T00:00:00Z"
@@ -80,6 +81,28 @@ const routeSeo = {
       "External palette libraries for color inspiration and custom palette experiments in PIXTUDIO.",
     ogType: "website",
   },
+  plugins: {
+    path: "/plugins/",
+    output: "dist/plugins/index.html",
+    title: "PIXTUDIO Plugins — Batch Pixelation",
+    description:
+      "Explore PIXTUDIO plugins. Start with Batch Pixelation: style a reference frame, process a sequence with the same settings, and download the results together.",
+    ogTitle: "PIXTUDIO Plugins — Batch Pixelation",
+    ogDescription:
+      "Explore PIXTUDIO plugins for creative workflows, starting with Batch Pixelation for consistent pixel art across video frames.",
+    ogType: "website",
+  },
+  batch: {
+    path: "/plugins/batch-pixelation/",
+    output: "dist/plugins/batch-pixelation/index.html",
+    title: batchShareMetadata.title,
+    description: batchShareMetadata.description,
+    ogType: "website",
+    imageUrl: `${SITE_BASE_URL}${batchShareMetadata.imagePath}`,
+    imageAlt: batchShareMetadata.imageAlt,
+    imageWidth: batchShareMetadata.imageWidth,
+    imageHeight: batchShareMetadata.imageHeight,
+  },
 }
 
 const homeCards = [
@@ -92,16 +115,8 @@ const homeCards = [
     "Smart palette, manual drawing, PNG, SVG, XLSX, ZIP export, and savable projects. Real creative tool.",
   ],
   [
-    "CREATORS & GAME DEVS LOVE IT",
-    "From viral Reels and TikToks to pro game assets. Loved by creators and indie devs.",
-  ],
-  [
     "RECORD THE MAGIC",
     "Capture the live process as MP4 with music in one click. Perfect for Reels, TikTok, and Shorts.",
-  ],
-  [
-    "PRE-PRODUCTION FOR GAME ARTISTS",
-    "Turn references into clean pixel art bases with consistent palettes. Fits next to Aseprite.",
   ],
   [
     "READY FOR PRODUCTION",
@@ -124,15 +139,15 @@ const homeCards = [
 const faqItems = [
   [
     "Who is PIXTUDIO made for?",
-    "PIXTUDIO is made for anyone who wants to turn photos or ideas into stylish pixel art — from complete beginners to indie game developers and content creators.",
+    "PIXTUDIO is for anyone who wants to turn photos into expressive pixel art, from curious beginners to designers and visual content creators.",
   ],
   [
     "Do I need to know how to draw to use PIXTUDIO?",
     "No. You don't need any drawing skills. Most people start by uploading a photo, which PIXTUDIO automatically turns into pixel art. You can then make adjustments if you want, but drawing from scratch is not required.",
   ],
   [
-    "Can I use PIXTUDIO to create game assets and keep a consistent style?",
-    "Yes. PIXTUDIO is especially useful for creating game assets because you can use the same grid size and color palette across all your images. You can import a palette from any photo or previous project and apply it instantly.",
+    "Can I keep a consistent style across multiple images?",
+    "Yes. Use the same canvas aspect ratio, grid size, and color palette for each image to give them a consistent look. You can also import a palette from another image or a saved PIXTUDIO project and apply it to the image you're working on.",
   ],
   [
     "Does the editor support importing custom color palettes?",
@@ -248,7 +263,7 @@ const galleryItems = [
   ],
   [
     "Toy character",
-    "Toy character turned into game-ready pixel art with clean shapes and a playful limited palette.",
+    "Toy character transformed into pixel art with simplified shapes and a playful limited palette",
   ],
   [
     "Fashion portrait",
@@ -303,7 +318,7 @@ const articleSections = [
     paragraphs: [
       "If choosing the photo is about selecting the subject, then choosing the pixel size, or grid size, is like choosing the literary genre. It largely determines the soul and emotional impact of the final piece.",
       "Large pixels create a bold, poster-like, symbolic aesthetic. Faces turn into masks and landscapes into symbols. This style is perfect for avatars, sticker packs, merch, and strong visual statements.",
-      "Medium pixels offer the classic sweet spot. There is enough detail for instant recognition, while the retro feel remains clear and strong. This is the best choice for game assets, sprites, blog illustrations, and social media content.",
+      "Medium pixels offer the classic sweet spot. There is enough detail for instant recognition, while the retro feel remains clear and strong. This is a good choice for blog illustrations and social media content.",
       "Small pixels are closer to a pixelated photo. They preserve more of the original details and work well for complex architectural shots where you want to keep textures and text recognizable.",
       "Start experimenting with a relatively large grid. Feel how the image breaks down into basic shapes and colors. Then gradually reduce the pixel size until you find the perfect balance between form and recognizability.",
     ],
@@ -337,8 +352,8 @@ const articleSections = [
   {
     title: "Where to Use Your Pixel Art",
     paragraphs: [
-      "Pixel art created in PIXTUDIO has many practical applications: game development, personal branding, content creation, merch and print, branding, logos, mascots, and creatives for gaming, retro, and tech brands.",
-      "Creators can use the results as avatars and profile pictures for social networks, Telegram, and Discord. Content makers can use process videos for TikTok, Instagram Reels, and YouTube Shorts. Game developers can create sprites, items, UI elements, and tilesets.",
+      "Pixel art created in PIXTUDIO has many practical applications: personal branding, content creation, merch and print, office and spreadsheet art, and creative work for retro, gaming, and tech brands.",
+      "Creators can use the results as avatars and profile pictures for social networks, Telegram, and Discord. Content makers can use process videos for TikTok, Instagram Reels, and YouTube Shorts.",
     ],
   },
   {
@@ -392,7 +407,7 @@ function renderHome() {
     ],
     [
       "Perfect for both fast social content and professional work.",
-      "Content creators love it for Reels, avatars, and posts, while indie game developers use it to create consistent pixel art assets quickly.",
+      "Use PIXTUDIO to turn photos into pixel art for avatars, social posts, and personal projects. You can also record the pixelization process to share as short-form video.",
     ],
     [
       "Change palette or grid size and see the whole image update instantly.",
@@ -501,6 +516,8 @@ const renderers = {
   gallery: renderGallery,
   learn: renderLearn,
   links: renderLinks,
+  plugins: () => `<main class="prerenderPage"><h1>PIXTUDIO Plugins</h1><div class="prerenderGrid"><a class="prerenderCard" href="/plugins/batch-pixelation/"><h2>Batch Pixelation</h2><p>Style one frame, process a sequence with the same settings, and download the results together.</p></a></div></main>`,
+  batch: () => `<main class="prerenderPage"><h1>PIXTUDIO Batch Pixelation</h1><p>${escapeHtml(batchShareMetadata.description)}</p></main>`,
 }
 
 const routeJsonLdIds = {
@@ -831,6 +848,7 @@ function applyMeta(html, seo) {
   const canonical = absoluteUrl(seo.path)
   const ogTitle = seo.ogTitle ?? seo.title
   const ogDescription = seo.ogDescription ?? seo.description
+  const imageUrl = seo.imageUrl ?? SITE_OG_IMAGE_URL
 
   let next = html
   next = next.replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(seo.title)}</title>`)
@@ -867,8 +885,20 @@ function applyMeta(html, seo) {
   next = replaceOrInsertHead(
     next,
     /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
-    `<meta property="og:image" content="${SITE_OG_IMAGE_URL}" />`
+    `<meta property="og:image" content="${imageUrl}" />`
   )
+  if (seo.imageWidth && seo.imageHeight) {
+    next = replaceOrInsertHead(next, /<meta\s+property="og:image:width"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image:width" content="${seo.imageWidth}" />`)
+    next = replaceOrInsertHead(next, /<meta\s+property="og:image:height"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image:height" content="${seo.imageHeight}" />`)
+  }
+  if (seo.imageAlt) {
+    next = replaceOrInsertHead(next, /<meta\s+property="og:image:alt"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image:alt" content="${escapeHtml(seo.imageAlt)}" />`)
+    next = replaceOrInsertHead(next, /<meta\s+name="twitter:image:alt"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image:alt" content="${escapeHtml(seo.imageAlt)}" />`)
+  }
   next = replaceOrInsertHead(
     next,
     /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
@@ -882,7 +912,7 @@ function applyMeta(html, seo) {
   next = replaceOrInsertHead(
     next,
     /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
-    `<meta name="twitter:image" content="${SITE_OG_IMAGE_URL}" />`
+    `<meta name="twitter:image" content="${imageUrl}" />`
   )
 
   return next

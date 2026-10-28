@@ -248,7 +248,7 @@ test("blank canvas command resets a drawn blank-session canvas", async ({
     const drawnSnapshot = JSON.parse(await readFile(drawnSave.path, "utf8"))
     expect(drawnSnapshot.strokeLayer.cells.length).toBeGreaterThan(0)
 
-    await page.getByRole("button", { name: "Open" }).click()
+    await page.getByRole("button", { name: "Import", exact: true }).click()
     await expect(page.getByRole("button", { name: "Blank canvas" })).toBeVisible()
     await page.getByRole("button", { name: "Blank canvas" }).click()
     await page.getByRole("radio", { name: "Aspect ratio 16:9" }).click()
@@ -813,7 +813,7 @@ test("iPadOS desktop Safari opens native camera file input", async (
     const errors = collectBrowserErrors(page)
 
     await openBearProject(page)
-    await page.getByRole("button", { name: "Open" }).click()
+    await page.getByRole("button", { name: "Import", exact: true }).click()
     await expect(page.getByRole("button", { name: "Camera" })).toBeVisible()
     const fileChooserPromise = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "Camera" }).click()
@@ -1398,7 +1398,15 @@ test("new preset choices coalesce restored palette tab worlds in undo history", 
     await expectEditorCanvasSignature(page, sunsetCanvas)
     await page.getByRole("button", { name: "Undo" }).click()
     await expectEditorCanvasSignature(page, autoCanvas)
-    await expect(page.locator('input[type="range"][max="32"]').first()).toBeVisible()
+
+    // Owner-approved exception: Undo restores the image without forcing Auto
+    // navigation. Presets remains available for the next palette import.
+    test.info().annotations.push({
+        type: "owner-approved-exception",
+        description: "Auto canvas with Presets open after Undo is not a UI error.",
+    })
+    await expect(page.getByRole("button", { name: "Load Palette" })).toBeVisible()
+    await expect(page.locator('input[type="range"][max="32"]')).toHaveCount(0)
 
     expect(errors.flush()).toEqual([])
 })
@@ -1574,7 +1582,7 @@ async function openProjectPathFromEditor(
     projectPath: string,
     filename?: string
 ) {
-    await page.getByRole("button", { name: "Open" }).click()
+    await page.getByRole("button", { name: "Import", exact: true }).click()
     await expect(page.getByRole("button", { name: "Open file" })).toBeVisible()
 
     const fileChooserPromise = page.waitForEvent("filechooser")

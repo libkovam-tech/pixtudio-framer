@@ -1,0 +1,253 @@
+.batch-page {
+    min-height: 100vh;
+    background: #e8dab0;
+    color: #031820;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.batch-page button { font: inherit; cursor: pointer; }
+.batch-page button:disabled { cursor: default; }
+.batch-page button:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+.batch-page-entry { overflow: hidden; background: #e9d8a6; }
+.batch-entry-composition { width: 100%; height: 100dvh; padding: min(4dvh, 44px) 30px min(2.5dvh, 26px); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
+.batch-entry-brand { display: flex; flex-direction: column; align-items: center; width: max-content; margin: 0 auto min(3dvh, 30px); }
+.batch-entry-brand button { display: block; padding: 0; border: 0; background: transparent; }
+.batch-entry-brand img { display: block; width: min(11vw, 19.5dvh); height: auto; }
+.batch-entry-layout {
+    width: min(100%, 1400px);
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, min(12vw, 230px)) minmax(0, min(28vw, 530px)) minmax(0, min(12vw, 230px));
+    grid-template-rows: minmax(0, 1fr);
+    justify-content: center;
+    gap: clamp(16px, 6vw, 100px);
+    align-items: center;
+    position: relative;
+    container-type: size;
+}
+.batch-entry-feature { grid-column: 2; grid-row: 1; width: 100%; height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); place-items: center; container-type: size; }
+.batch-entry-copy { grid-column: 1; grid-row: 1; z-index: 1; width: min(100%, 56.25cqh); box-sizing: border-box; align-self: center; padding: min(5cqh, 32px); color: #fff; pointer-events: none; transform: translateY(-4cqh); }
+.batch-entry-copy h1 { margin: 0 0 min(5cqh, 30px); padding-bottom: min(1cqh, 8px); border-bottom: min(.5cqh, 4px) dotted #fff; font-size: min(3.5cqh, 5cqw, 20px); line-height: 1.08; font-weight: 900; text-align: center; }
+.batch-entry-copy ol { margin: 0; padding-left: min(2.5cqh, 20px); font-size: min(2.5cqh, 3.5cqw, 14px); font-weight: 700; line-height: 1.5; }
+.batch-entry-copy li + li { margin-top: min(3cqh, 14px); }
+.batch-entry-action {
+    border: 2px solid #fff;
+    border-radius: 50%;
+    color: #fff;
+    width: min(12vw, 24cqh, 230px);
+    height: min(12vw, 24cqh, 230px);
+    aspect-ratio: 1;
+    box-sizing: border-box;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    text-align: center;
+    font-weight: 600 !important;
+    line-height: 1.15;
+    container-type: inline-size;
+}
+.batch-entry-action-content { width: 76%; height: 76%; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); row-gap: 4%; }
+.batch-entry-action-icon { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 6% 20% 0; box-sizing: border-box; }
+.batch-entry-action-icon img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.batch-entry-action-label { min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; font-size: min(7cqi, 16px); }
+.batch-entry-action-label span { display: block; white-space: nowrap; }
+.batch-entry-reference { grid-column: 1; grid-row: 1; justify-self: end; background: #113de5; }
+.batch-entry-recipe { grid-column: 3; grid-row: 1; justify-self: start; background: #8707bd; }
+.batch-entry-action:disabled { opacity: 1; }
+.batch-intro-video { grid-column: 1; grid-row: 1; position: relative; width: min(100%, 56.25cqh); aspect-ratio: 9 / 16; overflow: hidden; border-radius: min(24px, 3cqh); background: #40515b; }
+.batch-intro-video::after { content: ""; position: absolute; inset: 0; background: rgba(0, 16, 22, .52); }
+.batch-intro-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; pointer-events: none; }
+.batch-intro-video canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    image-rendering: pixelated;
+}
+.batch-intro-video canvas.batch-intro-canvas-ready { opacity: 1; }
+.batch-entry-footer { flex: 0 0 auto; padding-top: min(2dvh, 22px); display: flex; align-items: center; justify-content: center; gap: min(45px, 4dvh); font-size: 12px; font-weight: 700; }
+.batch-entry-footer nav { display: flex; gap: min(8px, .8dvh); }
+.batch-entry-footer nav a, .batch-entry-footer nav button { width: min(max(30px, 2.6vw), 5dvh, 74px); height: min(max(30px, 2.6vw), 5dvh, 74px); border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; padding: 0; box-sizing: border-box; }
+.batch-entry-footer nav img { display: block; width: 100%; height: 100%; }
+.batch-entry-share-notice { position: absolute; bottom: 60px; background: #fff; padding: 6px 10px; }
+.batch-entry-message { width: min(100% - 32px, 800px); margin: 4px auto; text-align: center; }
+.batch-legacy-link { display: block; margin: 24px auto 0; border: 0; background: transparent; text-decoration: underline; color: #132a3a; }
+.batch-legacy-review { width: min(100% - 32px, 640px); margin: 12px auto; padding: 16px; background: #fff; }
+.batch-legacy-review label { display: block; margin: 16px 0; }
+.batch-legacy-review button { margin-right: 12px; min-height: 40px; }
+.batch-reference-stage { position: relative; min-height: 100vh; }
+.batch-reference-frozen { pointer-events: none; user-select: none; }
+.batch-reference-loading { min-height: 100dvh; display: grid; place-items: center; }
+.batch-reference-loading span { width: 32px; height: 32px; border: 3px solid #031820; border-top-color: transparent; border-radius: 50%; animation: batch-reference-spin .8s linear infinite; }
+@keyframes batch-reference-spin { to { transform: rotate(360deg); } }
+.batch-reference-intake { padding: 24px; }
+.batch-authoring-actions {
+    position: fixed;
+    right: 3vw;
+    bottom: 4vh;
+    z-index: 22000;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.batch-authoring-actions button {
+    min-height: 48px;
+    min-width: 132px;
+    border-radius: 999px;
+    border: 1px solid #10212a;
+    background: transparent;
+    color: #13212b;
+    font-weight: 700;
+    padding: 9px 14px;
+}
+.batch-authoring-inline-actions { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.batch-preview-toolbar button svg { max-width: 100%; max-height: 100%; }
+.batch-authoring-inline-actions > button { min-width: 0; min-height: 50px; border-radius: 999px; border: 2px solid #66767a; background: transparent; color: #031820; padding: 4px 5px; font-size: 20px; font-weight: 700; line-height: 1.1; white-space: normal; }
+.batch-authoring-mobile-break { display: none; }
+.batch-authoring-inline-actions .batch-authoring-save:not(:disabled) { background: #681daf; border-color: #fff; color: #fff; }
+.batch-authoring-inline-actions .batch-authoring-next:not(:disabled) { background: #df3f72; border-color: #fff; color: #fff; }
+.batch-authoring-inline-actions button:disabled { opacity: .55; }
+.batch-authoring-actions .batch-authoring-reference:not(:disabled) { background: #113de5; color: #fff; }
+.batch-authoring-actions .batch-authoring-save:not(:disabled) { background: #8e0ab8; color: #fff; }
+.batch-authoring-actions .batch-authoring-next:not(:disabled) { background: #f10b6a; color: #fff; }
+.batch-authoring-actions button:disabled { opacity: .4; }
+.batch-authoring-notice { position: fixed; z-index: 22000; right: 3vw; bottom: calc(4vh + 62px); background: #fff; padding: 8px 12px; }
+.batch-legacy-source-panel { position: relative; margin: calc(100vh + 32px) 16px 16px; padding: 12px 12px 88px; background: #fff; }
+.batch-entry-backdrop { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+.batch-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 23000;
+    display: grid;
+    place-items: center;
+}
+.batch-overlay-actions { width: clamp(130px, calc(19vw - 40px), 200px); display: flex; flex-direction: column; gap: clamp(12px, 2vh, 24px); align-items: stretch; }
+.batch-overlay-actions button, .batch-source-compact button {
+    width: 100%;
+    min-height: 46px;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    background: rgba(15, 32, 42, .24);
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.15;
+    text-align: center;
+}
+.batch-source-compact { width: 100%; }
+.batch-source-compact button + button { margin-top: clamp(12px, 2vh, 24px); }
+.batch-source-compact button:not(:disabled) { background: #153de3; }
+.batch-overlay-actions button:disabled { opacity: .75; }
+.batch-overlay-actions .batch-cancel-active { background: #8e0ab8; }
+.batch-overlay-actions .batch-start-active { background: #f10b6a; }
+.batch-overlay-actions .batch-prepare-active { background: #edff16; color: #081f20; }
+.batch-overlay-actions .batch-start-over { background: #041820; }
+.batch-overlay[inert] .batch-overlay-actions button {
+    background: rgba(15, 32, 42, .24);
+    color: #fff;
+    opacity: 1;
+}
+.batch-info { min-height: 55px; color: #00ed35; font-size: 12px; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
+.batch-info p, .batch-info h2 { margin: 0; font: inherit; }
+.batch-info p + p { margin-top: 3px; }
+.batch-modal-backdrop { position: fixed; inset: 0; z-index: 24000; display: grid; place-items: center; padding: 16px; box-sizing: border-box; background: rgba(0, 9, 16, .13); }
+.batch-release-modal, .batch-reset-modal { width: min(100%, 360px); background: #fff; border-radius: 22px; padding: 22px 25px; box-sizing: border-box; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,.13); }
+.batch-release-modal h2, .batch-reset-modal h2 { margin: 0 0 20px; font-size: 15px; }
+.batch-release-modal p, .batch-reset-modal p { font-size: 13px; line-height: 1.3; margin: 0 0 20px; }
+.batch-release-modal div, .batch-reset-modal div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.batch-release-modal button, .batch-reset-modal button { box-sizing: border-box; width: 100%; min-width: 0; min-height: 42px; padding: 8px 12px; border: 1px solid #041820; border-radius: 999px; background: #30646c; color: #fff; font-weight: 700; font-size: 11px; line-height: 1.2; white-space: normal; overflow-wrap: break-word; }
+@media (hover: hover) {
+    .batch-page :is(
+        .batch-entry-action,
+        .batch-entry-footer nav :is(a, button),
+        .batch-legacy-link,
+        .batch-legacy-review button,
+        .batch-authoring-inline-actions button,
+        .batch-authoring-actions button,
+        .batch-overlay-actions button,
+        .batch-release-modal button,
+        .batch-reset-modal button,
+        section[aria-label="Source Set"] button,
+        section[aria-label="Batch run"] button
+    ) {
+        transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+    .batch-page :is(
+        .batch-entry-action,
+        .batch-entry-footer nav :is(a, button),
+        .batch-legacy-link,
+        .batch-legacy-review button,
+        .batch-authoring-inline-actions button,
+        .batch-authoring-actions button,
+        .batch-overlay-actions button,
+        .batch-release-modal button,
+        .batch-reset-modal button,
+        section[aria-label="Source Set"] button,
+        section[aria-label="Batch run"] button
+    ):hover:not(:disabled) {
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 0 7px 14px rgba(0, 0, 0, .18);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .batch-page :is(
+        .batch-entry-action,
+        .batch-entry-footer nav :is(a, button),
+        .batch-legacy-link,
+        .batch-legacy-review button,
+        .batch-authoring-inline-actions button,
+        .batch-authoring-actions button,
+        .batch-overlay-actions button,
+        .batch-release-modal button,
+        .batch-reset-modal button,
+        section[aria-label="Source Set"] button,
+        section[aria-label="Batch run"] button
+    ) {
+        transition: none;
+    }
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+    .batch-authoring-inline-actions > button { min-height: 60px; font-size: 13px; }
+    .batch-authoring-mobile-break { display: initial; }
+    .batch-entry-composition { --entry-column-width: min(68vw, 44dvh); padding: min(3dvh, 24px) 7vw min(2dvh, 18px); }
+    .batch-entry-brand { width: min(260px, calc(32dvh - 32px)); margin-bottom: min(4dvh, 32px); }
+    .batch-entry-brand img { width: 100%; }
+    .batch-entry-layout { width: var(--entry-column-width); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto minmax(min(2dvh, 16px), .4fr) auto; gap: 0; }
+    .batch-entry-feature { grid-column: 1; grid-row: 1; display: block; height: auto; container-type: normal; }
+    .batch-intro-video { display: none; }
+    .batch-entry-copy { width: 100%; padding: 0; color: #031820; transform: none; container-type: inline-size; }
+    .batch-entry-copy h1 { margin: 0 0 min(2dvh, 16px); padding-bottom: min(.8dvh, 6px); border-color: #031820; font-size: var(--batch-entry-title-size, 7.3cqw); font-weight: 700; text-align: left; white-space: nowrap; }
+    .batch-entry-copy ol { padding-left: min(5vw, 20px); font-size: min(3.7vw, 1.9dvh, 15px); font-weight: 400; line-height: 1.45; }
+    .batch-entry-copy li + li { margin-top: min(1.36dvh, 11.2px); }
+    .batch-entry-action { width: min(30vw, 15.5dvh, 122px); height: min(30vw, 15.5dvh, 122px); justify-self: center; }
+    .batch-entry-action-content { width: 84%; }
+    .batch-entry-recipe .batch-entry-action-icon { padding: 0; align-items: start; }
+    .batch-entry-recipe .batch-entry-action-icon img { width: 72%; height: 82%; }
+    .batch-entry-action-label { font-size: min(8.5cqi, 16px); }
+    .batch-entry-reference { grid-column: 1; grid-row: 3; }
+    .batch-entry-recipe { grid-column: 1; grid-row: 5; }
+    .batch-entry-footer { width: var(--entry-column-width); margin: 0 auto; justify-content: space-between; gap: 0; padding-top: min(2dvh, 16px); }
+    .batch-entry-footer nav { gap: min(2vw, 8px); }
+    .batch-entry-footer nav a, .batch-entry-footer nav button { width: min(9vw, 4.6dvh, 38px); height: min(9vw, 4.6dvh, 38px); }
+}
+
+@media (max-width: 760px) and (max-height: 650px) and (orientation: portrait) {
+    .batch-entry-brand { margin-bottom: 2dvh; }
+}
+
+@media (max-width: 760px) {
+    .batch-authoring-actions { left: 8px; right: 8px; bottom: 8px; gap: 4px; }
+    .batch-authoring-actions button { min-width: 0; flex: 1; min-height: 44px; font-size: 11px; padding: 5px; }
+    .batch-overlay-actions { width: min(56vw, 230px); gap: 14px; }
+    .batch-overlay-actions button, .batch-source-compact button { min-height: 42px; font-size: 13px; }
+    .batch-info { min-height: 48px; font-size: 11px; }
+    .batch-release-modal, .batch-reset-modal { width: min(calc(100vw - 32px), 360px); }
+}

@@ -36,6 +36,64 @@ test("start screen is stable", async ({ page }, testInfo) => {
   expect(errors.flush()).toEqual([])
 })
 
+test("start screen stays contained when the viewport gets short", async ({ page }, testInfo) => {
+  await page.goto("/editor/")
+  const viewports = testInfo.project.name === "mobile"
+    ? [{ width: 390, height: 560 }, { width: 360, height: 500 }, { width: 700, height: 400 }]
+    : [{ width: 1280, height: 400 }, { width: 700, height: 400 }, { width: 600, height: 360 }]
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport)
+    await expect(page.getByRole("button", { name: "Draw" })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => {
+      const brand = document.querySelector(".pxStartLogoBox")!.getBoundingClientRect()
+      const tagline = document.querySelector(".pxStartTagline span")!.getBoundingClientRect()
+      return tagline.left >= brand.left - 1 && tagline.right <= brand.right + 1
+    })).toBe(true)
+    const layout = await page.evaluate(() => {
+      const bounds = (selector: string) => document.querySelector(selector)!.getBoundingClientRect()
+      const logo = bounds(".pxStartLogoBox")
+      const logoButton = bounds(".pxStartLogoButton")
+      const tagline = bounds(".pxStartTagline")
+      const taglineText = document.querySelector<HTMLElement>(".pxStartTagline span")!
+      const actions = bounds(".pxStartActions")
+      const buttons = [...document.querySelectorAll<HTMLElement>(".pxStartActionButton")].map(button => button.getBoundingClientRect())
+      const copyright = [...document.querySelectorAll<HTMLElement>("div")]
+        .find(element => element.textContent === "PIXTUDIO ©2026")!.getBoundingClientRect()
+      const inside = (rect: DOMRect) => rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight
+      return {
+        scrollHeight: document.documentElement.scrollHeight,
+        viewportHeight: innerHeight,
+        contained: [logo, actions, copyright, ...buttons].every(inside),
+        brandChildrenShareWidth: Math.abs(logo.width - logoButton.width) < 1 && Math.abs(logo.width - tagline.width) < 1,
+        brandTextRatio: parseFloat(getComputedStyle(taglineText).fontSize) / taglineText.closest<HTMLElement>(".pxStartLogoBox")!.clientWidth,
+        taglineTransform: getComputedStyle(taglineText).transform,
+        logoAspectRatio: logoButton.height / logoButton.width,
+        separated: logo.bottom <= buttons[0].top && buttons[2].bottom <= copyright.top,
+        squareButtons: buttons.every(button => Math.abs(button.width - button.height) < 1),
+        desktopLogoInLandscape: innerWidth <= innerHeight || logo.width <= 154,
+      }
+    })
+    expect(layout, `${viewport.width}x${viewport.height}`).toMatchObject({
+      contained: true, brandChildrenShareWidth: true, taglineTransform: "none", separated: true, squareButtons: true, desktopLogoInLandscape: true,
+    })
+    expect(layout.brandTextRatio, `${viewport.width}x${viewport.height}`).toBeCloseTo(0.076, 2)
+    expect(layout.logoAspectRatio, `${viewport.width}x${viewport.height}`).toBeCloseTo(38 / 154, 2)
+    expect(layout.scrollHeight, `${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(layout.viewportHeight + 1)
+  }
+  await page.screenshot({ path: testInfo.outputPath("editor-start-short-landscape.png") })
+  if (testInfo.project.name === "desktop") {
+    await page.setViewportSize({ width: 1920, height: 945 })
+    const sizes = await page.evaluate(() => ({
+      logo: document.querySelector(".pxStartLogoBox")!.getBoundingClientRect().width,
+      action: document.querySelector(".pxStartActionButton")!.getBoundingClientRect().width,
+    }))
+    expect(sizes.logo).toBeGreaterThanOrEqual(200)
+    expect(sizes.action).toBeGreaterThanOrEqual(150)
+    await page.screenshot({ path: testInfo.outputPath("editor-start-production-proportions.png") })
+  }
+})
+
 test("start screen shows a file drop affordance while dragging a file", async ({
   page,
 }) => {

@@ -83,16 +83,8 @@ const MOBILE_INFO_CARDS = [
     body: "Canvas formats, smart palette, manual drawing, PNG, SVG, XLSX, ZIP export, and savable projects. Real creative tool.",
   },
   {
-    title: ["CREATORS & GAME", "DEVS LOVE IT"],
-    body: "From viral Reels and TikToks to pro game assets. Loved by creators and indie devs.",
-  },
-  {
     title: ["RECORD THE", "MAGIC"],
     body: "Capture the live process as MP4 with music in one click. Perfect for Reels, TikTok, and Shorts.",
-  },
-  {
-    title: ["PRE-PRODUCTION", "FOR GAME ARTISTS"],
-    body: "Turn references into clean pixel art bases with consistent palettes. Fits next to Aseprite.",
   },
   {
     title: ["READY FOR", "PRODUCTION"],
@@ -123,7 +115,7 @@ const DESKTOP_SEO_COPY = [
     accent:
       "Perfect for both fast social content and professional work.",
     text:
-      "Content creators love it for Reels, avatars, and posts, while indie game developers use it to create consistent pixel art assets quickly.",
+      "Use PIXTUDIO to turn photos into pixel art for avatars, social posts, and personal projects. You can also record the pixelization process to share as short-form video.",
   },
   {
     accent:

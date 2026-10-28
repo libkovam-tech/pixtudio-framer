@@ -1,0 +1,8 @@
+{
+  "title": "PIXTUDIO Batch Pixelation",
+  "description": "Turn video frames into consistent pixel art. Style one reference frame in PIXTUDIO, apply its settings to the whole batch, then export the frames to assemble into a video.",
+  "imagePath": "/plugins/batch-pixelation/og-image.jpg",
+  "imageAlt": "PIXTUDIO Batch Pixelation preview showing a video frame transformed into pixel art",
+  "imageWidth": 1600,
+  "imageHeight": 630
+}

@@ -29,6 +29,13 @@ const mimeTypes = new Map([
 
 const server = createServer((request, response) => {
   const requestedUrl = new URL(request.url || "/", `http://${host}:${port}`)
+  if (request.method === "POST" && requestedUrl.pathname === "/api/analytics") {
+    // The static E2E server has no production analytics Worker binding.
+    request.resume()
+    response.writeHead(204)
+    response.end()
+    return
+  }
   const filePath = resolveFilePath(requestedUrl.pathname)
 
   if (!filePath) {

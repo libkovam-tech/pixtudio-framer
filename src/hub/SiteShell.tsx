@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from "react"
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useEffect } from "react"
 import { Link } from "react-router-dom"
 import {
   SiteFooterEmailIcon,
@@ -12,7 +12,7 @@ export const SITE_SHARE_URL = "https://pixtudio.app"
 export const SUPPORT_EMAIL = "support@pixtudio.app"
 export const INSTAGRAM_URL = "https://www.instagram.com/pixtudio.app/"
 
-export type SitePage = "home" | "faq" | "how" | "gallery" | "learn" | "links"
+export type SitePage = "home" | "faq" | "how" | "gallery" | "learn" | "links" | "plugins"
 
 const SITE_PAGE_LABELS: Record<SitePage, string> = {
   home: "MAIN",
@@ -21,6 +21,7 @@ const SITE_PAGE_LABELS: Record<SitePage, string> = {
   gallery: "GALLERY",
   learn: "LEARN",
   links: "LINKS",
+  plugins: "PLUGINS",
 }
 
 const SITE_PAGE_SUMMARY_LABELS: Record<SitePage, string> = {
@@ -30,6 +31,7 @@ const SITE_PAGE_SUMMARY_LABELS: Record<SitePage, string> = {
   gallery: "GALLERY",
   learn: "LEARN",
   links: "LINKS",
+  plugins: "PLUGINS",
 }
 
 type SiteMenuLink = { page: SitePage; label: string; to: string }
@@ -154,29 +156,60 @@ function useSiteVisualViewportHeight() {
   }, [])
 }
 
+function closeMobileProductsMenu(event: ReactMouseEvent<HTMLAnchorElement>) {
+  const details = event.currentTarget.closest("details")
+  if (details) details.open = false
+}
+
 export function SiteTopNav({ activePage }: { activePage: SitePage }) {
   const menuLinks = SITE_MOBILE_MENU_LINKS.filter(
     (link) => link.page !== activePage
   )
   const desktopMenuLinks = SITE_MENU_LINKS.filter((link) => link.page !== "home")
+  const activeProduct = activePage === "plugins" ? "PLUGINS" : "EDITOR"
 
   return (
     <nav className="siteTopNav" aria-label="PIXTUDIO site navigation">
       <details className="siteMobileAccordion siteMobileProductsAccordion">
-        <summary className="siteMobileAccordionSummary siteMobileProductsSummary">
+        <summary
+          className="siteMobileAccordionSummary siteMobileProductsSummary"
+          aria-label={`${activeProduct}, choose section`}
+        >
           <span className="siteMobileChevron" aria-hidden="true" />
-          <span>EDITOR</span>
+          <span>{activeProduct}</span>
         </summary>
         <div className="siteMobileAccordionPanel siteMobileProductsPanel">
-          <span className="siteMobileAccordionItem siteMobileAccordionItemDisabled">
-            COMING SOON
-          </span>
+          <Link
+            className="siteMobileAccordionItem"
+            to="/"
+            onClick={closeMobileProductsMenu}
+          >
+            EDITOR
+          </Link>
+          <Link
+            className="siteMobileAccordionItem"
+            to="/plugins/"
+            onClick={closeMobileProductsMenu}
+          >
+            PLUGINS
+          </Link>
         </div>
       </details>
 
-      <button className="siteTopEditorButton siteTopDesktopOnly" type="button">
-        EDITOR
-      </button>
+      <div className="siteTopProducts siteTopDesktopOnly">
+        <Link
+          className={`siteTopPluginsLink${activePage === "plugins" ? " siteTopPluginsLinkActive" : ""}`}
+          to="/plugins/"
+        >
+          PLUGINS
+        </Link>
+        <Link
+          className={`siteTopPluginsLink siteTopEditorButton${activePage !== "plugins" ? " siteTopPluginsLinkActive" : ""}`}
+          to="/"
+        >
+          EDITOR
+        </Link>
+      </div>
       <Link className="siteTopLogo" to="/" aria-label="PIXTUDIO home">
         <SvgLogo />
       </Link>
@@ -194,7 +227,7 @@ export function SiteTopNav({ activePage }: { activePage: SitePage }) {
         ))}
       </div>
 
-      <details className="siteMobileAccordion siteMobileMenuAccordion">
+      {activePage !== "plugins" ? <details className="siteMobileAccordion siteMobileMenuAccordion">
         <summary className="siteMobileAccordionSummary siteMobileMenuSummary">
           <span>{SITE_PAGE_SUMMARY_LABELS[activePage]}</span>
           <span className="siteMobileChevron" aria-hidden="true" />
@@ -213,7 +246,7 @@ export function SiteTopNav({ activePage }: { activePage: SitePage }) {
             </Link>
           ))}
         </div>
-      </details>
+      </details> : null}
     </nav>
   )
 }

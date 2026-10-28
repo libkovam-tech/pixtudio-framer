@@ -325,7 +325,7 @@ function parseQuantizationColor(color: string): {
     return { r: 0, g: 0, b: 0 }
 }
 
-function quantizationColorKey(color: string): string {
+export function quantizationColorKey(color: string): string {
     const { r, g, b } = parseQuantizationColor(color)
     return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`
 }

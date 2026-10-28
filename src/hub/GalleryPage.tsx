@@ -137,9 +137,9 @@ const GALLERY_PAIR_13: GalleryImagePair = {
   beforeSrc: galleryBefore13,
   afterSrc: galleryAfter13,
   beforeAlt: "Original toy character image before PIXTUDIO conversion",
-  afterAlt: "Game-ready pixel art character after PIXTUDIO conversion",
+  afterAlt: "Pixel art version of a stylized toy character with simplified shapes",
   caption:
-    "Toy character turned into game-ready pixel art with clean shapes and a playful limited palette",
+    "Toy character transformed into pixel art with simplified shapes and a playful limited palette",
 }
 
 export const GALLERY_STRIP_ITEMS: GalleryStripItem[] = [

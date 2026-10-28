@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "research:batch-raf": "vite --config vite.research.config.ts --host 127.0.0.1 --port 5176 --strictPort",
+    "verify:batch-production-boundary": "node tools/verify-batch-production-boundary.mjs",
     "dev": "vite",
     "build": "vite build && node tools/prerender-routes.mjs && node tools/inject-csp-script-hashes.mjs",
     "lint": "eslint .",
@@ -19,7 +21,7 @@
     "@ffmpeg/util": "^0.12.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.17.0"
+    "react-router-dom": "7.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

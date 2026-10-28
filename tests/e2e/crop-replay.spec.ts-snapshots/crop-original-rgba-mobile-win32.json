@@ -1,0 +1,44 @@
+[
+  {
+    "aspect": "16:9",
+    "width": 910,
+    "height": 512,
+    "sha256": "f7528616c5ee9db7934810d905b926e031c0989f27bf36fdb244155bf1eb6970"
+  },
+  {
+    "aspect": "3:2",
+    "width": 768,
+    "height": 512,
+    "sha256": "370485f2f26b746e2bbd8ec07b650af2ba9d27a9d976adfbf986dc19f4b1438a"
+  },
+  {
+    "aspect": "4:3",
+    "width": 683,
+    "height": 512,
+    "sha256": "cde350ee3fce669fee7bdf80075309c74e2b6980b13a218a24c9b1c650055ae0"
+  },
+  {
+    "aspect": "1:1",
+    "width": 512,
+    "height": 512,
+    "sha256": "7f3cf4c8ad1dabfab0088d4cca5063e158cc19fe04bfb886924e27a3c766e38a"
+  },
+  {
+    "aspect": "3:4",
+    "width": 512,
+    "height": 683,
+    "sha256": "00ce3f8ba9af70fdbb27a1f6288d2cc05a05929223d7771a9096a3f86b931322"
+  },
+  {
+    "aspect": "2:3",
+    "width": 512,
+    "height": 768,
+    "sha256": "c2ac4485cfe9901dfc768c6d868bb5e61690d03729059fd4510db777ffea1fb4"
+  },
+  {
+    "aspect": "9:16",
+    "width": 512,
+    "height": 910,
+    "sha256": "91157b397d6e7a31d93e1cfa490ebf580c913d341135ee6531a54830a54d51bf"
+  }
+]

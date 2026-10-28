@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { ManualGuide } from "./manualGuide.ts"
 import { PIXTUDIO_INK, PIXTUDIO_INK_RGB, pixtudioInk } from "../theme.ts"
 import googleSansFlex400Url from "../assets/fonts/GoogleSansFlex-400.ttf?url"
 import googleSansFlex500Url from "../assets/fonts/GoogleSansFlex-500.ttf?url"
@@ -314,15 +315,9 @@ function QuantizationRecorderIconInline({
     )
 }
 
-type ManualSection = {
-    id: string
-    title: string
-    navLabel: string
-    icon?: React.ReactNode
-    content: React.ReactNode
-}
+type ManualSection = ManualGuide["sections"][number]
 
-function SectionCopy({
+export function SectionCopy({
     children,
     muted = false,
 }: {
@@ -342,7 +337,7 @@ function SectionCopy({
     )
 }
 
-function BulletList({
+export function BulletList({
     items,
 }: {
     items: React.ReactNode[]
@@ -365,7 +360,7 @@ function BulletList({
     )
 }
 
-function OrderedList({
+export function OrderedList({
     items,
 }: {
     items: React.ReactNode[]
@@ -388,7 +383,7 @@ function OrderedList({
     )
 }
 
-function SectionStack({ children }: { children: React.ReactNode }) {
+export function SectionStack({ children }: { children: React.ReactNode }) {
     return (
         <div
             style={{
@@ -401,14 +396,14 @@ function SectionStack({ children }: { children: React.ReactNode }) {
     )
 }
 
-export function ManualScreen({ onClose }: { onClose: () => void }) {
+export function ManualScreen({ onClose, guide }: { onClose: () => void; guide?: ManualGuide }) {
     const [viewportWidth, setViewportWidth] = React.useState(() =>
         typeof window === "undefined" ? 1440 : window.innerWidth
     )
     const [viewportHeight, setViewportHeight] = React.useState(() =>
         typeof window === "undefined" ? 900 : window.innerHeight
     )
-    const [activeId, setActiveId] = React.useState("about")
+    const [activeId, setActiveId] = React.useState(guide?.sections[0]?.id ?? "about")
     const [navScale, setNavScale] = React.useState(1)
     const [navBox, setNavBox] = React.useState({ width: 0, height: 0 })
     const [navHighlight, setNavHighlight] = React.useState<{
@@ -425,7 +420,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
     )
     const sectionRefs = React.useRef<Record<string, HTMLElement | null>>({})
 
-    const isNarrow = viewportWidth < 980
+    const isNarrow = guide
+        ? viewportWidth < 640 || (viewportWidth < 980 && viewportHeight >= viewportWidth)
+        : viewportWidth < 980
 
     React.useEffect(() => {
         const onResize = () => {
@@ -436,7 +433,7 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
         return () => window.removeEventListener("resize", onResize)
     }, [])
 
-    const sections = React.useMemo<ManualSection[]>(
+    const defaultSections = React.useMemo<ManualSection[]>(
         () => [
             {
                 id: "about",
@@ -682,6 +679,21 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             project file. If a built-in preset is active, only
                             the preset id is saved; the built-in palette is not
                             stored as an imported palette.
+                        </SectionCopy>
+                        <SectionCopy>
+                            The long-term policy for swatches with the same
+                            color is undecided. After an edit, Auto Palette
+                            merges matching generated swatches but keeps custom
+                            swatches separate; Palette Presets keeps matching
+                            swatches separate. Share your reasons for either
+                            approach at{" "}
+                            <a
+                                href="mailto:support@pixtudio.app"
+                                style={{ color: TEXT, fontWeight: 700 }}
+                            >
+                                support@pixtudio.app
+                            </a>
+                            .
                         </SectionCopy>
                     </SectionStack>
                 ),
@@ -1196,6 +1208,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
         []
     )
 
+    const sections = guide?.sections ?? defaultSections
+    const backLabel = guide?.backLabel ?? "Back to Editor"
+
     React.useLayoutEffect(() => {
         const el = navInnerRef.current
         if (!el) return
@@ -1351,10 +1366,14 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
 
     const desktopGutter = isNarrow
         ? 18
+        : guide
+        ? viewportWidth >= 1200 ? viewportWidth / 4 : Math.max(96, viewportWidth * 0.08)
         : Math.max(80, Math.min(500, Math.floor((viewportWidth - 760) / 2)))
     const contentBottomInset = isNarrow ? 28 : 28
-    const desktopBackLeft = Math.max(40, Math.round(desktopGutter * 0.22))
-    const desktopNavColumnWidth = 236
+    const desktopBackLeft = guide ? viewportWidth * 0.04 : Math.max(40, Math.round(desktopGutter * 0.22))
+    const desktopNavColumnWidth = guide
+        ? Math.min(200, Math.max(144, Math.round(viewportWidth * 0.12)))
+        : 236
 
     const navBase: React.CSSProperties = {
         display: "grid",
@@ -1407,9 +1426,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                             textAlign: "left",
                             zIndex: 1,
                         }}
-                        aria-label="Back to editor"
+                        aria-label={backLabel}
                     >
-                        Back to Editor
+                        {backLabel}
                     </button>
                 ) : null}
 
@@ -1421,7 +1440,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                         top: isNarrow ? 18 : 28,
                         bottom: contentBottomInset,
                         display: "grid",
-                        gridTemplateRows: "auto minmax(0, 1fr)",
+                        gridTemplateRows: guide
+                            ? "auto auto minmax(0, 1fr)"
+                            : "auto minmax(0, 1fr)",
                         gap: isNarrow ? 18 : 22,
                         boxSizing: "border-box",
                         minWidth: 0,
@@ -1459,9 +1480,9 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                     justifySelf: "start",
                                     textAlign: "left",
                                 }}
-                                aria-label="Back to editor"
+                                aria-label={backLabel}
                             >
-                                Back to Editor
+                                {backLabel}
                             </button>
                         ) : null}
 
@@ -1475,24 +1496,40 @@ export function ManualScreen({ onClose }: { onClose: () => void }) {
                                 minWidth: 0,
                             }}
                         >
-                            PIXTUDIO — User Guide
+                            {guide?.title ?? "PIXTUDIO — User Guide"}
                         </h1>
                     </div>
+
+                    {guide ? (
+                        <nav aria-label="Manual contents" style={{ display: "grid", gridTemplateColumns: `repeat(${sections.length}, minmax(0, 1fr))`, gap: 4, minWidth: 0 }}>
+                            {sections.map(section => (
+                                <a key={section.id} href={`#manual-${section.id}`} aria-label={section.navLabel}
+                                    onClick={event => { event.preventDefault(); scrollToSection(section.id) }}
+                                    style={{ color: section.id === activeId ? TEXT : "#ffffff", background: section.id === activeId ? "#ffffff" : "transparent",
+                                        border: "1px solid #ffffff", padding: "6px 1px", textDecoration: "none", minWidth: 0,
+                                        display: "grid", alignContent: "center", textAlign: "center", fontSize: isNarrow ? 10 : 13, lineHeight: 1.15, fontWeight: 500 }}>
+                                    {section.mobileNavLines
+                                        ? section.mobileNavLines.map((line, index) => <span key={index} aria-hidden="true">{line}</span>)
+                                        : section.navLabel}
+                                </a>
+                            ))}
+                        </nav>
+                    ) : null}
 
                     <div
                         style={{
                             minWidth: 0,
                             minHeight: 0,
                             display: "grid",
-                            gridTemplateColumns: isNarrow
+                            gridTemplateColumns: isNarrow || guide
                                 ? "minmax(0, 1fr)"
                                 : `${desktopNavColumnWidth}px minmax(0, 1fr)`,
-                            gap: isNarrow ? 14 : 36,
+                            gap: isNarrow ? 14 : guide ? 24 : 36,
                             alignItems: "start",
                             height: "100%",
                         }}
                     >
-                        {!isNarrow ? (
+                        {!isNarrow && !guide ? (
                             <aside
                                 ref={navViewportRef}
                                 style={{

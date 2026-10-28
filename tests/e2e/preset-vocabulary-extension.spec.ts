@@ -128,6 +128,41 @@ test("added Gray preset swatch can claim matching image cells", async ({
     expect(errors.flush()).toEqual([])
 })
 
+test("deleted edited Gray swatch stays removed after Auto round-trip", async ({ page }) => {
+    await openGeneratedPortrait(page)
+    await applyGrayPreset(page)
+
+    const firstSwatch = page.locator('button[title^="#"]').first()
+    const originalColor = await firstSwatch.getAttribute("title")
+    await firstSwatch.dispatchEvent("contextmenu")
+    await expect(page.getByLabel("Transparent")).toHaveCount(1)
+    await page.getByLabel("HEX input").fill("#FF0000")
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+    await expect(page.locator('button[title="GRAY Custom"]')).toBeVisible()
+
+    await page.locator('button[title="#FF0000"]').dispatchEvent("contextmenu")
+    await page.getByLabel("Delete swatch").check()
+    await page.getByRole("button", { name: "OK" }).click()
+    await settle(page)
+
+    const before = await downloadProjectSnapshot(page)
+    const beforeCanvas = await readEditorCanvasSignature(page)
+    expect(before.quantizationProfile.colors).not.toContain(originalColor)
+    expect(before.quantizationProfile.colors).not.toContain("#FF0000")
+
+    await page.getByRole("button", { name: /AUTO PALETTE/i }).click()
+    await settle(page)
+    await page.getByRole("button", { name: /PALETTE PRESETS/i }).click()
+    await settle(page)
+
+    const after = await downloadProjectSnapshot(page)
+    expect(after.quantizationProfile).toEqual(before.quantizationProfile)
+    expect(after.palette.swatches).toEqual(before.palette.swatches)
+    expect(after.importLayer.cells).toEqual(before.importLayer.cells)
+    expect(await readEditorCanvasSignature(page)).toBe(beforeCanvas)
+})
+
 test("Gray preset can use a color copied from the auto palette", async ({
     page,
 }) => {

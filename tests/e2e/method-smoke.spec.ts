@@ -170,7 +170,7 @@ async function openProjectPathFromEditor(
     projectPath: string,
     filename: string
 ) {
-    await page.getByRole("button", { name: "Open" }).click()
+    await page.getByRole("button", { name: "Import", exact: true }).click()
     await expect(page.getByRole("button", { name: "Open file" })).toBeVisible()
 
     const fileChooserPromise = page.waitForEvent("filechooser")
@@ -223,6 +223,7 @@ async function downloadProjectSave(page: Page) {
 
 async function readEditorCanvasSignature(page: Page) {
     return page.locator("canvas").first().evaluate((canvas) => {
+        if (!(canvas instanceof HTMLCanvasElement)) throw new Error("Expected editor canvas")
         const context = canvas.getContext("2d")
         if (!context) return ""
 
@@ -237,6 +238,7 @@ async function readEditorCanvasSignature(page: Page) {
 
 async function countEditorCanvasRgb(page: Page, rgb: [number, number, number]) {
     return page.locator("canvas").first().evaluate((canvas, target) => {
+        if (!(canvas instanceof HTMLCanvasElement)) throw new Error("Expected editor canvas")
         const context = canvas.getContext("2d")
         if (!context) return 0
 

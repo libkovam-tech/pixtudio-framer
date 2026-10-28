@@ -1,0 +1,3 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Smart pre-extraction RGBA baseline > preserves all scalar stages, WB trajectories, bypass thresholds and alpha 1`] = `"519be72e717afd1a9dab18e46df8e44d78bc8e1de9b9a44ddda22df50a36f3ca"`;

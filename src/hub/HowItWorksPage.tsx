@@ -8,6 +8,14 @@ import {
 } from "react"
 import { SiteCloseCrossIcon } from "../editor/SvgIcons"
 import { SiteShell } from "./SiteShell"
+import startWithPhotoVideo from "./assets/how-it-works/StartWithPhoto.webm"
+import shootWithCameraVideo from "./assets/how-it-works/ShootWithCamera_2.webm"
+import drawFromBlankCanvasVideo from "./assets/how-it-works/DrawFromBlankCanvas.webm"
+import saveYourProjectVideo from "./assets/how-it-works/SaveYourProject.webm"
+import openSavedProjectVideo from "./assets/how-it-works/OpenSavedProject.webm"
+import exportYourPixelArtVideo from "./assets/how-it-works/ExportYourPixelArt_2.webm"
+import editColorSwatchesVideo from "./assets/how-it-works/EditColorSwatches-AddNewColor2.webm"
+import applyCustomPaletteVideo from "./assets/how-it-works/ApplyCustomPalette.webm"
 import {
   JsonLd,
   SITE_OG_IMAGE_URL,
@@ -25,6 +33,14 @@ type HowModalCopy = {
 }
 
 const HOW_MODAL_COPY: HowModalCopy[] = [
+  {
+    title: "Batch Pixelation",
+    paragraphs: [
+      "Style one reference frame in the editor, then choose the source frames you want to process.",
+      "Batch Pixelation applies the same pixel-art settings across the sequence and packages the finished frames in a ZIP, ready to assemble into an animation or video.",
+      "Find this feature in Plugins > Batch Pixelation.",
+    ],
+  },
   {
     title: "Start with a Photo",
     paragraphs: [
@@ -70,15 +86,8 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Edit Color Swatches",
     paragraphs: [
-      "Click or long-tap any color in the palette.",
-      "Change a color, make a swatch transparent, or delete it from the palette. All connected pixels on the canvas update instantly, making experiments with different moods and styles fast and satisfying.",
-    ],
-  },
-  {
-    title: "Add New Custom Colors",
-    paragraphs: [
-      "Tap the Add Swatch button in the palette.",
-      "Create your own colors that stay exactly where you placed them — giving you full control and creative freedom even when changing grid size.",
+      "Click or long-tap a color in the palette to edit it, make it transparent, or remove it. Connected pixels on the canvas update instantly.",
+      "Tap the Add Swatch button to create a custom color. Your new colors stay where you placed them, even when you change the grid size.",
     ],
   },
   {
@@ -112,7 +121,19 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   },
 ]
 
+const HOW_MODAL_VIDEOS: Partial<Record<number, string>> = {
+  1: startWithPhotoVideo,
+  2: shootWithCameraVideo,
+  3: drawFromBlankCanvasVideo,
+  4: saveYourProjectVideo,
+  5: openSavedProjectVideo,
+  6: exportYourPixelArtVideo,
+  7: editColorSwatchesVideo,
+  8: applyCustomPaletteVideo,
+}
+
 const HOW_BLUEPRINT_CARD_CLASSES = [
+  "siteHowItWorksBlueprintCardBatchPixelation",
   "siteHowItWorksBlueprintCardStartWithPhoto",
   "siteHowItWorksBlueprintCardShootWithCamera",
   "siteHowItWorksBlueprintCardDrawFromBlankCanvas",
@@ -120,14 +141,13 @@ const HOW_BLUEPRINT_CARD_CLASSES = [
   "siteHowItWorksBlueprintCardOpenSavedProject",
   "siteHowItWorksBlueprintCardExportPixelArt",
   "siteHowItWorksBlueprintCardEditColorSwatches",
-  "siteHowItWorksBlueprintCardAddCustomColors",
   "siteHowItWorksBlueprintCardApplyCustomPalette",
   "siteHowItWorksBlueprintCardFineTuneSourceImage",
   "siteHowItWorksBlueprintCardRecordPixelizationVideo",
   "siteHowItWorksBlueprintCardPixelizationMethod",
 ] as const
 
-const HOW_TO_STEP_ORDER = [0, 1, 2, 6, 7, 8, 9, 10, 3, 4, 5, 11] as const
+const HOW_TO_STEP_ORDER = [1, 2, 3, 7, 8, 9, 10, 4, 5, 6, 11] as const
 
 export default function HowItWorksPage() {
   usePageSeo(SITE_ROUTE_SEO.how)
@@ -148,6 +168,16 @@ export default function HowItWorksPage() {
   })
   const activeModal =
     activeModalIndex === null ? null : HOW_MODAL_COPY[activeModalIndex]
+  const activeVideo = activeModalIndex === null ? null : HOW_MODAL_VIDEOS[activeModalIndex]
+  const modalCopy = activeModal ? (
+    <>
+      <h2 id="site-how-modal-title">How It Works</h2>
+      <h3>{activeModal.title}</h3>
+      {activeModal.paragraphs.map((paragraph) => (
+        <p key={paragraph}>{paragraph}</p>
+      ))}
+    </>
+  ) : null
   const howToId = `${toAbsoluteSiteUrl("/how-it-works/")}#howto`
   const howItWorksStructuredData = useMemo(
     () => ({
@@ -442,7 +472,7 @@ export default function HowItWorksPage() {
           onClick={() => setActiveModalIndex(null)}
         >
           <article
-            className="siteHowItWorksModal"
+            className={`siteHowItWorksModal${activeVideo ? " siteHowItWorksModalWithVideo" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="site-how-modal-title"
@@ -456,11 +486,21 @@ export default function HowItWorksPage() {
             >
               <SiteCloseCrossIcon />
             </button>
-            <h2 id="site-how-modal-title">How It Works</h2>
-            <h3>{activeModal.title}</h3>
-            {activeModal.paragraphs.map((paragraph) => (
-              <p key={paragraph}>{paragraph}</p>
-            ))}
+            {activeVideo ? (
+              <div className="siteHowItWorksModalMediaLayout">
+                <div className="siteHowItWorksModalText">{modalCopy}</div>
+                <video
+                  className="siteHowItWorksModalVideo"
+                  src={activeVideo}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  aria-label={`${activeModal.title} demonstration`}
+                />
+              </div>
+            ) : modalCopy}
           </article>
         </div>
       ) : null}

@@ -7,7 +7,10 @@ const HowItWorksPage = lazy(() => import("./hub/HowItWorksPage"))
 const GalleryPage = lazy(() => import("./hub/GalleryPage"))
 const LearnPage = lazy(() => import("./hub/LearnPage"))
 const LinksPage = lazy(() => import("./hub/LinksPage"))
+const PluginsPage = lazy(() => import("./hub/PluginsPage"))
 const EditorRoute = lazy(() => import("./editor/EditorRoute"))
+const BatchReferenceRoute = lazy(() => import("./plugins/batchPixelation/authoring/BatchReferenceRoute"))
+const BatchPixelationRoute = lazy(() => import("./plugins/batchPixelation/BatchPixelationRoute"))
 
 export default function App() {
   return (
@@ -30,7 +33,11 @@ export default function App() {
         <Route path="/pixel-art-from-photos/" element={<LearnPage />} />
         <Route path="/links" element={<Navigate to="/links/" replace />} />
         <Route path="/links/" element={<LinksPage />} />
+        <Route path="/plugins" element={<Navigate to="/plugins/" replace />} />
+        <Route path="/plugins/" element={<PluginsPage />} />
         <Route path="/editor/*" element={<EditorRoute />} />
+        <Route path="/__batch-gate5" element={<BatchReferenceRoute />} />
+        <Route path="/plugins/batch-pixelation/" element={<BatchPixelationRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

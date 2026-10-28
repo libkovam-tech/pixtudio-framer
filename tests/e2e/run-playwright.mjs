@@ -7,14 +7,33 @@ const port = 4173
 const baseUrl = `http://${host}:${port}`
 const args = process.argv.slice(2)
 const localSpecFiles = [
+  "tests/e2e/canonical-decode.spec.ts",
+  "tests/e2e/final-frame.spec.ts",
+  "tests/e2e/gate5-rented-reference.spec.ts",
+  "tests/e2e/gate5-history.spec.ts",
+  "tests/e2e/gate7-source-set.spec.ts",
+  "tests/e2e/gate8-runner.spec.ts",
+  "tests/e2e/gate9-progress-cancel.spec.ts",
+  "tests/e2e/gate10-packaging.spec.ts",
+  "tests/e2e/gate11-template-workflow.spec.ts",
+  "tests/e2e/gate12-production-boundary.spec.ts",
+  "tests/e2e/gate13-storage-lifecycle.spec.ts",
+  "tests/e2e/gate14-final-ui.spec.ts",
+  "tests/e2e/frame-replay.spec.ts",
+  "tests/e2e/palette-replay-preflight.spec.ts",
+  "tests/e2e/smart-replay.spec.ts",
+  "tests/e2e/crop-replay.spec.ts",
   "tests/e2e/clipboard-palette-candidate.spec.ts",
   "tests/e2e/method-smoke.spec.ts",
   "tests/e2e/method-stress.spec.ts",
+  "tests/e2e/new-life.spec.ts",
   "tests/e2e/method-visual-regression.spec.ts",
   "tests/e2e/p0.spec.ts",
   "tests/e2e/p1.spec.ts",
   "tests/e2e/p2.spec.ts",
   "tests/e2e/preset-vocabulary-extension.spec.ts",
+  "tests/e2e/plugins-directory.spec.ts",
+  "tests/e2e/batch-sharing.spec.ts",
 ]
 const localArgs = [...localSpecFiles, ...args]
 
