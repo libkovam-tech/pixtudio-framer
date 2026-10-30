@@ -91,12 +91,15 @@ const routeSeo = {
     ogDescription:
       "Explore PIXTUDIO plugins for creative workflows, starting with Batch Pixelation for consistent pixel art across video frames.",
     ogType: "website",
+    imageAlt: "PIXTUDIO pixel art preview",
   },
   batch: {
     path: "/plugins/batch-pixelation/",
     output: "dist/plugins/batch-pixelation/index.html",
     title: batchShareMetadata.title,
-    description: batchShareMetadata.description,
+    description: batchShareMetadata.seoDescription,
+    ogTitle: batchShareMetadata.title,
+    ogDescription: batchShareMetadata.description,
     ogType: "website",
     imageUrl: `${SITE_BASE_URL}${batchShareMetadata.imagePath}`,
     imageAlt: batchShareMetadata.imageAlt,
@@ -506,6 +509,11 @@ function renderLinks() {
           <li><a href="https://paletteinspiration.com/?ref=producthunt">https://paletteinspiration.com/?ref=producthunt</a></li>
         </ul>
       </section>
+      <section aria-label="Video frames and GIFs">
+        <h2>Video Frames &amp; GIFs</h2>
+        <p>This resource helps you prepare video frames for batch pixelation. Use it to split a video into individual images and assemble the processed frames into a GIF.</p>
+        <ul><li><a href="https://ezgif.com/">https://ezgif.com/</a></li></ul>
+      </section>
     </main>`
 }
 
@@ -516,8 +524,8 @@ const renderers = {
   gallery: renderGallery,
   learn: renderLearn,
   links: renderLinks,
-  plugins: () => `<main class="prerenderPage"><h1>PIXTUDIO Plugins</h1><div class="prerenderGrid"><a class="prerenderCard" href="/plugins/batch-pixelation/"><h2>Batch Pixelation</h2><p>Style one frame, process a sequence with the same settings, and download the results together.</p></a></div></main>`,
-  batch: () => `<main class="prerenderPage"><h1>PIXTUDIO Batch Pixelation</h1><p>${escapeHtml(batchShareMetadata.description)}</p></main>`,
+  plugins: () => `<main class="prerenderPage"><h1>Plugins</h1><p>Go beyond a single canvas. PIXTUDIO plugins bring focused tools to creative workflows. Start with Batch Pixelation: style one frame, process a sequence with the same settings, and download the results together.</p><div class="prerenderGrid"><a class="prerenderCard" href="/plugins/batch-pixelation/"><h2>Batch Pixelation</h2></a></div></main>`,
+  batch: () => `<main class="prerenderPage"><h1>${escapeHtml(batchShareMetadata.heading)}</h1><ol>${batchShareMetadata.steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ol><nav><a href="/plugins/">PIXTUDIO Plugins</a><a href="/">PIXTUDIO ©2026</a></nav></main>`,
 }
 
 const routeJsonLdIds = {
@@ -527,6 +535,8 @@ const routeJsonLdIds = {
   gallery: "pixtudio-gallery-jsonld",
   learn: "pixtudio-article-jsonld",
   links: "pixtudio-links-jsonld",
+  plugins: "pixtudio-plugins-jsonld",
+  batch: "pixtudio-batch-jsonld",
 }
 
 function prerenderStyles() {
@@ -641,6 +651,31 @@ function prerenderStyles() {
 function routeStructuredData(routeKey) {
   const seo = routeSeo[routeKey]
   const url = absoluteUrl(seo.path)
+  if (routeKey === "plugins" || routeKey === "batch") {
+    const isBatch = routeKey === "batch"
+    const page = {
+      "@type": "WebPage", "@id": `${url}#webpage`, name: isBatch ? batchShareMetadata.heading : "PIXTUDIO Plugins",
+      url, description: seo.description, isPartOf: { "@id": `${SITE_BASE_URL}/#website` },
+      ...(isBatch ? { mainEntity: { "@id": `${url}#app` } } : {}),
+    }
+    const breadcrumb = {
+      "@type": "BreadcrumbList", "@id": `${url}#breadcrumb`,
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "PIXTUDIO", item: `${SITE_BASE_URL}/` },
+        { "@type": "ListItem", position: 2, name: "Plugins", item: `${SITE_BASE_URL}/plugins/` },
+        ...(isBatch ? [{ "@type": "ListItem", position: 3, name: "Batch Pixelation", item: url }] : []),
+      ],
+    }
+    return { "@context": "https://schema.org", "@graph": [
+      page,
+      ...(isBatch ? [{
+        "@type": "WebApplication", "@id": `${url}#app`, name: "PIXTUDIO Batch Pixelation",
+        url, description: batchShareMetadata.schemaDescription,
+        publisher: { "@id": `${SITE_BASE_URL}/#organization` },
+      }] : []),
+      breadcrumb,
+    ] }
+  }
   const breadcrumb = {
     "@type": "BreadcrumbList",
     "@id": `${url}#breadcrumb`,
@@ -779,6 +814,7 @@ function routeStructuredData(routeKey) {
       ["ColRD Palettes", "https://colrd.com/palette/"],
       ["Coolors Trending Palettes", "https://coolors.co/palettes/trending"],
       ["Palette Inspiration", "https://paletteinspiration.com/?ref=producthunt"],
+      ["Ezgif", "https://ezgif.com/"],
     ]
 
     return {
@@ -792,7 +828,7 @@ function routeStructuredData(routeKey) {
           description: seo.description,
           mainEntity: {
             "@type": "ItemList",
-            name: "Palette resources",
+            name: "Creative resources",
             itemListElement: paletteLinks.map(([name, linkUrl], index) => ({
               "@type": "ListItem",
               position: index + 1,
@@ -921,12 +957,18 @@ function applyMeta(html, seo) {
 function renderRouteHtml(template, routeKey) {
   const seo = routeSeo[routeKey]
   const routeData = routeStructuredData(routeKey)
-  const routeJsonLd = routeData
-    ? `\n    <script id="${routeJsonLdIds[routeKey]}" type="application/ld+json">${JSON.stringify(routeData)}</script>`
-    : ""
+  let base = template
+  if (routeKey === "plugins" || routeKey === "batch") {
+    base = base.replace(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/, (_match, json) => {
+      const shared = JSON.parse(json)["@graph"].filter(node => node["@type"] === "Organization" || node["@type"] === "WebSite")
+      return `<script id="${routeJsonLdIds[routeKey]}" type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@graph": [...shared, ...routeData["@graph"]] })}</script>`
+    })
+  }
+  const routeJsonLd = routeData && routeKey !== "plugins" && routeKey !== "batch"
+    ? `\n    <script id="${routeJsonLdIds[routeKey]}" type="application/ld+json">${JSON.stringify(routeData)}</script>` : ""
   const rootHtml = `<div id="root">${prerenderStyles()}${renderers[routeKey]()}</div>`
 
-  return applyMeta(template, seo)
+  return applyMeta(base, seo)
     .replace(ROOT_MARKER, rootHtml)
     .replace("</head>", `${routeJsonLd}\n  </head>`)
 }

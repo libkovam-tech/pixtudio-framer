@@ -1255,6 +1255,8 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   color: #001219;
   font-family: var(--site-font-content);
   text-align: left;
+  display: grid;
+  gap: clamp(32px, 3vw, 56px);
 }
 
 .linksContent h2 {
@@ -1720,8 +1722,8 @@ body.hubPageLocked.hubVideoCompareScrollBody {
 }
 
 .siteHowItWorksModalWithVideo {
-  width: min(800px, calc(100vw - 48px));
-  max-height: min(90dvh, 620px);
+  width: min(max(800px, 62.5vw), calc(100vw - 48px));
+  max-height: 90dvh;
   padding: clamp(18px, 1.2vw, 24px);
 }
 
@@ -1733,6 +1735,7 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   gap: clamp(24px, 2.5vw, 48px);
 }
 
+.siteHowItWorksModalText a { color: #1254ab; text-decoration: underline; }
 .siteHowItWorksModalText {
   grid-area: text;
   min-width: 0;

@@ -76,12 +76,19 @@ async function start(page: Page, status = "Completed") {
 }
 
 test("Gate 10 Completed ZIP preserves bytes/case, repeated download and scoped discard", async ({ page }) => {
+    const analyticsEvents: string[] = []
+    await page.route("**/api/analytics", async route => {
+        analyticsEvents.push(route.request().postDataJSON().event)
+        await route.fulfill({ status: 204 })
+    })
     await prepare(page, 5, ["Frame1.gif", "frame1.gif", "frame2.gif", "frame3.gif", "frame4.gif"])
     await start(page)
     const id = (await page.getByTestId("batch-output-run-id").textContent())!
     const before = await page.getByTestId("batch-run-result").textContent()
     const rows = await stored(page, id)
+    expect(analyticsEvents).not.toContain("batch_pixelation_download_click")
     const zip = await download(page)
+    await expect.poll(() => analyticsEvents.filter(event => event === "batch_pixelation_download_click").length).toBe(1)
     await page.screenshot({ path: test.info().outputPath("completed-download.png"), fullPage: true })
     expect([...zip.keys()]).toEqual(["batch_report.txt", ...rows.map(row => row.name)])
     expect(zip.has("Frame1.png")).toBe(true); expect(zip.has("frame1.png")).toBe(true)
@@ -89,6 +96,7 @@ test("Gate 10 Completed ZIP preserves bytes/case, repeated download and scoped d
     expect(new TextDecoder().decode(zip.get("batch_report.txt"))).toContain("Status: Completed")
     expect(await stored(page, id)).toEqual([])
     expect(await download(page, "Download again")).toEqual(zip)
+    expect(analyticsEvents.filter(event => event === "batch_pixelation_download_click")).toHaveLength(1)
     expect(await page.getByTestId("batch-run-result").textContent()).toBe(before)
     await page.evaluate(async rows => {
         const request = indexedDB.open("pixtudio-batch-outputs-v1", 2)

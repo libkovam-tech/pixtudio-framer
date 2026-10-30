@@ -1,4 +1,4 @@
-type AnalyticsEventName = "import_image" | "export_image"
+type AnalyticsEventName = "import_image" | "export_image" | "batch_pixelation_download_click"
 
 type Env = {
     ANALYTICS_DB: D1Database
@@ -30,7 +30,7 @@ type ReportPeriod = {
 }
 
 const TIME_ZONE = "Asia/Jerusalem"
-const REPORT_EVENT_NAMES: AnalyticsEventName[] = ["import_image", "export_image"]
+const REPORT_EVENT_NAMES: AnalyticsEventName[] = ["import_image", "export_image", "batch_pixelation_download_click"]
 // Keep each HTML part comfortably below mail-client clipping thresholds.
 const EVENTS_PER_EMAIL = 200
 const MAX_HTML_BYTES = 80_000
@@ -38,6 +38,7 @@ const MAX_HTML_BYTES = 80_000
 type ReportSummary = {
     importCount: number
     exportCount: number
+    batchDownloadClickCount: number
     topCountries: { country: string | null; count: number }[]
 }
 
@@ -136,6 +137,7 @@ function isInsideLocalMonth(event: ReportEvent, period: ReportPeriod) {
 function eventLabel(eventName: AnalyticsEventName) {
     if (eventName === "import_image") return "Импорт"
     if (eventName === "export_image") return "Экспорт"
+    if (eventName === "batch_pixelation_download_click") return "Batch Pixelation — Download clicks"
     return eventName
 }
 
@@ -155,7 +157,7 @@ async function loadReportEvents(env: Env, period: ReportPeriod) {
         `
         SELECT event_name, country, created_at
         FROM analytics_events
-        WHERE event_name IN (?, ?)
+        WHERE event_name IN (?, ?, ?)
           AND created_at >= ?
           AND created_at < ?
         ORDER BY created_at DESC
@@ -164,6 +166,7 @@ async function loadReportEvents(env: Env, period: ReportPeriod) {
         .bind(
             REPORT_EVENT_NAMES[0],
             REPORT_EVENT_NAMES[1],
+            REPORT_EVENT_NAMES[2],
             toSqlUtc(period.startUtc),
             toSqlUtc(period.endUtc)
         )
@@ -176,10 +179,12 @@ function summarizeReport(events: ReportEvent[]): ReportSummary {
     const countryCounts = new Map<string, number>()
     let importCount = 0
     let exportCount = 0
+    let batchDownloadClickCount = 0
 
     for (const event of events) {
         if (event.event_name === "import_image") importCount++
-        else exportCount++
+        else if (event.event_name === "export_image") exportCount++
+        else if (event.event_name === "batch_pixelation_download_click") batchDownloadClickCount++
         const country = event.country || ""
         countryCounts.set(country, (countryCounts.get(country) || 0) + 1)
     }
@@ -187,6 +192,7 @@ function summarizeReport(events: ReportEvent[]): ReportSummary {
     return {
         importCount,
         exportCount,
+        batchDownloadClickCount,
         topCountries: [...countryCounts.entries()]
             .sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))
             .slice(0, 10)
@@ -246,6 +252,10 @@ function buildReportHtml(
                     <td style="background:#d7ebe5;border:2px solid #111827;padding:12px;font-weight:700;">Экспорт</td>
                     <td style="background:#d7ebe5;border:2px solid #111827;padding:12px;font-size:20px;font-weight:700;text-align:right;">${summary.exportCount}</td>
                 </tr>
+                <tr>
+                    <td colspan="3" style="background:#e9d8a6;border:2px solid #111827;padding:12px;font-weight:700;">Batch Pixelation — Download clicks</td>
+                    <td style="background:#e9d8a6;border:2px solid #111827;padding:12px;font-size:20px;font-weight:700;text-align:right;">${summary.batchDownloadClickCount}</td>
+                </tr>
             </table>
 
             <h2 style="font-size:18px;margin:0 0 8px;">Топ-10 стран за месяц</h2>
@@ -283,7 +293,7 @@ function buildReportText(
 ) {
     const lines = [
         "PIXTUDIO Analytics", period.title, `Часть ${page} из ${pageCount}`,
-        `Импорт ${summary.importCount} | Экспорт ${summary.exportCount}`,
+        `Импорт ${summary.importCount} | Экспорт ${summary.exportCount} | Batch Pixelation — Download clicks ${summary.batchDownloadClickCount}`,
         "Топ-10 стран за месяц",
         ...summary.topCountries.map(({ country, count }) => `${countryLabel(country)} | ${count}`),
         "", "События",

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import reporter from "./pixtudio-analytics-reporter"
 
-type Event = { event_name: "import_image" | "export_image"; country: string | null; created_at: string }
+type Event = { event_name: "import_image" | "export_image" | "batch_pixelation_download_click"; country: string | null; created_at: string }
 type SentMessage = { subject: string; html: string; text: string }
 
 function makeEvents(count: number): Event[] {
@@ -14,10 +14,13 @@ function makeEvents(count: number): Event[] {
     }))
 }
 
-function makeEnv(events: Event[], send: (message: SentMessage) => Promise<void>) {
+function makeEnv(events: Event[], send: (message: SentMessage) => Promise<void>, onBind?: (values: unknown[]) => void) {
     return {
         ANALYTICS_DB: {
-            prepare: () => ({ bind: () => ({ all: async () => ({ results: events }) }) }),
+            prepare: () => ({ bind: (...values: unknown[]) => {
+                onBind?.(values)
+                return { all: async () => ({ results: events }) }
+            } }),
         },
         REPORT_EMAIL: { send },
         ANALYTICS_REPORT_SENDER: "sender@example.test",
@@ -69,6 +72,29 @@ describe("analytics email report", () => {
         expect(sent[0].subject).toContain("1/1")
         expect(sent[0].html).toContain("Нет событий")
         expect(sent[0].text).toContain("Импорт 0 | Экспорт 0")
+    })
+
+    it("counts Batch DOWNLOAD clicks separately in the monthly report without sending mail", async () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date("2026-10-01T09:00:00Z"))
+        const sent: SentMessage[] = []
+        const bindings: unknown[][] = []
+        const send = vi.fn(async (message: SentMessage) => { sent.push(message) })
+        const event: Event = {
+            event_name: "batch_pixelation_download_click",
+            country: "IL",
+            created_at: "2026-09-15 12:00:00",
+        }
+
+        await reporter.scheduled({} as ScheduledEvent, makeEnv([event, event], send, values => bindings.push(values)))
+
+        expect(bindings[0]).toContain("batch_pixelation_download_click")
+        expect(send).toHaveBeenCalledOnce()
+        const message = sent[0]
+        expect(message.html).toContain("Batch Pixelation — Download clicks</td>")
+        expect(message.html).toContain(">2</td>")
+        expect(message.text).toContain("Импорт 0 | Экспорт 0 | Batch Pixelation — Download clicks 2")
+        expect(message.text.match(/Batch Pixelation — Download clicks \|/g)).toHaveLength(2)
     })
 
     it("stops on a send failure instead of claiming that later pages were sent", async () => {

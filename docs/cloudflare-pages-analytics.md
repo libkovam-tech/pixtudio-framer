@@ -65,6 +65,8 @@ Bind the D1 database to the Pages project:
 
 The custom endpoint is intentionally best-effort from the browser: failed
 requests are ignored so analytics cannot break editing or exporting.
+It also records `batch_pixelation_download_click` when the user presses DOWNLOAD
+in the Batch Pixelation archive confirmation dialog.
 
 ## GitHub push and deployment flow
 
@@ -109,8 +111,10 @@ The browser never receives the report data. The email contains only:
 - date
 - country
 
-Reports with more than 200 events are sent as sequential, numbered emails
-(`1/N`, `2/N`, etc.). Every part repeats the full-month import/export totals
+The monthly report counts Batch Pixelation DOWNLOAD clicks separately from
+image imports and exports. Reports with more than 200 events are sent as
+sequential, numbered emails
+(`1/N`, `2/N`, etc.). Every part repeats the full-month import/export/download-click totals
 and top 10 countries; its event table contains only that part's rows. The
 plain-text version follows the same structure. Confirm all numbered parts
 arrived before treating a monthly report as complete. If sending fails after

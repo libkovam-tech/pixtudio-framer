@@ -1,6 +1,7 @@
 export type AnalyticsEventName =
     | "import_image"
     | "export_image"
+    | "batch_pixelation_download_click"
 
 type AnalyticsPayload = Record<string, unknown>
 

@@ -1,6 +1,15 @@
 {
-  "title": "PIXTUDIO Batch Pixelation",
-  "description": "Turn video frames into consistent pixel art. Style one reference frame in PIXTUDIO, apply its settings to the whole batch, then export the frames to assemble into a video.",
+  "title": "Batch Image to Pixel Art Converter | PIXTUDIO",
+  "seoDescription": "Convert multiple images into pixel art using shared pixelation settings and a reusable palette. Process extracted video frames and download PNG results as a ZIP.",
+  "description": "Turn extracted video frames into pixel art with one shared recipe. Process a batch of images and download the PNG results as a ZIP.",
+  "schemaDescription": "Batch image-to-pixel-art conversion with shared grid and palette settings, including workflows using extracted video frames.",
+  "heading": "BATCH PIXELATION PLUGIN",
+  "steps": [
+    "Export your video as individual image frames using an external tool.",
+    "Open one frame in PIXTUDIO Batch Pixelation and adjust the pixelation settings.",
+    "Select your frames and apply the reference recipe to the batch.",
+    "Download processed PNG images in a ZIP, then assemble them into a video using an external editor."
+  ],
   "imagePath": "/plugins/batch-pixelation/og-image.jpg",
   "imageAlt": "PIXTUDIO Batch Pixelation preview showing a video frame transformed into pixel art",
   "imageWidth": 1600,

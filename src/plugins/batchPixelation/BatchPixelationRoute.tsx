@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import BatchReferenceRoute from "./authoring/BatchReferenceRoute.tsx"
 import { BatchIntroVideo } from "./BatchIntroVideo.tsx"
 import { useEditorViewportLock } from "../../editor/useEditorViewportLock.ts"
@@ -13,6 +13,8 @@ import { INSTAGRAM_URL, SUPPORT_EMAIL } from "../../hub/SiteShell.tsx"
 import { openSupportEmail } from "../../editor/openSupportEmail.ts"
 import { pixtudioInk } from "../../theme.ts"
 import shareMetadata from "./shareMetadata.json"
+import { track } from "../../editor/analytics.ts"
+import { SITE_ROUTE_SEO, usePageSeo } from "../../hub/structuredData.tsx"
 import "./batchRun.css"
 
 const INTRO_STEPS = [
@@ -34,7 +36,6 @@ function EntryVisual({ onReference, onRecipe, inactive = false }: {
     onRecipe?: () => void
     inactive?: boolean
 }) {
-    const navigate = useNavigate()
     const [shareNotice, setShareNotice] = React.useState<string | null>(null)
     const [shareError, setShareError] = React.useState(false)
     const titleRef = React.useRef<HTMLHeadingElement>(null)
@@ -91,9 +92,9 @@ function EntryVisual({ onReference, onRecipe, inactive = false }: {
     return <div className="batch-entry-composition">
         {!inactive && <EntryViewportLock />}
         <header className="batch-entry-brand">
-            <button type="button" aria-label="PIXTUDIO Plugins" onClick={() => navigate("/plugins/")}>
+            <Link to="/plugins/" aria-label="PIXTUDIO Plugins">
                 <img src="/plugins/batch-pixelation/Logotype_PLUGINS.svg" alt="" />
-            </button>
+            </Link>
         </header>
         <div className="batch-entry-layout">
             <button className="batch-entry-action batch-entry-reference" type="button" onClick={onReference} disabled={inactive} aria-label="SET A FRAME AS REFERENCE">
@@ -105,7 +106,7 @@ function EntryVisual({ onReference, onRecipe, inactive = false }: {
             <div className="batch-entry-feature">
                 <BatchIntroVideo paused={inactive} />
                 <div className="batch-entry-copy">
-                    <h1 ref={titleRef}>BATCH PIXELATION PLUGIN</h1>
+                    <h1 ref={titleRef}>{shareMetadata.heading}</h1>
                     <ol>{INTRO_STEPS.map(step => <li key={step}>{step}</li>)}</ol>
                 </div>
             </div>
@@ -123,7 +124,7 @@ function EntryVisual({ onReference, onRecipe, inactive = false }: {
                 fontWeight: 400,
                 color: pixtudioInk(0.85),
                 letterSpacing: 0.2,
-            }}>PIXTUDIO ©2026</span>
+            }}><Link to="/">PIXTUDIO ©2026</Link></span>
             <nav aria-label="Contact and sharing">
                 <button type="button" onClick={() => openSupportEmail(SUPPORT_EMAIL, "PIXTUDIO Batch Pixelation")} aria-label="Email PIXTUDIO"><img src="/plugins/batch-pixelation/MailTo_PLUGINS.svg" alt="" /></button>
                 <button type="button" onClick={() => void share()} aria-label="Share Batch Pixelation"><img src="/plugins/batch-pixelation/Share_PLUGINS.svg" alt="" /></button>
@@ -279,7 +280,7 @@ function PostAuthoring({ workflow, state, onStartOver }: {
                 {archiveSaveError && <p role="alert">Could not save the archive. It is retained in this page session.</p>}
                 <div>
                     <button type="button" onClick={() => setReleaseOpen(false)}>NOT NOW</button>
-                    <button type="button" disabled={savingArchive} onClick={() => { void download() }}>DOWNLOAD</button>
+                    <button type="button" disabled={savingArchive} onClick={() => { track("batch_pixelation_download_click"); void download() }}>DOWNLOAD</button>
                 </div>
             </section>
         </div>}
@@ -301,6 +302,7 @@ function PostAuthoring({ workflow, state, onStartOver }: {
 }
 
 export default function BatchPixelationRoute() {
+    usePageSeo(SITE_ROUTE_SEO.batch)
     const [workflow] = React.useState(() => new BatchWorkflowController())
     const state = React.useSyncExternalStore(workflow.subscribe, workflow.getSnapshot)
     const templateInput = React.useRef<HTMLInputElement>(null)

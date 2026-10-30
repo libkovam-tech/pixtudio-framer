@@ -6,16 +6,31 @@ import {
   useRef,
   useState,
 } from "react"
+import { Link } from "react-router-dom"
 import { SiteCloseCrossIcon } from "../editor/SvgIcons"
 import { SiteShell } from "./SiteShell"
+import batchPixelationVideo from "./assets/how-it-works/BatchPixelation.webm"
+import batchPixelationPoster from "./assets/how-it-works/BatchPixelation.webp"
 import startWithPhotoVideo from "./assets/how-it-works/StartWithPhoto.webm"
+import startWithPhotoPoster from "./assets/how-it-works/StartWithPhoto.webp"
 import shootWithCameraVideo from "./assets/how-it-works/ShootWithCamera_2.webm"
+import shootWithCameraPoster from "./assets/how-it-works/ShootWithCamera_2.webp"
 import drawFromBlankCanvasVideo from "./assets/how-it-works/DrawFromBlankCanvas.webm"
+import drawFromBlankCanvasPoster from "./assets/how-it-works/DrawFromBlankCanvas.webp"
 import saveYourProjectVideo from "./assets/how-it-works/SaveYourProject.webm"
+import saveYourProjectPoster from "./assets/how-it-works/SaveYourProject.webp"
 import openSavedProjectVideo from "./assets/how-it-works/OpenSavedProject.webm"
+import openSavedProjectPoster from "./assets/how-it-works/OpenSavedProject.webp"
 import exportYourPixelArtVideo from "./assets/how-it-works/ExportYourPixelArt_2.webm"
+import exportYourPixelArtPoster from "./assets/how-it-works/ExportYourPixelArt_2.webp"
 import editColorSwatchesVideo from "./assets/how-it-works/EditColorSwatches-AddNewColor2.webm"
+import editColorSwatchesPoster from "./assets/how-it-works/EditColorSwatches-AddNewColor2.webp"
 import applyCustomPaletteVideo from "./assets/how-it-works/ApplyCustomPalette.webm"
+import applyCustomPalettePoster from "./assets/how-it-works/ApplyCustomPalette.webp"
+import fineTuneSourceImageVideo from "./assets/how-it-works/FineTuneSourceImage.webm"
+import fineTuneSourceImagePoster from "./assets/how-it-works/FineTuneSourceImage.webp"
+import recordPixelizationVideo from "./assets/how-it-works/RecordPixelizationVideo.webm"
+import recordPixelizationPoster from "./assets/how-it-works/RecordPixelizationVideo.webp"
 import {
   JsonLd,
   SITE_OG_IMAGE_URL,
@@ -36,9 +51,9 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   {
     title: "Batch Pixelation",
     paragraphs: [
-      "Style one reference frame in the editor, then choose the source frames you want to process.",
-      "Batch Pixelation applies the same pixel-art settings across the sequence and packages the finished frames in a ZIP, ready to assemble into an animation or video.",
-      "Find this feature in Plugins > Batch Pixelation.",
+      "Style one reference frame, then select the frames to process.",
+      "Batch Pixelation applies the same settings to every frame and exports PNGs in a ZIP for video or animation.",
+      "For video frames with similar colors, Same As Auto in Preset Palette can reduce color flicker by keeping the reference palette fixed. If new colors appear across the sequence, Auto Palette may produce better results by adapting to each frame.",
     ],
   },
   {
@@ -121,15 +136,18 @@ const HOW_MODAL_COPY: HowModalCopy[] = [
   },
 ]
 
-const HOW_MODAL_VIDEOS: Partial<Record<number, string>> = {
-  1: startWithPhotoVideo,
-  2: shootWithCameraVideo,
-  3: drawFromBlankCanvasVideo,
-  4: saveYourProjectVideo,
-  5: openSavedProjectVideo,
-  6: exportYourPixelArtVideo,
-  7: editColorSwatchesVideo,
-  8: applyCustomPaletteVideo,
+const HOW_MODAL_MEDIA: Partial<Record<number, { video: string; poster: string }>> = {
+  0: { video: batchPixelationVideo, poster: batchPixelationPoster },
+  1: { video: startWithPhotoVideo, poster: startWithPhotoPoster },
+  2: { video: shootWithCameraVideo, poster: shootWithCameraPoster },
+  3: { video: drawFromBlankCanvasVideo, poster: drawFromBlankCanvasPoster },
+  4: { video: saveYourProjectVideo, poster: saveYourProjectPoster },
+  5: { video: openSavedProjectVideo, poster: openSavedProjectPoster },
+  6: { video: exportYourPixelArtVideo, poster: exportYourPixelArtPoster },
+  7: { video: editColorSwatchesVideo, poster: editColorSwatchesPoster },
+  8: { video: applyCustomPaletteVideo, poster: applyCustomPalettePoster },
+  9: { video: fineTuneSourceImageVideo, poster: fineTuneSourceImagePoster },
+  10: { video: recordPixelizationVideo, poster: recordPixelizationPoster },
 }
 
 const HOW_BLUEPRINT_CARD_CLASSES = [
@@ -168,14 +186,17 @@ export default function HowItWorksPage() {
   })
   const activeModal =
     activeModalIndex === null ? null : HOW_MODAL_COPY[activeModalIndex]
-  const activeVideo = activeModalIndex === null ? null : HOW_MODAL_VIDEOS[activeModalIndex]
+  const activeMedia = activeModalIndex === null ? null : HOW_MODAL_MEDIA[activeModalIndex]
   const modalCopy = activeModal ? (
     <>
       <h2 id="site-how-modal-title">How It Works</h2>
       <h3>{activeModal.title}</h3>
-      {activeModal.paragraphs.map((paragraph) => (
-        <p key={paragraph}>{paragraph}</p>
+      {activeModal.paragraphs.map((paragraph, index) => (
+        <p key={paragraph}>{activeModalIndex === 0 && index === 2 ? <>
+          For video frames with similar colors, <strong>Same As Auto</strong> in Preset Palette can reduce color flicker by keeping the reference palette fixed. If new colors appear across the sequence, <strong>Auto Palette</strong> may produce better results by adapting to each frame.
+        </> : paragraph}</p>
       ))}
+      {activeModalIndex === 0 && <p>Find this feature in <Link to="/plugins/batch-pixelation/">Plugins &gt; Batch Pixelation</Link>.</p>}
     </>
   ) : null
   const howToId = `${toAbsoluteSiteUrl("/how-it-works/")}#howto`
@@ -472,7 +493,7 @@ export default function HowItWorksPage() {
           onClick={() => setActiveModalIndex(null)}
         >
           <article
-            className={`siteHowItWorksModal${activeVideo ? " siteHowItWorksModalWithVideo" : ""}`}
+            className={`siteHowItWorksModal${activeMedia ? " siteHowItWorksModalWithVideo" : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="site-how-modal-title"
@@ -486,12 +507,13 @@ export default function HowItWorksPage() {
             >
               <SiteCloseCrossIcon />
             </button>
-            {activeVideo ? (
+            {activeMedia ? (
               <div className="siteHowItWorksModalMediaLayout">
                 <div className="siteHowItWorksModalText">{modalCopy}</div>
                 <video
                   className="siteHowItWorksModalVideo"
-                  src={activeVideo}
+                  src={activeMedia.video}
+                  poster={activeMedia.poster}
                   autoPlay
                   muted
                   loop

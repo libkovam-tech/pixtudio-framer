@@ -8,6 +8,7 @@ test("Start with a Photo shows a looping video in the responsive modal", async (
   const copy = modal.locator(".siteHowItWorksModalText")
   const video = modal.locator("video")
   await expect(video).toHaveAttribute("src", /StartWithPhoto(?:-[^/]*)?\.webm/)
+  await expect(video).toHaveAttribute("poster", /StartWithPhoto(?:-[^/]*)?\.webp/)
   await expect(video).toHaveJSProperty("autoplay", true)
   await expect(video).toHaveJSProperty("muted", true)
   await expect(video).toHaveJSProperty("loop", true)
@@ -44,6 +45,44 @@ test("Start with a Photo shows a looping video in the responsive modal", async (
   await expect(page.getByRole("dialog", { name: "How It Works" }).locator("video")).toHaveCount(0)
 })
 
+test("video poster is available while the video cannot load", async ({ page }) => {
+  await page.route(/\.webm(?:\?|$)/, route => route.abort())
+  await page.goto("/how-it-works/")
+  await page.getByRole("button", { name: "Start with a Photo" }).click()
+
+  const video = page.getByRole("dialog", { name: "How It Works" }).locator("video")
+  await expect(video).toHaveAttribute("poster", /StartWithPhoto(?:-[^/]*)?\.webp/)
+  await expect.poll(() => video.evaluate(element => element.readyState)).toBe(0)
+  const posterLoaded = await video.evaluate(async element => {
+    const image = new Image()
+    image.src = element.poster
+    await image.decode()
+    return image.naturalWidth > 0 && image.naturalHeight > 0
+  })
+  expect(posterLoaded).toBe(true)
+})
+
+test("desktop video modal grows with a wide viewport without clipping its copy", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop")
+  await page.setViewportSize({ width: 2560, height: 1272 })
+  await page.goto("/how-it-works/")
+  await page.getByRole("button", { name: "Start with a Photo" }).click()
+
+  const modal = page.getByRole("dialog", { name: "How It Works" })
+  const video = modal.locator("video")
+  const title = modal.getByRole("heading", { name: "How It Works" })
+  await page.evaluate(() => document.fonts.ready)
+  const modalBox = (await modal.boundingBox())!
+  const videoBox = (await video.boundingBox())!
+  const titleBox = (await title.boundingBox())!
+
+  expect(Math.abs(modalBox.width - 1600)).toBeLessThan(1)
+  expect(modalBox.height).toBeGreaterThan(620)
+  expect(Math.abs(videoBox.width - videoBox.height)).toBeLessThan(1)
+  expect(titleBox.height).toBeLessThan(50)
+  expect(await modal.evaluate(element => element.scrollHeight - element.clientHeight)).toBe(0)
+})
+
 test("Batch Pixelation leads the grid and swatch editing shares one card", async ({ page }) => {
   await page.goto("/how-it-works/")
 
@@ -55,9 +94,11 @@ test("Batch Pixelation leads the grid and swatch editing shares one card", async
 
   await cards.nth(0).click()
   const pluginModal = page.getByRole("dialog", { name: "How It Works" })
-  await expect(pluginModal).toContainText("Style one reference frame")
+  await expect(pluginModal).toContainText("Style one reference frame, then select the frames to process.")
   await expect(pluginModal).toContainText("ZIP")
   await expect(pluginModal).toContainText("Plugins > Batch Pixelation")
+  await expect(pluginModal.locator("strong")).toHaveText(["Same As Auto", "Auto Palette"])
+  await expect(pluginModal.getByRole("link", { name: "Plugins > Batch Pixelation" })).toHaveAttribute("href", "/plugins/batch-pixelation/")
   await pluginModal.getByRole("button", { name: "Close" }).click()
 
   await page.getByRole("button", { name: "Edit Color Swatches" }).click()
@@ -67,6 +108,7 @@ test("Batch Pixelation leads the grid and swatch editing shares one card", async
 })
 
 for (const [title, filename] of [
+  ["Batch Pixelation", "BatchPixelation"],
   ["Shoot with Camera", "ShootWithCamera_2"],
   ["Draw from a Blank Canvas", "DrawFromBlankCanvas"],
   ["Save Your Project", "SaveYourProject"],
@@ -74,6 +116,7 @@ for (const [title, filename] of [
   ["Export Your Pixel Art", "ExportYourPixelArt_2"],
   ["Edit Color Swatches", "EditColorSwatches-AddNewColor2"],
   ["Apply Custom Palette", "ApplyCustomPalette"],
+  ["Fine-Tune the Source Image", "FineTuneSourceImage"],
 ] as const) {
   test(`${title} shows its looping video`, async ({ page }, testInfo) => {
     await page.goto("/how-it-works/")
@@ -83,6 +126,7 @@ for (const [title, filename] of [
     const copy = modal.locator(".siteHowItWorksModalText")
     const video = modal.locator("video")
     await expect(video).toHaveAttribute("src", new RegExp(`${filename}(?:-[^/]*)?\\.webm`))
+    await expect(video).toHaveAttribute("poster", new RegExp(`${filename}(?:-[^/]*)?\\.webp`))
     await expect(video).toHaveAttribute("aria-label", `${title} demonstration`)
     await expect(video).toHaveJSProperty("autoplay", true)
     await expect(video).toHaveJSProperty("muted", true)

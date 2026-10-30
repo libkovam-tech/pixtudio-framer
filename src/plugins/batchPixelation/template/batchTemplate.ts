@@ -7,7 +7,7 @@ import type { SealedReference } from "../authoring/BatchReferenceEnvelope.ts"
 import type { BatchPaletteRecipe, DynamicAutoPaletteRecipe, FinalPaletteRecipe } from "../render/finalPalette.ts"
 import type { ResolvedSmartRecipe } from "../render/smartRecipe.ts"
 
-export const BATCH_TEMPLATE_FILENAME = "PIXTUDIO_Batch_Template.pixtudiobatch"
+export const BATCH_TEMPLATE_FILENAME = "PIXTUDIO_Batch_Recipe.pixtudiobatch"
 export const MAX_BATCH_TEMPLATE_BYTES = 256 * 1024
 // Bump the revision if a numerical kernel/decode/export convention changes.
 // The preparation settings are also pinned, rather than silently reinterpreted.

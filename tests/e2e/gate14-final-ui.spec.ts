@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
 
 test("Gate 14 Entry logo opens the PIXTUDIO Plugins directory", async ({ page }) => {
     const pluginsUrl = new URL("/plugins/", page.url()).href
-    const logo = page.getByRole("button", { name: "PIXTUDIO Plugins" })
+    const logo = page.getByRole("link", { name: "PIXTUDIO Plugins" })
     await expect(logo).toBeVisible()
     await logo.click()
     await expect(page).toHaveURL(pluginsUrl)
@@ -851,7 +851,7 @@ test("Batch recipe uses desktop Save As while Android keeps browser download", a
         await expect(page.locator("body")).not.toHaveAttribute("data-batch-picker-called", "true")
     } else {
         await save.click()
-        await expect(page.locator("body")).toHaveAttribute("data-batch-save-name", "PIXTUDIO_Batch_Template.pixtudiobatch")
+        await expect(page.locator("body")).toHaveAttribute("data-batch-save-name", "PIXTUDIO_Batch_Recipe.pixtudiobatch")
         expect(Number(await page.locator("body").getAttribute("data-batch-save-bytes"))).toBeGreaterThan(0)
     }
 })
@@ -929,7 +929,7 @@ test("Android recipe download failure keeps the editor and permits retry", async
     const downloadStarted = page.waitForEvent("download")
     await save.click()
     const download = await downloadStarted
-    expect(download.suggestedFilename()).toBe("PIXTUDIO_Batch_Template.pixtudiobatch")
+    expect(download.suggestedFilename()).toBe("PIXTUDIO_Batch_Recipe.pixtudiobatch")
     const template = JSON.parse((await readFile((await download.path())!)).toString("utf8"))
     expect(template.sealed.recipe.grid).toBeTruthy()
     await expect(page.locator(".batch-authoring-notice")).toHaveCount(0)

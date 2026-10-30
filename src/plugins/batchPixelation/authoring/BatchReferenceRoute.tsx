@@ -153,7 +153,7 @@ export default function BatchReferenceRoute({ onReferenceReady, onGoNext, onSave
     }
 
     const goNext = () => {
-        if (!file || !onGoNext) return
+        if (!file || !onGoNext || savingRecipe) return
         const current = captureCurrent()
         if (current) onGoNext(current, file)
     }
@@ -173,7 +173,7 @@ export default function BatchReferenceRoute({ onReferenceReady, onGoNext, onSave
                 <PixelEditorFramer key={sessionId} host={host} onHostHome={onStartOver}
                     controlsSlot={onGoNext ? <div className="batch-authoring-inline-actions">
                         <button type="button" className="batch-authoring-save" disabled={!envelope?.isSettled || !onSaveRecipe || savingRecipe} onClick={() => { void saveRecipe() }}>Save Batch <br className="batch-authoring-mobile-break" />Recipe</button>
-                        <button type="button" className="batch-authoring-next" disabled={!envelope?.isSettled} onClick={goNext}>Choose Source <br className="batch-authoring-mobile-break" />Frames</button>
+                        <button type="button" className="batch-authoring-next" disabled={!envelope?.isSettled || savingRecipe} onClick={goNext}>Choose Source <br className="batch-authoring-mobile-break" />Frames</button>
                     </div> : undefined} />
                 {!cropOpen && !onGoNext && <div className="batch-authoring-actions">
                     <button type="button" className="batch-authoring-reference" disabled={!!sealed && !!onGoNext} onClick={setAsReference}>Set as Reference</button>

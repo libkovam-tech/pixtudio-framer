@@ -1,8 +1,10 @@
 import { useEffect } from "react"
+import batchShareMetadata from "../plugins/batchPixelation/shareMetadata.json"
 
 export const SITE_BASE_URL = "https://pixtudio.app"
 export const SITE_LOGO_URL = `${SITE_BASE_URL}/logo-pixtudio.png`
 export const SITE_OG_IMAGE_URL = `${SITE_BASE_URL}/og-image.jpg`
+export const SITE_OG_IMAGE_ALT = "PIXTUDIO preview showing photo-to-pixel-art conversion"
 export const SITE_SUPPORT_EMAIL = "support@pixtudio.app"
 
 export const SITE_SCHEMA_IDS = {
@@ -19,6 +21,9 @@ export type SiteRouteSeo = {
   ogDescription?: string
   ogType?: "website" | "article"
   image?: string
+  imageAlt?: string
+  imageWidth?: number
+  imageHeight?: number
 }
 
 export const SITE_ROUTE_SEO = {
@@ -82,6 +87,27 @@ export const SITE_ROUTE_SEO = {
       "External palette libraries for color inspiration and custom palette experiments in PIXTUDIO.",
     ogType: "website",
   },
+  plugins: {
+    title: "PIXTUDIO Plugins — Batch Pixelation",
+    description: "Explore PIXTUDIO plugins. Start with Batch Pixelation: style a reference frame, process a sequence with the same settings, and download the results together.",
+    path: "/plugins/",
+    ogTitle: "PIXTUDIO Plugins — Batch Pixelation",
+    ogDescription: "Explore PIXTUDIO plugins for creative workflows, starting with Batch Pixelation for consistent pixel art across video frames.",
+    ogType: "website",
+    imageAlt: "PIXTUDIO pixel art preview",
+  },
+  batch: {
+    title: batchShareMetadata.title,
+    description: batchShareMetadata.seoDescription,
+    path: "/plugins/batch-pixelation/",
+    ogTitle: batchShareMetadata.title,
+    ogDescription: batchShareMetadata.description,
+    ogType: "website",
+    image: batchShareMetadata.imagePath,
+    imageAlt: batchShareMetadata.imageAlt,
+    imageWidth: batchShareMetadata.imageWidth,
+    imageHeight: batchShareMetadata.imageHeight,
+  },
 } satisfies Record<string, SiteRouteSeo>
 
 export function toAbsoluteSiteUrl(pathOrUrl: string) {
@@ -140,6 +166,10 @@ export function usePageSeo(seo: SiteRouteSeo) {
       ogDescription
     )
     upsertMeta('meta[property="og:image"]', "property", "og:image", imageUrl)
+    upsertMeta('meta[property="og:image:width"]', "property", "og:image:width", String(seo.imageWidth ?? 1600))
+    upsertMeta('meta[property="og:image:height"]', "property", "og:image:height", String(seo.imageHeight ?? 630))
+    upsertMeta('meta[property="og:image:alt"]', "property", "og:image:alt", seo.imageAlt ?? SITE_OG_IMAGE_ALT)
+    upsertMeta('meta[name="twitter:card"]', "name", "twitter:card", "summary_large_image")
     upsertMeta('meta[name="twitter:title"]', "name", "twitter:title", ogTitle)
     upsertMeta(
       'meta[name="twitter:description"]',
@@ -148,6 +178,7 @@ export function usePageSeo(seo: SiteRouteSeo) {
       ogDescription
     )
     upsertMeta('meta[name="twitter:image"]', "name", "twitter:image", imageUrl)
+    upsertMeta('meta[name="twitter:image:alt"]', "name", "twitter:image:alt", seo.imageAlt ?? SITE_OG_IMAGE_ALT)
   }, [seo])
 }
 

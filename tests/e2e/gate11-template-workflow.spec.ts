@@ -17,6 +17,8 @@ declare global { interface Window {
     gate11SourceBytes: number[]
     gate11Release: (() => void) | null
     gate11CancelNext: boolean
+    gate11ReleaseSave?: () => void
+    gate11SaveWriteStarted?: boolean
 } }
 let bundle: string
 test.beforeAll(async () => {
@@ -80,6 +82,30 @@ async function save(page: Page) {
     await state(page, "authoring")
     return bytes.toString("utf8")
 }
+
+test("Gate 11 keeps authoring open while the desktop Recipe save is writing", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop", "Desktop Save As is unavailable on mobile")
+    await configure(page)
+    await page.evaluate(() => {
+        const writing = new Promise<void>(resolve => { window.gate11ReleaseSave = resolve })
+        Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: async () => ({
+            createWritable: async () => ({
+                write: async () => { window.gate11SaveWriteStarted = true; await writing },
+                close: async () => {},
+                abort: async () => {},
+            }),
+        }) })
+    })
+    const next = page.getByRole("button", { name: "Choose Source Frames" })
+    await page.getByRole("button", { name: "Save Batch Recipe", exact: true }).click()
+    await expect.poll(() => page.evaluate(() => window.gate11SaveWriteStarted)).toBe(true)
+    await expect(next).toBeDisabled()
+    await state(page, "authoring")
+    await page.evaluate(() => window.gate11ReleaseSave?.())
+    await expect(next).toBeEnabled()
+    await next.click()
+    await state(page, "source")
+})
 async function open(page: Page, text: string | Buffer, filename = BATCH_TEMPLATE_FILENAME) {
     const chooser = page.waitForEvent("filechooser")
     await page.getByRole("button", { name: "OPEN SAVED BATCH RECIPE", exact: true }).click()

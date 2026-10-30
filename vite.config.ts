@@ -24,7 +24,7 @@ function batchShareDevHtml(html: string, origin: string) {
   let next = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${batchShareMetadata.title}</title>`)
   next = next.replace(/<link\s+rel="canonical"[^>]*>/i, `<link rel="canonical" href="${pageUrl}" />`)
   for (const [attribute, key, content] of [
-    ['name', 'description', batchShareMetadata.description],
+    ['name', 'description', batchShareMetadata.seoDescription],
     ['property', 'og:url', pageUrl],
     ['property', 'og:title', batchShareMetadata.title],
     ['property', 'og:description', batchShareMetadata.description],
@@ -36,6 +36,7 @@ function batchShareDevHtml(html: string, origin: string) {
     ['name', 'twitter:description', batchShareMetadata.description],
     ['name', 'twitter:image', imageUrl],
     ['name', 'twitter:image:alt', batchShareMetadata.imageAlt],
+    ['name', 'twitter:card', 'summary_large_image'],
   ] as const) {
     next = replaceMeta(next, attribute, key, content)
   }

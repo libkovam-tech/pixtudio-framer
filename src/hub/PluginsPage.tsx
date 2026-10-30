@@ -2,8 +2,10 @@ import { Link } from "react-router-dom"
 import { SiteShell } from "./SiteShell"
 import batchIcon from "./assets/plugins/BatchIcon.png"
 import "./hub.css"
+import { SITE_ROUTE_SEO, usePageSeo } from "./structuredData"
 
 export default function PluginsPage() {
+  usePageSeo(SITE_ROUTE_SEO.plugins)
   return (
     <SiteShell
       activePage="plugins"

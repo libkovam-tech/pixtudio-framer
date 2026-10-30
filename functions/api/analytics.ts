@@ -14,6 +14,7 @@ type IncomingBody = {
 const ALLOWED_EVENTS = new Set([
     "import_image",
     "export_image",
+    "batch_pixelation_download_click",
 ])
 
 export const onRequestOptions: PagesFunction = async () => {

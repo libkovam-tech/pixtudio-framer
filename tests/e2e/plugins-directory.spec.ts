@@ -8,7 +8,7 @@ test("Plugins directory has a distinct server-rendered preview and sitemap entri
   expect(response.ok()).toBe(true)
   expect(html).toContain('<link rel="canonical" href="https://pixtudio.app/plugins/" />')
   expect(html).toContain('<meta property="og:title" content="PIXTUDIO Plugins — Batch Pixelation" />')
-  expect(html).toContain('<h1>PIXTUDIO Plugins</h1>')
+  expect(html).toContain('<h1>Plugins</h1>')
   expect(sitemap).toContain('<loc>https://pixtudio.app/plugins/</loc>')
   expect(sitemap).toContain('<loc>https://pixtudio.app/plugins/batch-pixelation/</loc>')
 })
