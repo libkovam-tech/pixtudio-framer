@@ -1,6 +1,17 @@
 import * as React from "react"
 import { pixtudioInk } from "../theme.ts"
 
+export const SiteNewBadgeIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg viewBox="0 0 72.9 32.2" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" {...props}>
+        <path fill="#0000FF" d="M56.8,32.2H16.1C7.2,32.2,0,25,0,16.1v0C0,7.2,7.2,0,16.1,0l40.7,0c8.9,0,16.1,7.2,16.1,16.1v0 C72.9,25,65.7,32.2,56.8,32.2z" />
+        <g fill="#FFFFFF">
+            <path d="M16.5,21.8V9.1h3.2l4.5,7.1h0.1l-0.1-2.1V9.1h3.1v12.7h-2.9l-4.9-7.4h-0.1l0.1,2v5.4H16.5z" />
+            <path d="M29.9,21.8V9.1h8.4v3h-5.2v6.7h5.3v3H29.9z M31.7,16.8v-2.6H38v2.6H31.7z" />
+            <path d="M43,21.8L39.6,9.1H43l1.7,7l0.2,1h0.1l0.3-1l2.2-7H50l2.1,7l0.3,1h0.1l0.2-1l1.7-7h3.2l-3.4,12.7h-3.1 l-2.2-7.3l-0.3-1.1h-0.1l-0.3,1.1L46,21.8H43z" />
+        </g>
+    </svg>
+)
+
 export const SiteCloseCrossIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg
         viewBox="0 0 41.1 41.1"

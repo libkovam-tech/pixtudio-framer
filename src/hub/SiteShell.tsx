@@ -1,16 +1,21 @@
-import { type MouseEvent as ReactMouseEvent, type ReactNode, useEffect } from "react"
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import {
   SiteFooterEmailIcon,
   SiteFooterInstagramIconWhite,
   SiteFooterShareIcon,
+  SiteNewBadgeIcon,
   SvgLogo,
 } from "../editor/SvgIcons"
+import { isNewBadgeVisible, millisecondsUntilNextSiteDay } from "./newBadgeSchedule"
 
 export const DESKTOP_EDITOR_URL = "/editor"
 export const SITE_SHARE_URL = "https://pixtudio.app"
 export const SUPPORT_EMAIL = "support@pixtudio.app"
 export const INSTAGRAM_URL = "https://www.instagram.com/pixtudio.app/"
+
+// Set this to the production publication date (YYYY-MM-DD in Asia/Jerusalem) when releasing.
+const NEW_BADGE_PUBLISHED_ON = import.meta.env.VITE_NEW_BADGE_PUBLISHED_ON
 
 export type SitePage = "home" | "faq" | "how" | "gallery" | "learn" | "links" | "plugins"
 
@@ -162,6 +167,27 @@ function closeMobileProductsMenu(event: ReactMouseEvent<HTMLAnchorElement>) {
 }
 
 export function SiteTopNav({ activePage }: { activePage: SitePage }) {
+  const [showNewBadge, setShowNewBadge] = useState(false)
+  useEffect(() => {
+    if (!NEW_BADGE_PUBLISHED_ON) return
+
+    let timer: number | undefined
+    const refresh = () => {
+      window.clearTimeout(timer)
+      setShowNewBadge(isNewBadgeVisible(NEW_BADGE_PUBLISHED_ON))
+      timer = window.setTimeout(refresh, Math.min(millisecondsUntilNextSiteDay() + 1, 2_147_483_647))
+    }
+
+    refresh()
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [])
+
   const menuLinks = SITE_MOBILE_MENU_LINKS.filter(
     (link) => link.page !== activePage
   )
@@ -176,7 +202,9 @@ export function SiteTopNav({ activePage }: { activePage: SitePage }) {
           aria-label={`${activeProduct}, choose section`}
         >
           <span className="siteMobileChevron" aria-hidden="true" />
-          <span>{activeProduct}</span>
+          <span className={showNewBadge && activeProduct === "EDITOR" ? "siteMobileProductNew" : undefined}>
+            {activeProduct}
+          </span>
         </summary>
         <div className="siteMobileAccordionPanel siteMobileProductsPanel">
           <Link
@@ -187,7 +215,7 @@ export function SiteTopNav({ activePage }: { activePage: SitePage }) {
             EDITOR
           </Link>
           <Link
-            className="siteMobileAccordionItem"
+            className={`siteMobileAccordionItem${showNewBadge ? " siteMobileDropdownNew" : ""}`}
             to="/plugins/"
             onClick={closeMobileProductsMenu}
           >
@@ -202,6 +230,7 @@ export function SiteTopNav({ activePage }: { activePage: SitePage }) {
           to="/plugins/"
         >
           PLUGINS
+          {showNewBadge ? <SiteNewBadgeIcon className="siteDesktopNewBadge" /> : null}
         </Link>
         <Link
           className={`siteTopPluginsLink siteTopEditorButton${activePage !== "plugins" ? " siteTopPluginsLinkActive" : ""}`}
@@ -253,14 +282,12 @@ export function SiteTopNav({ activePage }: { activePage: SitePage }) {
 
 export function SiteFloatingCta({ className = "" }: { className?: string }) {
   return (
-    <a
-      className={`hubMobileCta siteFloatingCta${className ? ` ${className}` : ""}`}
-      href={DESKTOP_EDITOR_URL}
-      target="_self"
-      rel="noreferrer"
-    >
-      <span className="hubCtaText">Try PIXTUDIO Now</span>
-    </a>
+    <div className={`siteFloatingCta${className ? ` ${className}` : ""}`}>
+      <a className="hubMobileCta siteFloatingCtaButton" href={DESKTOP_EDITOR_URL} target="_self" rel="noreferrer">
+        <span className="hubCtaText">Try PIXTUDIO Now</span>
+      </a>
+      <span className="siteCtaDisclaimer">Free to use ● No sign-up ● Images processed on your device</span>
+    </div>
   )
 }
 

@@ -31,6 +31,8 @@ import fineTuneSourceImageVideo from "./assets/how-it-works/FineTuneSourceImage.
 import fineTuneSourceImagePoster from "./assets/how-it-works/FineTuneSourceImage.webp"
 import recordPixelizationVideo from "./assets/how-it-works/RecordPixelizationVideo.webm"
 import recordPixelizationPoster from "./assets/how-it-works/RecordPixelizationVideo.webp"
+import tryPixelizationVideo from "./assets/how-it-works/TryPixelizationMethod.webm"
+import tryPixelizationPoster from "./assets/how-it-works/TryPixelizationMethod.webp"
 import {
   JsonLd,
   SITE_OG_IMAGE_URL,
@@ -148,6 +150,7 @@ const HOW_MODAL_MEDIA: Partial<Record<number, { video: string; poster: string }>
   8: { video: applyCustomPaletteVideo, poster: applyCustomPalettePoster },
   9: { video: fineTuneSourceImageVideo, poster: fineTuneSourceImagePoster },
   10: { video: recordPixelizationVideo, poster: recordPixelizationPoster },
+  11: { video: tryPixelizationVideo, poster: tryPixelizationPoster },
 }
 
 const HOW_BLUEPRINT_CARD_CLASSES = [

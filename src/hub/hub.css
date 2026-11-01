@@ -84,6 +84,7 @@
 }
 
 .siteTopPluginsLink {
+  position: relative;
   min-width: clamp(86px, 6.4vw, 118px);
   height: clamp(24px, 1.85vw, 34px);
   padding: 0 clamp(18px, 1.8vw, 28px);
@@ -95,6 +96,15 @@
   justify-content: center;
   font: var(--site-type-top-menu-weight) var(--site-type-top-menu-size) / 1 var(--site-font-content);
   text-decoration: none;
+}
+
+.siteDesktopNewBadge {
+  position: absolute;
+  top: -25%;
+  left: -15%;
+  width: clamp(34px, 2.65vw, 54px);
+  height: auto;
+  pointer-events: none;
 }
 
 .siteTopPluginsLinkActive {
@@ -400,8 +410,8 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto 0;
-  align-content: space-between;
+  grid-template-rows: auto auto minmax(0, 1fr) 0;
+  align-content: stretch;
   justify-items: center;
   row-gap: var(--hub-mobile-stack-gap);
   overflow: hidden;
@@ -506,7 +516,34 @@ body.hubPageLocked.hubVideoCompareScrollBody {
 
 .hubMobileHeroActionGroup {
   flex-direction: column;
-  gap: calc(var(--hub-mobile-stack-gap) * 0.7);
+  gap: var(--hub-mobile-stack-gap);
+}
+
+.siteFloatingCta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--hub-mobile-stack-gap, 12px);
+  container-type: inline-size;
+}
+
+.siteFloatingCta > .siteFloatingCtaButton {
+  width: 100%;
+}
+
+.siteCtaDisclaimer {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding-inline: 5%;
+  color: #001219;
+  font-family: var(--site-font-content);
+  font-size: max(9px, 3.42cqw);
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: clamp(-0.45px, -0.05cqw, 0px);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .hubMobileHeroMosaic {
@@ -1131,11 +1168,11 @@ body.hubPageLocked.hubVideoCompareScrollBody {
   text-align: center;
 }
 
-.sitePluginsContent h1 {
+.sitePluginsContent h2 {
   margin: 0;
-  font-size: var(--site-type-h2-size);
-  line-height: 1;
-  font-weight: 800;
+  font-size: var(--site-type-h3-size);
+  line-height: var(--site-type-h3-line-height);
+  font-weight: var(--site-type-h3-weight);
 }
 
 .sitePluginsIntro {
@@ -1202,8 +1239,10 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     padding: 12px 0 32px;
   }
 
-  .sitePluginsContent h1 {
-    font-size: var(--site-type-h2-size);
+  .sitePluginsContent h2 {
+    font-size: var(--site-type-h3-size);
+    line-height: var(--site-type-h3-line-height);
+    font-weight: var(--site-type-h3-weight);
   }
 
   .sitePluginsIntro {
@@ -2266,8 +2305,20 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     position: absolute;
     z-index: 1000;
     right: 25px;
-    bottom: var(--hub-desktop-cta-bottom);
+    font-size: var(--site-type-disclaimer-size);
+    line-height: var(--site-type-disclaimer-line-height);
+    bottom: calc(
+      var(--hub-desktop-footer-h) +
+      (
+        var(--hub-visual-viewport-h, 100dvh) - var(--hub-desktop-video-top) -
+        var(--hub-video-size) - var(--hub-desktop-footer-h)
+      ) / 2 - 0.5lh
+    );
     width: var(--hub-desktop-cta-w);
+    box-sizing: border-box;
+  }
+
+  .siteFloatingCtaButton {
     height: var(--hub-desktop-cta-h);
     min-height: 0;
     padding: 0;
@@ -2275,9 +2326,6 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     border-radius: 999px;
     background: #ff120f;
     color: #ffffff;
-    font-size: var(--site-type-cta-size);
-    line-height: var(--site-type-cta-line-height);
-    font-weight: var(--site-type-cta-weight);
     text-decoration: none;
   }
 
@@ -2577,21 +2625,19 @@ body.hubPageLocked.hubVideoCompareScrollBody {
     right: auto;
     bottom: auto;
     width: var(--hub-mobile-content-w);
-    min-height: 0;
-    height: auto;
-    aspect-ratio: 5.16 / 1;
     flex: 0 0 auto;
     margin: var(--hub-mobile-stack-gap) auto var(--hub-mobile-stack-gap);
-    padding: 0;
     display: inline-flex;
-    box-sizing: border-box;
-    border-radius: 999px;
-    background: var(--hub-mobile-red);
-    color: #ffffff;
-    font-size: var(--site-type-cta-size);
-    line-height: var(--site-type-cta-line-height);
-    font-weight: var(--site-type-cta-weight);
-    text-decoration: none;
+    gap: var(--hub-mobile-stack-gap);
+  }
+
+  .siteFloatingCtaButton {
+    aspect-ratio: 5.16 / 1;
+  }
+
+  .hubMobileHomeCta {
+    width: var(--hub-mobile-content-w);
+    gap: var(--hub-mobile-stack-gap);
   }
 
   .hubMobileCta {
@@ -2685,6 +2731,31 @@ body.hubPageLocked.hubVideoCompareScrollBody {
 
   .siteMobileProductsSummary {
     padding-left: 0;
+  }
+
+  .siteMobileProductNew {
+    position: relative;
+  }
+
+  .siteMobileProductNew::after,
+  .siteMobileDropdownNew::after {
+    content: "";
+    position: absolute;
+    width: clamp(9px, 2.8vw, 14px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #0000ff;
+    pointer-events: none;
+  }
+
+  .siteMobileProductNew::after {
+    right: -1.2em;
+    top: -0.65em;
+  }
+
+  .siteMobileDropdownNew::after {
+    right: 5px;
+    top: 5px;
   }
 
   .siteMobileProductsAccordion[open] .siteMobileProductsSummary > * {

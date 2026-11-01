@@ -15,6 +15,7 @@ const allFilenames = [
   "EditColorSwatches-AddNewColor2",
   "ApplyCustomPalette",
   "FineTuneSourceImage",
+  "TryPixelizationMethod",
 ]
 const filenames = process.argv.length > 2 ? process.argv.slice(2) : allFilenames
 if (filenames.some(filename => !allFilenames.includes(filename))) {

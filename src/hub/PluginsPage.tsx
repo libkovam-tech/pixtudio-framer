@@ -17,7 +17,7 @@ export default function PluginsPage() {
       showCta={false}
     >
       <section className="sitePluginsContent" aria-labelledby="site-plugins-title">
-        <h1 id="site-plugins-title">Plugins</h1>
+        <h2 id="site-plugins-title">Plugins</h2>
         <p className="sitePluginsIntro">
           Go beyond a single canvas. PIXTUDIO plugins bring focused tools to
           creative workflows. Start with Batch Pixelation: style one frame,

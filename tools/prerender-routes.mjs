@@ -524,7 +524,7 @@ const renderers = {
   gallery: renderGallery,
   learn: renderLearn,
   links: renderLinks,
-  plugins: () => `<main class="prerenderPage"><h1>Plugins</h1><p>Go beyond a single canvas. PIXTUDIO plugins bring focused tools to creative workflows. Start with Batch Pixelation: style one frame, process a sequence with the same settings, and download the results together.</p><div class="prerenderGrid"><a class="prerenderCard" href="/plugins/batch-pixelation/"><h2>Batch Pixelation</h2></a></div></main>`,
+  plugins: () => `<main class="prerenderPage"><h2>Plugins</h2><p>Go beyond a single canvas. PIXTUDIO plugins bring focused tools to creative workflows. Start with Batch Pixelation: style one frame, process a sequence with the same settings, and download the results together.</p><div class="prerenderGrid"><a class="prerenderCard" href="/plugins/batch-pixelation/"><h2>Batch Pixelation</h2></a></div></main>`,
   batch: () => `<main class="prerenderPage"><h1>${escapeHtml(batchShareMetadata.heading)}</h1><ol>${batchShareMetadata.steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ol><nav><a href="/plugins/">PIXTUDIO Plugins</a><a href="/">PIXTUDIO ©2026</a></nav></main>`,
 }
 

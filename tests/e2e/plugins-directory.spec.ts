@@ -8,7 +8,7 @@ test("Plugins directory has a distinct server-rendered preview and sitemap entri
   expect(response.ok()).toBe(true)
   expect(html).toContain('<link rel="canonical" href="https://pixtudio.app/plugins/" />')
   expect(html).toContain('<meta property="og:title" content="PIXTUDIO Plugins — Batch Pixelation" />')
-  expect(html).toContain('<h1>Plugins</h1>')
+  expect(html).toContain('<h2>Plugins</h2>')
   expect(sitemap).toContain('<loc>https://pixtudio.app/plugins/</loc>')
   expect(sitemap).toContain('<loc>https://pixtudio.app/plugins/batch-pixelation/</loc>')
 })
@@ -27,7 +27,7 @@ test("Plugins directory opens from navigation and leads to Batch Pixelation", as
   }
 
   await expect(page).toHaveURL(/\/plugins\/$/)
-  await expect(page.getByRole("heading", { name: "Plugins" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Plugins", level: 2 })).toBeVisible()
   if (testInfo.project.name === "mobile") {
     await expect(page.locator(".siteMobileProductsSummary:visible")).toContainText("PLUGINS")
     await expect(page.locator(".siteMobileMenuAccordion:visible")).toHaveCount(0)

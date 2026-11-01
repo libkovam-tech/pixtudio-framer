@@ -7,7 +7,6 @@ import {
   useState,
 } from "react"
 import {
-  DESKTOP_EDITOR_URL,
   SiteFloatingCta,
   SiteFooter,
   SiteShell,
@@ -2119,14 +2118,7 @@ export default function Hub() {
               </div>
 
               <div className="hubMobileBlockCta">
-                <a
-                  className="hubMobileCta hubMobileHomeCta"
-                  href={DESKTOP_EDITOR_URL}
-                  target="_self"
-                  rel="noreferrer"
-                >
-                  <span className="hubCtaText">Try PIXTUDIO Now</span>
-                </a>
+                <SiteFloatingCta className="hubMobileHomeCta" />
               </div>
             </div>
 
