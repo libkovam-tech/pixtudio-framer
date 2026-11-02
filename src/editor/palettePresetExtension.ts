@@ -703,53 +703,23 @@ export function applyFixedPaletteDisplayOverrideSwatches<
     TSwatch extends FixedPaletteEditSwatchLike,
 >(input: {
     profile: TProfile
-    previousAutoSwatches: ReadonlyArray<TSwatch>
     nextAutoSwatches: ReadonlyArray<TSwatch>
 }): TSwatch[] {
-    const fixedColors = getFixedProfilePaletteForApplication(input.profile).map(
-        (color) => normalizeEditablePaletteColor(color)
-    )
     const displayColors = getFixedProfilePaletteForDisplay(input.profile).map(
         (color) => normalizeEditablePaletteColor(color)
     )
     const transparentSwatchIds = new Set(input.profile.transparentSwatchIds ?? [])
-    const previousById = new Map(
-        input.previousAutoSwatches.map((swatch) => [swatch.id, swatch])
-    )
 
     return input.nextAutoSwatches.map((swatch) => {
         const swatchIndex = getFixedPaletteSwatchIndex(swatch.id)
-        const fixedColor =
-            swatchIndex == null ? null : fixedColors[swatchIndex] ?? null
         const displayColor =
             swatchIndex == null ? null : displayColors[swatchIndex] ?? null
-        const previousSwatch = previousById.get(swatch.id)
-        const previousColor = previousSwatch
-            ? normalizeImportedPaletteHex(previousSwatch.color)
-            : null
-
-        if (transparentSwatchIds.has(swatch.id)) {
-            return {
-                ...swatch,
-                color: displayColor ?? previousColor ?? swatch.color,
-                isTransparent: true,
-            } as TSwatch
-        }
-
-        if (
-            !previousSwatch ||
-            previousSwatch.isTransparent ||
-            !previousColor ||
-            !fixedColor ||
-            previousColor === fixedColor
-        ) {
-            return { ...swatch } as TSwatch
-        }
-
+        // Swatch ids can change meaning after the palette grows or reorders.
+        // The profile owns the color displayed for each current id.
         return {
             ...swatch,
-            color: previousColor,
-            isTransparent: false,
+            color: displayColor ?? swatch.color,
+            isTransparent: transparentSwatchIds.has(swatch.id),
         } as TSwatch
     })
 }

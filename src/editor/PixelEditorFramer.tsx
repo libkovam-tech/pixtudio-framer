@@ -9463,7 +9463,6 @@ function PixelEditorFramer({
                     quantizationProfile.kind === "fixed"
                         ? applyFixedPaletteDisplayOverrideSwatches({
                               profile: quantizationProfile,
-                              previousAutoSwatches: autoSwatches,
                               nextAutoSwatches: nextAuto,
                           })
                         : nextAuto
@@ -9592,7 +9591,6 @@ function PixelEditorFramer({
                     quantizationProfile.kind === "fixed"
                         ? applyFixedPaletteDisplayOverrideSwatches({
                               profile: quantizationProfile,
-                              previousAutoSwatches: autoSwatches,
                               nextAutoSwatches: nextAutoRaw,
                           })
                         : nextAutoRaw

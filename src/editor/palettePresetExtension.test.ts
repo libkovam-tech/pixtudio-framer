@@ -2206,7 +2206,6 @@ describe("palette preset extension", () => {
 
         const result = applyFixedPaletteDisplayOverrideSwatches({
             profile: edit.profile,
-            previousAutoSwatches: edit.autoSwatches,
             nextAutoSwatches: [
                 { id: "auto-0", color: "#001219", isTransparent: false },
                 { id: "auto-1", color: "#E9D8A6", isTransparent: false },
@@ -2219,22 +2218,37 @@ describe("palette preset extension", () => {
         ])
     })
 
-    it("applies fixed display override swatches after requantize", () => {
+    it("uses fixed profile display colors after requantize", () => {
         const result = applyFixedPaletteDisplayOverrideSwatches({
-            profile,
-            previousAutoSwatches: [
-                { id: "auto-0", color: "#001219", isTransparent: false },
-                { id: "auto-1", color: "#FFFFFF", isTransparent: false },
-            ],
+            profile: { ...profile, applicationColors: profile.colors },
             nextAutoSwatches: [
                 { id: "auto-0", color: "#001219", isTransparent: false },
-                { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+                { id: "auto-1", color: "#FFFFFF", isTransparent: false },
             ],
         })
 
         expect(result).toEqual([
             { id: "auto-0", color: "#001219", isTransparent: false },
-            { id: "auto-1", color: "#FFFFFF", isTransparent: false },
+            { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+        ])
+    })
+
+    it("aligns shifted swatch ids with the fixed profile after palette extension", () => {
+        const result = applyFixedPaletteDisplayOverrideSwatches({
+            profile: {
+                ...profile,
+                colors: ["#001219", "#000000", "#E9D8A6"],
+                applicationColors: ["#001219", "#000000", "#E9D8A6"],
+            },
+            nextAutoSwatches: [
+                { id: "auto-0", color: "#001219", isTransparent: false },
+                { id: "auto-1", color: "#E9D8A6", isTransparent: false },
+                { id: "auto-2", color: "#E9D8A6", isTransparent: false },
+            ],
+        })
+
+        expect(result.map((swatch) => swatch.color)).toEqual([
+            "#001219", "#000000", "#E9D8A6",
         ])
     })
 
@@ -2245,10 +2259,6 @@ describe("palette preset extension", () => {
                 applicationColors: profile.colors,
                 transparentSwatchIds: ["auto-1"],
             },
-            previousAutoSwatches: [
-                { id: "auto-0", color: "#001219", isTransparent: false },
-                { id: "auto-1", color: "#E9D8A6", isTransparent: true },
-            ],
             nextAutoSwatches: [
                 { id: "auto-0", color: "#001219", isTransparent: false },
                 { id: "auto-1", color: "#E9D8A6", isTransparent: false },
