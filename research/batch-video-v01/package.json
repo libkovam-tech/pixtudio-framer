@@ -1,0 +1,8 @@
+{
+  "name": "pixtudio-batch-video-v01-research",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mediabunny": "1.65.2"
+  }
+}

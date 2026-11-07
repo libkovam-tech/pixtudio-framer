@@ -1,0 +1,37 @@
+name: Batch Video Safari WebM smoke
+on:
+  workflow_dispatch:
+jobs:
+  safari-webm:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix research/batch-video-v01
+      - run: python3 -m venv /tmp/pixtudio-safari-venv && /tmp/pixtudio-safari-venv/bin/pip install 'selenium>=4,<5'
+      - name: Start local research stand
+        run: |
+          node node_modules/vite/bin/vite.js --config research/batch-video-v01/vite.config.mjs > /tmp/pixtudio-v01-vite.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5177/ > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/pixtudio-v01-vite.log
+          exit 1
+      - name: Run Safari diagnostic
+        run: |
+          sudo safaridriver --enable
+          /tmp/pixtudio-safari-venv/bin/python research/batch-video-v01/run-safari-smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safari-webm-smoke
+          path: |
+            research/batch-video-v01/evidence/safari-macos-vm-opus-webm.json
+            /tmp/pixtudio-v01-vite.log
+          if-no-files-found: warn
