@@ -35,5 +35,6 @@ jobs:
             research/batch-video-v01/evidence/safari-macos-vm-opus-webm.json
             research/batch-video-v01/evidence/safari-macos-vm-h264-control.json
             research/batch-video-v01/evidence/safari-macos-vm-vp8-control.json
+            research/batch-video-v01/evidence/safari-macos-vm-vp9-video-only-control.json
             /tmp/pixtudio-v01-vite.log
           if-no-files-found: warn

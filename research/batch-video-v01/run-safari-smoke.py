@@ -89,6 +89,20 @@ def main():
         print(json.dumps({"vp8Control": {"status": vp8.get("status"),
                           "checks": vp8.get("checks"), "error": vp8.get("error")}},
                          ensure_ascii=False))
+        vp9_video_only = driver.execute_async_script("""
+            const done = arguments[arguments.length - 1];
+            fetch('/safari-smoke-vp9-video-only.webm').then(async response => {
+                if (!response.ok) throw new Error(`VP9 control HTTP ${response.status}`);
+                const blob = await response.blob();
+                done(await window.runDiagnostic(new File([blob],
+                    'safari-smoke-vp9-video-only.webm', {type: 'video/webm'})));
+            }).catch(error => done({status: 'FAIL', error: `${error.name}: ${error.message}`}));
+        """)
+        (EVIDENCE.parent / "safari-macos-vm-vp9-video-only-control.json").write_text(
+            json.dumps(vp9_video_only, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"vp9VideoOnlyControl": {"status": vp9_video_only.get("status"),
+                          "checks": vp9_video_only.get("checks"),
+                          "error": vp9_video_only.get("error")}}, ensure_ascii=False))
         if result.get("file", {}).get("name") != FIXTURE.name:
             raise AssertionError("Safari did not diagnose the selected WebM")
         if result.get("checks", {}).get("demux") != "PASS":
