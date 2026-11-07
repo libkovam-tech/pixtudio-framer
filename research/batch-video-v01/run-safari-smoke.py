@@ -75,6 +75,20 @@ def main():
         print(json.dumps({"h264Control": {"status": control.get("status"),
                           "checks": control.get("checks"), "error": control.get("error")}},
                          ensure_ascii=False))
+        vp8 = driver.execute_async_script("""
+            const done = arguments[arguments.length - 1];
+            fetch('/safari-smoke-vp8.webm').then(async response => {
+                if (!response.ok) throw new Error(`VP8 control HTTP ${response.status}`);
+                const blob = await response.blob();
+                done(await window.runDiagnostic(new File([blob], 'safari-smoke-vp8.webm',
+                    {type: 'video/webm'})));
+            }).catch(error => done({status: 'FAIL', error: `${error.name}: ${error.message}`}));
+        """)
+        (EVIDENCE.parent / "safari-macos-vm-vp8-control.json").write_text(
+            json.dumps(vp8, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"vp8Control": {"status": vp8.get("status"),
+                          "checks": vp8.get("checks"), "error": vp8.get("error")}},
+                         ensure_ascii=False))
         if result.get("file", {}).get("name") != FIXTURE.name:
             raise AssertionError("Safari did not diagnose the selected WebM")
         if result.get("checks", {}).get("demux") != "PASS":
