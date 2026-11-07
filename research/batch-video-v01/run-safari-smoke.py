@@ -60,13 +60,29 @@ def main():
         EVIDENCE.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         summary = {"status": result.get("status"), "checks": result.get("checks"),
                    "file": result.get("file"), "error": result.get("error")}
-        print(json.dumps(summary, ensure_ascii=False))
+        print(json.dumps({"webm": summary}, ensure_ascii=False))
+        control = driver.execute_async_script("""
+            const done = arguments[arguments.length - 1];
+            fetch('/safari-smoke-h264.mp4').then(async response => {
+                if (!response.ok) throw new Error(`control HTTP ${response.status}`);
+                const blob = await response.blob();
+                done(await window.runDiagnostic(new File([blob], 'safari-smoke-h264.mp4',
+                    {type: 'video/mp4'})));
+            }).catch(error => done({status: 'FAIL', error: `${error.name}: ${error.message}`}));
+        """)
+        (EVIDENCE.parent / "safari-macos-vm-h264-control.json").write_text(
+            json.dumps(control, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"h264Control": {"status": control.get("status"),
+                          "checks": control.get("checks"), "error": control.get("error")}},
+                         ensure_ascii=False))
         if result.get("file", {}).get("name") != FIXTURE.name:
             raise AssertionError("Safari did not diagnose the selected WebM")
         if result.get("checks", {}).get("demux") != "PASS":
             raise AssertionError("Safari WebM demux failed")
         if result.get("checks", {}).get("decoderSupport") != "PASS":
             raise AssertionError("Safari VP9 WebCodecs support failed")
+        if result.get("checks", {}).get("firstFrames") != "PASS":
+            raise AssertionError("Safari VP9 decode failed after support check; inspect H.264 control")
         if result.get("checks", {}).get("audio") != "PASS":
             raise AssertionError("Safari Opus copy failed")
         if not result.get("status", "").startswith("PASS"):
